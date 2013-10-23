@@ -1,0 +1,6 @@
+# Python setup.py side-effects builder stuff
+*.egg-info
+*.pyc
+*.swp
+build
+dist

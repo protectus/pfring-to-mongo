@@ -1,0 +1,43 @@
+
+
+200MB - 209715200
+160MB - 167772160
+120MB - 125829120
+100MB - 104857600
+ 80MB -  83886080
+ 60BM -  62914560
+ 40MB -  41943040
+ 20MB -  20971520 
+200KB -    204800
+
+# Capped
+/opt/sentry/mongo/bin/mongo traffic1 --eval "db.createCollection(\"tcp_sessionInfo\", {capped:true, size:125829120})"
+
+
+# Indexes
+db.tcp_captureBytes.ensureIndex({'se':1, 'sb':1})
+
+
+# Import / export
+./bin/mongoexport -h localhost -d traffic1 -c tcp_sessionInfo -o ./export/tcp_sessionInfo.json
+./bin/mongoimport -h localhost -d traffic1 -c tcp_sessionInfo --file ./export/tcp_sessionInfo.json
+
+
+# Rename
+/opt/sentry/mongo/bin/mongo traffic1 --eval "db.tcp_sessionInfo.renameCollection(\"tcp_sessionInfoC\")"
+
+# Set SMTP server
+mongo kw --eval 'db.config.update({"doc_type": "sentrysettings"}, {"$set": {"smtp_server": "protectus.com", "smtp_port": 587}})'
+
+# Set IDS alert
+# Worrying about quote escaping makes it easier to cut and past this into the
+# mongo shell directly, instead of using --eval from bash.  Note that the
+# match_doc isn't a dictionary, but a string containing text that the json
+# library can later parse into a dictionary.
+db.config.insert({"doc_type" : "alert_rule", "trigger" : { "type" : "ids-polling", "match_doc" : '{ "sid" : 2012648 }', "message" : "ET POLICY Dropbox Client Broadcasting" }, "alerts" : [{"uuid" : BinData(3,"MakeMeRandomPleaseJtbg=="), "type" : "email", "mailto" : "tgarvin@protectus.com" } ] })
+
+# Set IDS alert with threshold and timeout
+db.config.insert({"doc_type" : "alert_rule", "trigger" : { "type" : "ids-polling", "match_doc" : '{ "sid" : 2003068 }', "message" : "ET SCAN Potential SSH Scan OUTBOUND", "threshold" : 100, "timeout" : 86400 }, "alerts" : [ { "uuid" : BinData(3,"MakeMeRandomPleasepbGw=="), "type" : "email", "mailto" : "tgarvin@protectus.com" } ] })
+
+# Enable RTP plugin in UI
+db.config.update({plugin_name:'rtp'},{$set:{enabled:true}})
