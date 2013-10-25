@@ -73,7 +73,7 @@ if sys.argv[1] == 'bdist_egg':
     egg = ZipFile(original)
     newegg = ZipFile(target_name,'w')
 
-    # This is seperated from the above to avoid pseudo-race conditions.
+    # Make a new egg file, and put everything except the .c files into it.
     for item in egg.infolist():
         path = item.filename
         if path.endswith('.c'):
