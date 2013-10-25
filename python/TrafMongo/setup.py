@@ -1,4 +1,4 @@
-mport os
+import os
 import sys
 from zipfile import ZipFile # For egg manipulation
 import glob
