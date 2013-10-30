@@ -13,7 +13,7 @@ here = os.path.abspath(os.path.dirname(__file__))
 
 # "VERSION" is a keyword that the build system will look for.  Feel free to
 # change, but know that the build system is running sed, looking for
-# something like "^VERSION.*", and will replace it. --TCG
+# "^VERSION.*" in all the setup.py files, and will replace it. --TCG
 VERSION = '0.1'
 
 requires = [
