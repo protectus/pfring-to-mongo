@@ -83,5 +83,6 @@ if sys.argv[1] == 'bdist_egg':
 
     egg.close()
     newegg.close()
+    os.remove(original)
 
     print "Done removing proprietary source code"
