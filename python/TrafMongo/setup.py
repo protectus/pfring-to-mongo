@@ -16,10 +16,12 @@ VERSION = '0.1'
 requires = [
     'pyramid == 1.2',
     'ujson',
-    'pymongo >= 2.2',
+    'pymongo >= 2.6',
     'WebError',
     'pygeoip'
 ]
+
+# For development, pyramid-debugtoolbar==1.0.7
 
 setup_settings = {}
 if sys.argv[1] in ['bdist_egg', 'install']:
