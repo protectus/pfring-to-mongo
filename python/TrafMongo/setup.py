@@ -5,11 +5,8 @@ import glob
 from fnmatch import fnmatch
 
 from setuptools import setup, find_packages
-from Cython.Distutils import build_ext
-from Cython.Build import cythonize
 
-
-here = os.path.abspath(os.path.dirname(__file__))
+cythonize_glob = 'trafmongo/*ommands.py'
 
 # "VERSION" is a keyword that the build system will look for.  Feel free to
 # change, but know that the build system is running sed, looking for
@@ -24,7 +21,15 @@ requires = [
     'pygeoip'
 ]
 
-cythonize_glob = 'trafmongo/*ommands.py'
+setup_settings = {}
+if sys.argv[1] in ['bdist_egg', 'install']:
+    from Cython.Distutils import build_ext
+    from Cython.Build import cythonize
+
+    setup_settings = {
+        'cmdclass': {'build_ext':build_ext},
+        'ext_modules': cythonize(cythonize_glob)
+    }
 
 setup(name='TrafMongo',
       version=VERSION,
@@ -50,8 +55,7 @@ setup(name='TrafMongo',
       main = trafmongo:main
       """,
       paster_plugins=['pyramid'],
-      cmdclass = {'build_ext':build_ext},
-      ext_modules = cythonize(cythonize_glob)
+      **setup_settings
       )
 
 # XXX: Apparently, this should actually be implimented as an extention of
