@@ -6,7 +6,7 @@ import glob
 from setuptools import setup, find_packages
 
 # Cython actually accepts an extended glob pattern, where ** means more than one directory
-cythonize_glob = 'sentry/**/.py'
+cythonize_glob = 'sentry/**/*.py'
 
 # "VERSION" is a keyword that the build system will look for.  Feel free to
 # change, but know that the build system is running sed, looking for
@@ -15,7 +15,6 @@ VERSION = '0.1'
 
 requires = [
     'pymongo >= 2.6',
-    'pygeoip'
 ]
 
 setup_settings = {}
@@ -55,7 +54,7 @@ if sys.argv[1] == 'bdist_egg':
         dist_dir=sys.argv[sys.argv.index('--dist-dir')+1]
 
     print "Stripping egg of proprietary source code... (hopefully)"
-    filenames = glob.glob(dist_dir+'/TrafMongo*.egg')
+    filenames = glob.glob(dist_dir+'/Sentry*.egg')
     if len(filenames) != 1:
         print "Not sure which egg file to use! Tell Tim to fix his setup.py."
 
