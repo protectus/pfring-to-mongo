@@ -54,7 +54,7 @@ if sys.argv[1] == 'bdist_egg':
         dist_dir=sys.argv[sys.argv.index('--dist-dir')+1]
 
     print "Stripping egg of proprietary source code... (hopefully)"
-    filenames = glob.glob(dist_dir+'/protectus-sentry*.egg')
+    filenames = glob.glob(dist_dir+'/protectus_sentry*.egg')
     if len(filenames) != 1:
         print "Not sure which egg file to use! Tell Tim to fix his setup.py."
 
