@@ -2,11 +2,11 @@ import os
 import sys
 from zipfile import ZipFile # For egg manipulation
 import glob
-from fnmatch import fnmatch
 
 from setuptools import setup, find_packages
 
-cythonize_glob = 'trafmongo/**/*ommands.py'
+# Cython actually accepts an extended glob pattern, where ** means more than one directory
+cythonize_glob = 'protectus_sentry/**/*.py'
 
 # "VERSION" is a keyword that the build system will look for.  Feel free to
 # change, but know that the build system is running sed, looking for
@@ -14,14 +14,8 @@ cythonize_glob = 'trafmongo/**/*ommands.py'
 VERSION = '0.1'
 
 requires = [
-    'pyramid == 1.2',
-    'ujson',
     'pymongo >= 2.6',
-    'WebError',
-    'pygeoip'
 ]
-
-# For development, pyramid-debugtoolbar==1.0.7
 
 setup_settings = {}
 if sys.argv[1] in ['bdist_egg', 'install']:
@@ -33,30 +27,22 @@ if sys.argv[1] in ['bdist_egg', 'install']:
         'ext_modules': cythonize(cythonize_glob)
     }
 
-setup(name='TrafMongo',
+setup(name='protectus-sentry',
       version=VERSION,
-      description='TrafMongo',
+      description='Sentry shared code',
       classifiers=[
-        "Programming Language :: Python",
-        "Framework :: Pylons",
-        "Topic :: Internet :: WWW/HTTP",
-        "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
+        "Programming Language :: Python"
         ],
       author='PROTECTUS',
       author_email='tgarvin@protectus.com',
       url='http://www.protectus.com',
-      keywords='web pyramid pylons',
+      keywords='protectus',
       packages=find_packages(),
       include_package_data=True,
       zip_safe=False,
       install_requires=requires,
       tests_require=requires,
-      test_suite="trafmongo",
-      entry_points = """\
-      [paste.app_factory]
-      main = trafmongo:main
-      """,
-      paster_plugins=['pyramid'],
+      test_suite="protectus_sentry",
       **setup_settings
       )
 
@@ -68,7 +54,7 @@ if sys.argv[1] == 'bdist_egg':
         dist_dir=sys.argv[sys.argv.index('--dist-dir')+1]
 
     print "Stripping egg of proprietary source code... (hopefully)"
-    filenames = glob.glob(dist_dir+'/TrafMongo*.egg')
+    filenames = glob.glob(dist_dir+'/protectus_sentry*.egg')
     if len(filenames) != 1:
         print "Not sure which egg file to use! Tell Tim to fix his setup.py."
 
