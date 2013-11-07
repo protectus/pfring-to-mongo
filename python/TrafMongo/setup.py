@@ -6,7 +6,7 @@ from fnmatch import fnmatch
 
 from setuptools import setup, find_packages
 
-cythonize_glob = 'trafmongo/*ommands.py'
+cythonize_glob = 'trafmongo/**/*ommands.py'
 
 # "VERSION" is a keyword that the build system will look for.  Feel free to
 # change, but know that the build system is running sed, looking for
