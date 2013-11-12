@@ -15,6 +15,14 @@ import json
 import re
 from email.mime.text import MIMEText
 
+# In theory, we should have protectus-sentry installed in the current python
+# set of packages.  But Trafcap hasn't been made a module yet, so the build
+# system doesn't really have a way to do that yet. In practice, we know that
+# there's a protectus-sentry module installed by sentry-kwebapp that we can
+# use.
+sys.path.extend(glob.glob("/opt/sentry/share/sentry-kwebapp/python-dist/protectus_sentry*"))
+from protectus_sentry.commands.nmi import HostByIPCommand
+
 PICKLE_PATH = '/tmp/checkAlert.pickle'
 
 
@@ -55,6 +63,10 @@ def fill_template(template, data):
     # Substiute each %keyword% using the replacement function above.
     return TEMPLATE_RE.sub(replace_func, template)
 
+def ports_to_string(ports):
+    if ports is None:
+        return "Many"
+    return ", ".join((str(p) for p in group['src_ports']))
 
 def thresholded_ids_check(state, match_doc, message, threshold, timeout, **unknown_args):
     # If match_doc is a string, load json from it
@@ -94,7 +106,9 @@ def thresholded_ids_check(state, match_doc, message, threshold, timeout, **unkno
             groups[group_key] = {
                 "last_id": event['_id'],
                 "count": 0,
-                "triggered": False
+                "triggered": False,
+                "src_ports": set(),
+                "dst_ports": set()
             }
         group = groups[group_key]
 
@@ -105,21 +119,56 @@ def thresholded_ids_check(state, match_doc, message, threshold, timeout, **unkno
         group["count"] += 1
         group["last_id"] = event['_id']
 
+        # For source and dest ports, track them in a set.  If the set gets too
+        # big, use the value None instead
+        # XXX: Transition code: If old groups don't have ports, just overwrite
+        # dumbly
+        if "src_ports" not in group:
+            group["src_ports"] = None
+        if "dst_ports" not in group:
+            group["dst_ports"] = None
+            
+        if group["src_ports"] is not None and 'src_port' in event:
+            group["src_ports"].add(event['src_port'])
+            if len(group['src_ports']) > 5:
+                group["src_ports"] = None
+
+        if group["dst_ports"] is not None 'dst_port' in event:
+            group["dst_ports"].add(event['dst_port'])
+            if len(group['dst_ports']) > 5:
+                group["dst_ports"] = None
+
+        # Check threshold and triggered-state to see if we should alert
         if group["count"] >= threshold and not group["triggered"]:
-            alert_properties = OrderedDict((
+            src_host = HostByIPCommand.run({"hostip":event["src"]})
+            dst_host = HostByIPCommand.run({"hostip":event["dst"]})
+
+            alert_properties = [ 
                 ("Signature", event['msg']),
-                ("Source", source),
-                ("Dest", dest),
+                ("Source", "%s %s" % (source, src_host))
+            ]
+
+            src_ports = ports_to_string(group['src_ports'])
+            if src_ports:
+                alert_properties.append(("Source Port(s)", src_ports))
+                
+            alert_properties.append(("Destination", "%s %s" % (dest, dst_host))),
+
+            dst_ports = ports_to_string(group['dst_ports'])
+            if dst_ports:
+                alert_properties.append(("Dest. Port(s)", dst_ports))
+
+            alert_properties.extend([
                 ("Time", datetime.fromtimestamp(event["t"]).isoformat()),
                 ("Signature ID", event['sid']),
                 ("Threshold Triggered", threshold)
-            ))
+            ])
 
-            # TODO: better data than just raw event.
+            # Make a one-liner
             compiled_message = fill_template(message, event)
             subject = compiled_message + " [" + source + " -> " + dest + "]"
 
-            alerts.append(Alert(subject, alert_properties))
+            alerts.append(Alert(subject, OrderedDict(alert_properties)))
             group["triggered"] = True
 
     return alerts
@@ -153,11 +202,17 @@ def simple_ids_check(state, match_doc, message, **unknown_args):
     alerts = []
     for event in events:
         source = num_to_ip(event["src"])
+        src_host = HostByIPCommand.run({"hostip":event["src"]})
+        src_port = str(event['src_port'])
         dest = num_to_ip(event["dst"])
+        dst_host = HostByIPCommand.run({"hostip":event["dst"]})
+        dst_port = str(event['dst_port'])
         alert_properties = OrderedDict((
             ("Signature", event['msg']),
-            ("Source", source),
-            ("Dest", dest),
+            ("Source", "%s %s" % (source, src_host)),
+            ("Source Port", src_port),
+            ("Destination", "%s %s" % (dest, dest_host)),
+            ("Dest. Port", dst_port),
             ("Time", datetime.fromtimestamp(event["t"]).isoformat()),
             ("Signature ID", event['sid'])
         ))
