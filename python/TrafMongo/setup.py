@@ -18,7 +18,8 @@ requires = [
     'ujson',
     'pymongo >= 2.6',
     'WebError',
-    'pygeoip'
+    'pygeoip',
+    'protectus-sentry'
 ]
 
 # For development, pyramid-debugtoolbar==1.0.7
