@@ -13,6 +13,7 @@ import pickle
 import smtplib
 import json
 import re
+import glob
 from email.mime.text import MIMEText
 
 # In theory, we should have protectus-sentry installed in the current python
@@ -133,7 +134,7 @@ def thresholded_ids_check(state, match_doc, message, threshold, timeout, **unkno
             if len(group['src_ports']) > 5:
                 group["src_ports"] = None
 
-        if group["dst_ports"] is not None 'dst_port' in event:
+        if group["dst_ports"] is not None and 'dst_port' in event:
             group["dst_ports"].add(event['dst_port'])
             if len(group['dst_ports']) > 5:
                 group["dst_ports"] = None
