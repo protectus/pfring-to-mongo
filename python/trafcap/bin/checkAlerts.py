@@ -141,8 +141,8 @@ def thresholded_ids_check(state, match_doc, message, threshold, timeout, **unkno
 
         # Check threshold and triggered-state to see if we should alert
         if group["count"] >= threshold and not group["triggered"]:
-            src_host = HostByIPCommand.run({"hostip":event["src"]})
-            dst_host = HostByIPCommand.run({"hostip":event["dst"]})
+            src_host = HostByIPCommand.run({"hostip":event["src"], "db":db})
+            dst_host = HostByIPCommand.run({"hostip":event["dst"], "db":db})
 
             alert_properties = [ 
                 ("Signature", event['msg']),
