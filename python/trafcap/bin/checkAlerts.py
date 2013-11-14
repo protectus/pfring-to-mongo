@@ -69,6 +69,12 @@ def ports_to_string(ports):
         return "Many"
     return ", ".join((str(p) for p in group['src_ports']))
 
+def ip_to_hosts(ipnum):
+    host = HostByIPCommand.run({"hostip":ipnum, "db":db}) # db is global
+    if not host:
+        host = "Hostname not recorded"
+    return host
+
 def thresholded_ids_check(state, match_doc, message, threshold, timeout, **unknown_args):
     # If match_doc is a string, load json from it
     if type(match_doc) == str:
@@ -141,19 +147,18 @@ def thresholded_ids_check(state, match_doc, message, threshold, timeout, **unkno
 
         # Check threshold and triggered-state to see if we should alert
         if group["count"] >= threshold and not group["triggered"]:
-            src_host = HostByIPCommand.run({"hostip":event["src"], "db":db})
-            dst_host = HostByIPCommand.run({"hostip":event["dst"], "db":db})
 
             alert_properties = [ 
                 ("Signature", event['msg']),
-                ("Source", "%s %s" % (source, src_host))
+                ("Source", "%s %s" % (source, ip_to_hosts(event["src"])))
             ]
 
             src_ports = ports_to_string(group['src_ports'])
             if src_ports:
                 alert_properties.append(("Source Port(s)", src_ports))
                 
-            alert_properties.append(("Destination", "%s %s" % (dest, dst_host))),
+            dst_host = ip_to_hosts(event["dst"])
+            alert_properties.append(("Destination", "%s (%s)" % (dest, dst_host))),
 
             dst_ports = ports_to_string(group['dst_ports'])
             if dst_ports:
@@ -203,16 +208,14 @@ def simple_ids_check(state, match_doc, message, **unknown_args):
     alerts = []
     for event in events:
         source = num_to_ip(event["src"])
-        src_host = HostByIPCommand.run({"hostip":event["src"]})
         src_port = str(event['src_port'])
         dest = num_to_ip(event["dst"])
-        dst_host = HostByIPCommand.run({"hostip":event["dst"]})
         dst_port = str(event['dst_port'])
         alert_properties = OrderedDict((
             ("Signature", event['msg']),
-            ("Source", "%s %s" % (source, src_host)),
+            ("Source", "%s (%s)" % (source, ip_to_hosts(event["src"]))),
             ("Source Port", src_port),
-            ("Destination", "%s %s" % (dest, dest_host)),
+            ("Destination", "%s (%s)" % (dest, ip_to_hosts(event["dst"]))),
             ("Dest. Port", dst_port),
             ("Time", datetime.fromtimestamp(event["t"]).isoformat()),
             ("Signature ID", event['sid'])
