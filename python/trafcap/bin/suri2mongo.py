@@ -73,10 +73,11 @@ if options.ids:
 if options.http:
     packet_type = "HttpEvent"
     event_info_collection_name = "http_eventInfo"
+    event_count_collection_name = None 
     #event_count_collection_name = "http_eventCount"
     #capture_info_collection_name = "http_captureInfo"
     #capture_count_collection_name = "http_captureCount"
-    #container = eval("HttpEventContainer")
+    container = eval("HttpEventContainer")
     pc = eval(packet_type)
     http_events = container(pc, event_info_collection_name, 
                             event_count_collection_name, "session")
@@ -100,9 +101,13 @@ def exitNow(message):
     if options.ids:
         ids_socket.shutdown(socket.SHUT_RDWR)
         ids_socket.close()
+        subprocess.call(['/bin/rm', '-f', '/run/ids2m_sock'], bufsize=-1, 
+                                                              stdout=None)
     if options.http:
         http_socket.shutdown(socket.SHUT_RDWR)
         http_socket.close()
+        subprocess.call(['/bin/rm', '-f', '/run/http2m_sock'], bufsize=-1, 
+                                                               stdout=None)
 
     sys.exit(message)
 
@@ -182,16 +187,15 @@ while True:
  
     # No data to be read.  Use this time to update the database.
     if not inputready:
-        ids_events.updateDb()
-        ids_capture.updateDb()
+        if options.ids:
+            ids_events.updateDb()
+            ids_capture.updateDb()
    
     else:
         # Process data waiting to be read 
         try:
             raw_data = os.read(inputready[0], 32768)
 
-            #print 'events1: ', events
-            #print 'ids_buf1: ', ids_buffer
 
             if options.http and inputready[0] == http_fd: 
                 pc = eval('HttpEvent')
@@ -218,15 +222,14 @@ while True:
                     tmp = ids_buffer.split(event_delim)
                     events, ids_buffer = tmp[:-1], tmp[-1] 
 
-            #print 'events2: ', events
-            #print 'ids_buf2: ', ids_buffer
+            else:
+                print 'Caught event............'
+                print 'raw_data: ', raw_data
+                continue
 
         except OSError:
             # This exception occurs if signal handled during read
             continue
-
-        #print 'events3: ', events
-        #print 'ids_buf3: ', ids_buffer
 
         if events == ['']: continue
 
@@ -267,7 +270,7 @@ while True:
             trafcap.logException(e, event=event, events=events)
             continue     
   
-    if not options.quiet: 
+    if not options.quiet and options.ids: 
         print "\rActive: ", \
                ids_capture.count_dict[IdsEvent.capture_dict_key]\
                                      [IdsEvent.c_events], ", ", \

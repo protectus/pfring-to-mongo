@@ -1390,8 +1390,8 @@ class RtpPacket(IpPacket):
             print a_bytes
 
         a_bytes[pc.b_lpj_array][-1][pc.b_jitr] = \
-                                    round(j, 1)
-                                    #round(j*pc.jitter_ts_units_to_msec_conv, 1)
+                                    round(j*pc.jitter_ts_units_to_msec_conv, 1)
+                                    #round(j, 1)
          
         a_bytes[pc.b_r_sub_i] = float(data[pc.p_etime])
         a_bytes[pc.b_s_sub_i] = data[pc.p_smpl_time]

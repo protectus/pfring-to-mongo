@@ -6,19 +6,20 @@ import trafcap
 from datetime import datetime
 import traceback
 import string
-from bson import binary
+from bson import binary, ObjectId
 import binascii
 import yaml
 import sys
+import random
 
-collection_info = [['ids_eventInfo',    ''],    # tm
-                   ['ids_captureInfo',    ''],  # tbm, tem 
-                   ['ids_eventCount',  ''],     # sbm, sem
-                   ['ids_captureCount',  ''],   # sbm, sem
-                   ['ids_eventGroups',  ''],    # tbm, tem
-                   ['ids_captureGroups',  ''],  # tbm, tem
-                   ['ids_eventGroups2',  ''],   # tbm, tem
-                   ['ids_captureGroups2', '']]  # tbm, tem
+#collection_info = [['ids_eventInfo',    ''],    # tm
+#                   ['ids_captureInfo',    ''],  # tbm, tem 
+#                   ['ids_eventCount',  ''],     # sbm, sem
+#                   ['ids_captureCount',  ''],   # sbm, sem
+#                   ['ids_eventGroups',  ''],    # tbm, tem
+#                   ['ids_captureGroups',  ''],  # tbm, tem
+#                   ['ids_eventGroups2',  ''],   # tbm, tem
+#                   ['ids_captureGroups2', '']]  # tbm, tem
 
 class KwEvent(object):
     """
@@ -113,7 +114,7 @@ class SuricataEvent(KwEvent):
         except Exception, e:
             trafcap.logException(e) 
 
-        return 
+        return _id
 
 class HttpEvent(SuricataEvent):
     """
@@ -150,15 +151,28 @@ class HttpEvent(SuricataEvent):
         data['host'] = host 
        
         try:
-            path, args = path_and_args.strip().split('?')
+            path, args = path_and_args.strip().split('?',1)
         except ValueError:
             path = path_and_args.strip()
             args = ''
         data['path'] = path
-        data['args'] = args
+
+        # If so configured, save args field 
+        if trafcap.http_save_url_args:
+            data['args'] = args
+
+        # If so configured, save entire referrer field (including args)
+        if trafcap.http_save_url_args:
+            data['ref'] = referer.strip()
+        else:
+            # trim referrer field
+            try:
+                ref_base, ref_args = referer.strip().split('?',1)
+            except ValueError:
+                ref_base = referer
+            data['ref'] = ref_base
 
         data['ua'] = user_agent.strip()
-        data['ref'] = referer.strip()
         data['meth'] = method.strip()
         data['proto'] = proto.strip()
         data['rc'] = trafcap.stringToDigit(ret_code.strip())
@@ -191,8 +205,18 @@ class HttpEvent(SuricataEvent):
  
         data['__v'] = 0
 
+        t_int, t_dec = ("%.6f" % data['t']).split('.')
+        a_id_sec = hex(int(t_int))[2:]                  # 8 digits
+        a_id_dec = t_dec                                # 6 digits
+        a_id_rand = str(random.randint(1,999999999) + \
+                        1000000000)                 # 10 digits
+        a_id = a_id_sec + a_id_dec + a_id_rand   
+        data['_id'] = ObjectId(a_id)
+
         if trafcap.options.mongo:
-            SuricataEvent.saveEventInfo(container, data)
+            _id = SuricataEvent.saveEventInfo(container, data)
+            #print _id.generation_time, \
+            #      datetime.fromtimestamp(data['t'])
 
         return
 
