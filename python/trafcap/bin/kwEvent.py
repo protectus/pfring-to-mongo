@@ -159,7 +159,7 @@ class HttpEvent(SuricataEvent):
 
         # If so configured, save args field 
         if trafcap.http_save_url_args:
-            data['args'] = args
+            data['qs'] = args
 
         # If so configured, save entire referrer field (including args)
         if trafcap.http_save_url_args:
@@ -172,13 +172,19 @@ class HttpEvent(SuricataEvent):
                 ref_base = referer
             data['ref'] = ref_base
 
-        data['ua'] = user_agent.strip()
+        ua_strip = user_agent.strip()
+        if ua_str != '<useragent unknown>':
+            data['ua'] = user_agent.strip()
+
         data['meth'] = method.strip()
-        data['proto'] = proto.strip()
-        data['rc'] = trafcap.stringToDigit(ret_code.strip())
+        data['prto'] = proto.strip()
+
+        rc_strip = trafcap.stringToDigit(ret_code.strip())
+        if rc_strip != '<no status>':
+            data['rc'] = rc_strip 
 
         num_bytes, some_text = num_bytes_and_text.strip().split(' ') 
-        data['bytes'] = int(num_bytes)
+        data['byts'] = int(num_bytes)
 
         # from_to
         #   192.168.168.17:46035 -> 72.21.91.121:80
@@ -186,9 +192,9 @@ class HttpEvent(SuricataEvent):
         src, src_port = src_and_port.strip().split(':')
         dst, dst_port = dst_and_port.strip().split(':')
         data['src'] = src
-        data['src_port'] = trafcap.stringToDigit(src_port)
+        data['sprt'] = trafcap.stringToDigit(src_port)
         data['dst'] = dst 
-        data['dst_port'] = trafcap.stringToDigit(dst_port)
+        data['dprt'] = trafcap.stringToDigit(dst_port)
 
         return key, data
 
@@ -198,7 +204,7 @@ class HttpEvent(SuricataEvent):
         if not trafcap.options.quiet:
             print data['t'],data['src'],data['dst'],data['host'],data['path']
 
-        data['event_type'] = 'SURICATA_HTTP'
+        data['etyp'] = 'SURICATA_HTTP'
 
         data['src'] = trafcap.stringToInt(data['src'])
         data['dst'] = trafcap.stringToInt(data['dst'])
