@@ -135,7 +135,7 @@ class HttpEvent(SuricataEvent):
     @classmethod
     def parse(pc, event):
         key = (); data = {}
-        time_and_host, path_and_args, user_agent, referer, method, proto, \
+        time_and_host, path_and_qs, user_agent, referer, method, proto, \
              ret_code, num_bytes_and_text, src_dst = event.split('[**]')
 
         # 06/12/2013-11:15:59.594889 go.disqus.com 
@@ -148,32 +148,37 @@ class HttpEvent(SuricataEvent):
         value = float(str(t) + '.' + event_msec)
         data['t'] = value
         data['tm'] = trafcap.secondsToMinute(value)
-        data['host'] = host 
-       
+
+        if host != '<hostname unknown>':
+            data['host'] = host
+
         try:
-            path, args = path_and_args.strip().split('?',1)
+            path, qs = path_and_qs.strip().split('?',1)
         except ValueError:
-            path = path_and_args.strip()
-            args = ''
+            path = path_and_qs.strip()
+            qs = ''
         data['path'] = path
 
-        # If so configured, save args field 
-        if trafcap.http_save_url_args:
-            data['qs'] = args
+        # If so configured, save query string field 
+        if trafcap.http_save_url_qs:
+            data['qs'] = qs
 
-        # If so configured, save entire referrer field (including args)
-        if trafcap.http_save_url_args:
-            data['ref'] = referer.strip()
+        # If so configured, save entire referrer field (including qs)
+        ref_strip = None
+        if trafcap.http_save_url_qs:
+            ref_strip = referer.strip()
         else:
             # trim referrer field
             try:
-                ref_base, ref_args = referer.strip().split('?',1)
+                ref_base, ref_qs = referer.strip().split('?',1)
             except ValueError:
                 ref_base = referer
-            data['ref'] = ref_base
+            ref_strip = ref_base
+        if ref_strip != '<no referer>':
+            data['ref'] = ref_strip
 
         ua_strip = user_agent.strip()
-        if ua_str != '<useragent unknown>':
+        if ua_strip != '<useragent unknown>':
             data['ua'] = user_agent.strip()
 
         data['meth'] = method.strip()
