@@ -122,6 +122,9 @@ for coll_name in coll_names:
     elif "eventInfo" in coll_name:
         begin_name = 'tm'
         end_name = 'tm'
+    elif "annotations" in coll_name:
+        begin_name = 't'
+        end_name = 't'
     else:
         begin_name = 'tbm'
         end_name = 'tem'

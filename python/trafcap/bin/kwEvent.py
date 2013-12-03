@@ -172,7 +172,7 @@ class HttpEvent(SuricataEvent):
             try:
                 ref_base, ref_qs = referer.strip().split('?',1)
             except ValueError:
-                ref_base = referer
+                ref_base = referer.strip()
             ref_strip = ref_base
         if ref_strip != '<no referer>':
             data['ref'] = ref_strip
