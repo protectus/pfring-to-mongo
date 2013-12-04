@@ -180,7 +180,7 @@ def thresholded_ids_check(state, match_doc, message, threshold, timeout, **unkno
     return alerts
 
 
-def simple_ids_check(state, match_doc, message, **unknown_args):
+def simple_ids_check(state, match_doc, message, rate_limit=None **unknown_args):
     # If match_doc is a string, load json from it
     if type(match_doc) != dict:
         match_doc = json.loads(match_doc)
@@ -189,8 +189,10 @@ def simple_ids_check(state, match_doc, message, **unknown_args):
 
     if "last_id" not in state:
         # We don't know where to start.  So we set the most recent doc as a
-        # starting place and return an empty list.
+        # starting place and return an empty list.  We also initialize
+        # rate_info
         state['last_id'] = new_last_id
+        state['rate_info'] = {}
         log(syslog.LOG_DEBUG, "No last_id found in simple_ids_check state")
         return []
 
@@ -206,11 +208,33 @@ def simple_ids_check(state, match_doc, message, **unknown_args):
 
     # One alert per event
     alerts = []
+    rate_info = state['rate_info']
     for event in events:
         source = num_to_ip(event["src"])
         src_port = str(event['src_port'])
         dest = num_to_ip(event["dst"])
         dst_port = str(event['dst_port'])
+
+        # Find or initialize this group's rate_info
+        alert_grouping = (source,dest,event['sid'])
+        if alert_grouping not in rate_info:
+            rate_info[alert_grouping] = {'first': 0, 'count':0}
+
+        group_rate_info = rate_info[alert_grouping]
+
+        # Update this group's rate_info
+        if group_rate_info['first'] < (time.time() - rate_limit['unit_time']):
+            group_rate_info['first'] = time.time()
+            group_rate_info['count'] = 1
+        else:
+            group_rate_info['count'] += 1
+
+        # Ignore the alert if we're past the threshold
+        if group_rate_info['count'] > rate_limit['threshold']:
+            continue
+
+        rate_info[alert_grouping]['triggered'] += 1
+
         alert_properties = OrderedDict((
             ("Signature", event['msg']),
             ("Source", "%s (%s)" % (source, ip_to_hosts(event["src"]))),
