@@ -214,24 +214,30 @@ def simple_ids_check(state, match_doc, message, rate_limit=None **unknown_args):
         src_port = str(event['src_port'])
         dest = num_to_ip(event["dst"])
         dst_port = str(event['dst_port'])
-
-        # Find or initialize this group's rate_info
         alert_grouping = (source,dest,event['sid'])
-        if alert_grouping not in rate_info:
-            rate_info[alert_grouping] = {'first': 0, 'count':0}
 
-        group_rate_info = rate_info[alert_grouping]
+        if rate_limit:
+            # Find or initialize this group's rate_info
+            if alert_grouping not in rate_info:
+                rate_info[alert_grouping] = {'first': 0, 'count':0}
 
-        # Update this group's rate_info
-        if group_rate_info['first'] < (time.time() - rate_limit['unit_time']):
-            group_rate_info['first'] = time.time()
-            group_rate_info['count'] = 1
+            group_rate_info = rate_info[alert_grouping]
+
+            # Update this group's rate_info
+            if group_rate_info['first'] < (time.time() - rate_limit['unit_time']):
+                group_rate_info['first'] = time.time()
+                group_rate_info['count'] = 1
+            else:
+                group_rate_info['count'] += 1
+
+            # Ignore the alert if we're past the threshold
+            if group_rate_info['count'] > rate_limit['threshold']:
+                continue
+
         else:
-            group_rate_info['count'] += 1
-
-        # Ignore the alert if we're past the threshold
-        if group_rate_info['count'] > rate_limit['threshold']:
-            continue
+            # There shouldn't be any trace of rate_info in the state, but check anyway.
+            rate_info.pop(alert_grouping,None)
+                
 
         rate_info[alert_grouping]['triggered'] += 1
 
