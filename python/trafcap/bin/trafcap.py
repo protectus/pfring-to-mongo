@@ -82,6 +82,7 @@ sniff_interface = config.get('interface', 'sniff_interface')
 network_interface = config.get('interface', 'network_interface')
 lrs_min_duration = config.getint('trafcap', 'lrs_min_duration')
 rtp_portrange = config.get('trafcap', 'rtp_portrange')
+http_save_url_qs = config.getboolean('trafcap', 'http_save_url_qs')
 
 # Convert local_subnet strings from config file into a list of tuples
 local_subnets = config.items('local_subnets')

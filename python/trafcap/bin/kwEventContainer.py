@@ -332,6 +332,10 @@ class HttpEventContainer(KwEventContainer):
     """
     def __init__(self, packet_class, i_col_name, b_col_name, container_type):
         KwEventContainer.__init__(self, packet_class, i_col_name, b_col_name)
+
+        if trafcap.options.mongo:
+            self.db = trafcap.mongoSetup()
+
         return
 
     def updateInfoDict(self, key, data, inbound_bytes, outbound_bytes):

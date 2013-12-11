@@ -6,19 +6,20 @@ import trafcap
 from datetime import datetime
 import traceback
 import string
-from bson import binary
+from bson import binary, ObjectId
 import binascii
 import yaml
 import sys
+import random
 
-collection_info = [['ids_eventInfo',    ''],    # tm
-                   ['ids_captureInfo',    ''],  # tbm, tem 
-                   ['ids_eventCount',  ''],     # sbm, sem
-                   ['ids_captureCount',  ''],   # sbm, sem
-                   ['ids_eventGroups',  ''],    # tbm, tem
-                   ['ids_captureGroups',  ''],  # tbm, tem
-                   ['ids_eventGroups2',  ''],   # tbm, tem
-                   ['ids_captureGroups2', '']]  # tbm, tem
+#collection_info = [['ids_eventInfo',    ''],    # tm
+#                   ['ids_captureInfo',    ''],  # tbm, tem 
+#                   ['ids_eventCount',  ''],     # sbm, sem
+#                   ['ids_captureCount',  ''],   # sbm, sem
+#                   ['ids_eventGroups',  ''],    # tbm, tem
+#                   ['ids_captureGroups',  ''],  # tbm, tem
+#                   ['ids_eventGroups2',  ''],   # tbm, tem
+#                   ['ids_captureGroups2', '']]  # tbm, tem
 
 class KwEvent(object):
     """
@@ -113,7 +114,7 @@ class SuricataEvent(KwEvent):
         except Exception, e:
             trafcap.logException(e) 
 
-        return 
+        return _id
 
 class HttpEvent(SuricataEvent):
     """
@@ -134,7 +135,7 @@ class HttpEvent(SuricataEvent):
     @classmethod
     def parse(pc, event):
         key = (); data = {}
-        time_and_host, path_and_args, user_agent, referer, method, proto, \
+        time_and_host, path_and_qs, user_agent, referer, method, proto, \
              ret_code, num_bytes_and_text, src_dst = event.split('[**]')
 
         # 06/12/2013-11:15:59.594889 go.disqus.com 
@@ -147,24 +148,48 @@ class HttpEvent(SuricataEvent):
         value = float(str(t) + '.' + event_msec)
         data['t'] = value
         data['tm'] = trafcap.secondsToMinute(value)
-        data['host'] = host 
-       
-        try:
-            path, args = path_and_args.strip().split('?')
-        except ValueError:
-            path = path_and_args.strip()
-            args = ''
-        data['path'] = path
-        data['args'] = args
 
-        data['ua'] = user_agent.strip()
-        data['ref'] = referer.strip()
+        if host != '<hostname unknown>':
+            data['host'] = host
+
+        try:
+            path, qs = path_and_qs.strip().split('?',1)
+        except ValueError:
+            path = path_and_qs.strip()
+            qs = ''
+        data['path'] = path
+
+        # If so configured, save query string field 
+        if trafcap.http_save_url_qs:
+            data['qs'] = qs
+
+        # If so configured, save entire referrer field (including qs)
+        ref_strip = None
+        if trafcap.http_save_url_qs:
+            ref_strip = referer.strip()
+        else:
+            # trim referrer field
+            try:
+                ref_base, ref_qs = referer.strip().split('?',1)
+            except ValueError:
+                ref_base = referer.strip()
+            ref_strip = ref_base
+        if ref_strip != '<no referer>':
+            data['ref'] = ref_strip
+
+        ua_strip = user_agent.strip()
+        if ua_strip != '<useragent unknown>':
+            data['ua'] = user_agent.strip()
+
         data['meth'] = method.strip()
-        data['proto'] = proto.strip()
-        data['rc'] = trafcap.stringToDigit(ret_code.strip())
+        data['prto'] = proto.strip()
+
+        rc_strip = trafcap.stringToDigit(ret_code.strip())
+        if rc_strip != '<no status>':
+            data['rc'] = rc_strip 
 
         num_bytes, some_text = num_bytes_and_text.strip().split(' ') 
-        data['bytes'] = int(num_bytes)
+        data['byts'] = int(num_bytes)
 
         # from_to
         #   192.168.168.17:46035 -> 72.21.91.121:80
@@ -172,9 +197,9 @@ class HttpEvent(SuricataEvent):
         src, src_port = src_and_port.strip().split(':')
         dst, dst_port = dst_and_port.strip().split(':')
         data['src'] = src
-        data['src_port'] = trafcap.stringToDigit(src_port)
+        data['sprt'] = trafcap.stringToDigit(src_port)
         data['dst'] = dst 
-        data['dst_port'] = trafcap.stringToDigit(dst_port)
+        data['dprt'] = trafcap.stringToDigit(dst_port)
 
         return key, data
 
@@ -184,15 +209,25 @@ class HttpEvent(SuricataEvent):
         if not trafcap.options.quiet:
             print data['t'],data['src'],data['dst'],data['host'],data['path']
 
-        data['event_type'] = 'SURICATA_HTTP'
+        data['etyp'] = 'SURICATA_HTTP'
 
         data['src'] = trafcap.stringToInt(data['src'])
         data['dst'] = trafcap.stringToInt(data['dst'])
  
         data['__v'] = 0
 
+        t_int, t_dec = ("%.6f" % data['t']).split('.')
+        a_id_sec = hex(int(t_int))[2:]                  # 8 digits
+        a_id_dec = t_dec                                # 6 digits
+        a_id_rand = str(random.randint(1,999999999) + \
+                        1000000000)                 # 10 digits
+        a_id = a_id_sec + a_id_dec + a_id_rand   
+        data['_id'] = ObjectId(a_id)
+
         if trafcap.options.mongo:
-            SuricataEvent.saveEventInfo(container, data)
+            _id = SuricataEvent.saveEventInfo(container, data)
+            #print _id.generation_time, \
+            #      datetime.fromtimestamp(data['t'])
 
         return
 
