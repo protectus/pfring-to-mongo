@@ -180,7 +180,7 @@ def thresholded_ids_check(state, match_doc, message, threshold, timeout, **unkno
     return alerts
 
 
-def simple_ids_check(state, match_doc, message, rate_limit=None **unknown_args):
+def simple_ids_check(state, match_doc, message, rate_limit=None, **unknown_args):
     # If match_doc is a string, load json from it
     if type(match_doc) != dict:
         match_doc = json.loads(match_doc)
@@ -188,9 +188,9 @@ def simple_ids_check(state, match_doc, message, rate_limit=None **unknown_args):
     new_last_id = db.ids_eventInfo.find_one(fields={"_id":1}, sort=[('_id', -1)])['_id']
 
     if "last_id" not in state:
-        # We don't know where to start.  So we set the most recent doc as a
-        # starting place and return an empty list.  We also initialize
-        # rate_info
+        # We don't know when to start looking for alerts.  So we set the most
+        # recent doc as a starting place and return an empty list.  We also
+        # initialize rate_info
         state['last_id'] = new_last_id
         state['rate_info'] = {}
         log(syslog.LOG_DEBUG, "No last_id found in simple_ids_check state")
