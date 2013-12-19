@@ -6,6 +6,7 @@ from struct import pack
 from collections import OrderedDict
 import pymongo
 from datetime import datetime, timedelta
+import time
 import sys
 import fcntl
 import syslog
@@ -23,6 +24,7 @@ from email.mime.text import MIMEText
 # use.
 sys.path.extend(glob.glob("/opt/sentry/share/sentry-kwebapp/python-dist/protectus_sentry*"))
 from protectus_sentry.commands.nmi import HostByIPCommand
+from protectus_sentry.db_schema import IPAddress
 
 PICKLE_PATH = '/tmp/checkAlert.pickle'
 
@@ -106,9 +108,9 @@ def thresholded_ids_check(state, match_doc, message, threshold, timeout, **unkno
 
     alerts = []
     for event in events:
-        source = num_to_ip(event["src"])
-        dest = num_to_ip(event["dst"])
-        group_key = (source,dest)
+        source = IPAddress(event["src"])
+        dest = IPAddress(event["dst"])
+        group_key = (source.toInt(),dest.toInt())
         if group_key not in groups:
             groups[group_key] = {
                 "last_id": event['_id'],
@@ -150,15 +152,15 @@ def thresholded_ids_check(state, match_doc, message, threshold, timeout, **unkno
 
             alert_properties = [ 
                 ("Signature", event['msg']),
-                ("Source", "%s %s" % (source, ip_to_hosts(event["src"])))
+                ("Source", "%s %s" % (str(source), ip_to_hosts(source)))
             ]
 
             src_ports = ports_to_string(group['src_ports'])
             if src_ports:
                 alert_properties.append(("Source Port(s)", src_ports))
                 
-            dst_host = ip_to_hosts(event["dst"])
-            alert_properties.append(("Destination", "%s (%s)" % (dest, dst_host))),
+            dst_host = ip_to_hosts(dest)
+            alert_properties.append(("Destination", "%s (%s)" % (str(dest), dst_host))),
 
             dst_ports = ports_to_string(group['dst_ports'])
             if dst_ports:
@@ -172,7 +174,7 @@ def thresholded_ids_check(state, match_doc, message, threshold, timeout, **unkno
 
             # Make a one-liner
             compiled_message = fill_template(message, event)
-            subject = compiled_message + " [" + source + " -> " + dest + "]"
+            subject = compiled_message + " [" + str(source) + " -> " + str(dest) + "]"
 
             alerts.append(Alert(subject, OrderedDict(alert_properties)))
             group["triggered"] = True
@@ -210,11 +212,11 @@ def simple_ids_check(state, match_doc, message, rate_limit=None, **unknown_args)
     alerts = []
     rate_info = state['rate_info']
     for event in events:
-        source = num_to_ip(event["src"])
+        source = IPAddress(event["src"])
         src_port = str(event['src_port'])
-        dest = num_to_ip(event["dst"])
+        dest = IPAddress(event["dst"])
         dst_port = str(event['dst_port'])
-        alert_grouping = (source,dest,event['sid'])
+        alert_grouping = (source.toInt(),dest.toInt(),event['sid'])
 
         if rate_limit:
             # Find or initialize this group's rate_info
@@ -239,13 +241,11 @@ def simple_ids_check(state, match_doc, message, rate_limit=None, **unknown_args)
             rate_info.pop(alert_grouping,None)
                 
 
-        rate_info[alert_grouping]['triggered'] += 1
-
         alert_properties = OrderedDict((
             ("Signature", event['msg']),
-            ("Source", "%s (%s)" % (source, ip_to_hosts(event["src"]))),
+            ("Source", "%s (%s)" % (str(source), ip_to_hosts(source))),
             ("Source Port", src_port),
-            ("Destination", "%s (%s)" % (dest, ip_to_hosts(event["dst"]))),
+            ("Destination", "%s (%s)" % (str(dest), ip_to_hosts(dest))),
             ("Dest. Port", dst_port),
             ("Time", datetime.fromtimestamp(event["t"]).isoformat()),
             ("Signature ID", event['sid'])
@@ -253,7 +253,7 @@ def simple_ids_check(state, match_doc, message, rate_limit=None, **unknown_args)
 
         # TODO: better data than just raw event.
         compiled_message = fill_template(message, event)
-        subject = compiled_message + " [" + source + " -> " + dest + "]"
+        subject = compiled_message + " [" + str(source) + " -> " + str(dest) + "]"
 
         alerts.append(Alert(subject, alert_properties))
 

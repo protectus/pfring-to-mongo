@@ -31,13 +31,27 @@ mongo kw --eval 'db.config.update({"doc_type": "sentrysettings"}, {"$set": {"smt
 
 # Set IDS alert
 # Worrying about quote escaping makes it easier to cut and past this into the
-# mongo shell directly, instead of using --eval from bash.  Note that the
-# match_doc isn't a dictionary, but a string containing text that the json
-# library can later parse into a dictionary.
+# mongo shell directly, instead of using --eval from bash.
+#
+# Note that the match_doc isn't a dictionary, but a string containing text
+# that a json library can later parse into a dictionary.  This must be a string
+# because mongo will otherwise choke on reserved keywords like '$regex'.
+#
+# The JSON format specifies that all keys must have quotes around them:
+# {"$regex": "myregex"} is valid JSON, while {$regex: "myregex"} is invalid.
+
+# Simple IDS Alert
 db.config.insert({"doc_type" : "alert_rule", "trigger" : { "type" : "ids-polling", "match_doc" : '{ "sid" : 2012648 }', "message" : "ET POLICY Dropbox Client Broadcasting" }, "alerts" : [{"uuid" : BinData(3,"MakeMeRandomPleaseJtbg=="), "type" : "email", "mailto" : "tgarvin@protectus.com" } ] })
 
-# Set IDS alert with threshold and timeout
+# Simple IDS Alert with regular expression
+db.config.insert({"doc_type" : "alert_rule", "trigger" : { "type" : "ids-polling", "match_doc" : '{ "msg" : {"$regex":"ET SCAN"} }', "message" : "ET SCAN Potential SSH Scan OUTBOUND" }, "alerts" : [{"uuid" : BinData(3,"2003068regexPleaseJtbg=="), "type" : "email", "mailto" : "pgarvin@protectus.com" } ] })
+
+# Set IDS alert with threshold to reach before alerting, and timeout
 db.config.insert({"doc_type" : "alert_rule", "trigger" : { "type" : "ids-polling", "match_doc" : '{ "sid" : 2003068 }', "message" : "ET SCAN Potential SSH Scan OUTBOUND", "threshold" : 100, "timeout" : 86400 }, "alerts" : [ { "uuid" : BinData(3,"MakeMeRandomPleasepbGw=="), "type" : "email", "mailto" : "tgarvin@protectus.com" } ] })
+
+# IDS Alert with rate-limiting. Rate limiting, as opposed to thresholding, throttles alerts when there are too many in a given time period.  Put another way, this alert allows 'threshold' alerts every 'unit_time'.
+db.config.insert({"doc_type" : "alert_rule", "trigger" : { "type" : "ids-polling", "match_doc" : '{ "sid" : 2013504 }', "message" : "ET POLICY GNU/Linux APT User-Agent Outbound likely related to package management", "rate_limit": {"unit_time":300, "threshold":5} }, "alerts" : [{"uuid" : BinData(3,"MakeItRandomPleaseJtbg=="), "type" : "email", "mailto" : "tgarvin@protectus.com" } ] })
+
 
 # Enable RTP plugin in UI
 db.config.update({plugin_name:'rtp'},{$set:{enabled:true}})
