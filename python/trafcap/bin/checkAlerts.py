@@ -194,9 +194,11 @@ def simple_ids_check(state, match_doc, message, rate_limit=None, **unknown_args)
         # recent doc as a starting place and return an empty list.  We also
         # initialize rate_info
         state['last_id'] = new_last_id
-        state['rate_info'] = {}
         log(syslog.LOG_DEBUG, "No last_id found in simple_ids_check state")
         return []
+
+    if "rate_info" not in state:
+        state['rate_info'] = {}
 
     if '$and' in match_doc:
         match_doc['$and'].append({'_id':{'$gt':state['last_id']}})  #Destructive
