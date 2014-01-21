@@ -389,7 +389,7 @@ if __name__ == "__main__":
         try:
             state = pickle.load(stateFile)
         except EOFError:
-            log(syslog.LOG_ERR, "State file appears to be corrupt/empty.")
+            log("State file appears to be corrupt/empty.")
             state = {}
 
     # For each alert rule in the config, process.
