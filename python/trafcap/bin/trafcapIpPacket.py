@@ -1256,19 +1256,34 @@ class RtpPacket(IpPacket):
     def startSniffer(pc):
         filtr = 'ip ' + trafcap.cap_filter + ' and ip[9]==0x11 and ' + \
                 'udp portrange '+trafcap.rtp_portrange
-        proc = subprocess.Popen(['/usr/bin/tshark', 
-               '-i', trafcap.sniff_interface, 
+
+        param_list = ['/usr/bin/tshark',                        
+               '-i', trafcap.sniff_interface,
                '-te', '-l',
                '-b', 'filesize:8192',
                '-b', 'files:5',
                '-w', '/run/trafcap_rtp',
                '-P',
-               '-o', 
+               '-o',
                'column.format:"""time","%t", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "protocol","%p","i","%i"""',
-               '-d udp.port='+trafcap.rtp_portrange+',rtp',
                '-f',
-               '('+filtr+') or (vlan and '+filtr+')'],
-               bufsize=-1, stdout=subprocess.PIPE)
+               '('+filtr+') or (vlan and '+filtr+')']
+
+        # add protocol decode for rtp ports
+        insert_index = 14
+        # port_range from config file is a string, convert to ints
+        first_port, last_port = trafcap.rtp_portrange.split('-')
+        first_port = int(first_port)
+        last_port = int(last_port)
+
+        a_port = first_port
+        while (a_port >= first_port and a_port <= last_port):
+            param_list.insert(insert_index, '-d')
+            param_list.insert(insert_index+1, 'udp.port=='+str(a_port)+',rtp')
+            insert_index+=2
+            a_port+=2
+
+        proc = subprocess.Popen(param_list, bufsize=-1, stdout=subprocess.PIPE)
         return proc
     
     @classmethod
