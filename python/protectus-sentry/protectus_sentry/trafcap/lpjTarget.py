@@ -234,7 +234,7 @@ class IcmpTaskThread(LpjTaskThread):
             self.proc = Popen('exec '+command, shell=True, stdout=PIPE, 
                                                            stderr=PIPE)
         except Exception, e:
-            print 'Exception in IcmpTaskThread: ', target, e
+            print 'Exception in IcmpTaskThread: ', e
             print '       ', self.target
 
 class TcpTaskThread(LpjTaskThread):
