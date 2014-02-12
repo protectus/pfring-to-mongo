@@ -252,7 +252,7 @@ def mongoSetup():
     return db
 
 import GeoIP
-import simplejson as json
+import json
 gi = GeoIP.open("/opt/sentry/geoip/GeoLiteCity.dat",GeoIP.GEOIP_STANDARD)
 def  geoIpLookup(ip_addr):
     g_addr = gi.record_by_addr(tupleToString(ip_addr))
