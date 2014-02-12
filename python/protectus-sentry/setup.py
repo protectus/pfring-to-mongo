@@ -15,7 +15,7 @@ VERSION = '0.1'
 
 requires = [
     'pymongo >= 2.6',
-    'GeoIP == 1.2'
+    'GeoIP < 1.3'
 ]
 
 setup_settings = {}
