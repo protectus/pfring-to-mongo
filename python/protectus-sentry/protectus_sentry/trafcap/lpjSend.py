@@ -10,6 +10,7 @@ import copy
 import lpj 
 import time
 from lpjTarget import *
+from lpj2mongo import Lpj2MongoThread
 
 trafcap.checkIfRoot()
 check_db_task = None
@@ -41,17 +42,7 @@ def main():
         a_target_obj.start()
 
     # Signal ingest to capture any/all IP changes during startup above
-    LpjIpTarget.signalLpjIngest()
-
-    def catchSignal1(signum, stack):
-        #checkDb()
-        pass
-
-    def catchSignal2(signum, stack):
-        print "\n Targets:"
-        for target in lpj.targets:
-            print "   ", target
-        print ""
+    lpj.updateLpj2MongoData()
 
     def catchCntlC(signum, stack):
         print "Terminating ", len(lpj.targets), " targets..."
@@ -60,21 +51,26 @@ def main():
             target.stop()
         if check_db_task:
            check_db_task.shutdown()
+
+        if lpj2Mongo_task:
+            lpj2Mongo_task.shutdown()
+            lpj2Mongo_task.join()
+
         print "Exiting..."
         sys.exit()
 
-    signal.signal(signal.SIGUSR1, catchSignal1)
-    signal.signal(signal.SIGUSR2, catchSignal2)
     signal.signal(signal.SIGINT, catchCntlC)
     signal.signal(signal.SIGTERM, catchCntlC)
-
 
     check_db_task = CheckDbThread(15, True)
     check_db_task.start()
 
+    lpj2Mongo_task = Lpj2MongoThread()
+    lpj2Mongo_task.start()
+
     if not trafcap.options.quiet:
-        # Subtract 1 for main thread and 1 for check_db thread
-        print "Target count = ", threading.activeCount() - 2
+        # Subtract 1 for main thread, 1 for check_db thread, and 1 for injest.
+        print "Target count = ", threading.activeCount() - 3
         #print "Threads info = ", threading.enumerate()
 
 
@@ -86,7 +82,7 @@ def main():
                     #if target.send_packets:
                     target.stop()
                     target.start()
-                    LpjIpTarget.signalLpjIngest()
+                    lpj.updateLpj2MongoData()
 
         except Exception, e:
             print e         

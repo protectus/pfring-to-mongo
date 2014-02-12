@@ -11,18 +11,6 @@ import trafcap
 # IP address that changes.
 class LpjIpTarget(object):
 
-    target_ips = []   # Class variable used by ingest to filter packets
-
-    @classmethod
-    def signalLpjIngest(cls):
-        if not trafcap.options.quiet: print "signalLpjIngest..."
-        # send signal to the receiving code
-        p = Popen('/bin/kill -USR1 `/bin/ps -ef | /bin/grep lpj2mongo|/bin/grep python|/usr/bin/tr -s " "|/usr/bin/cut -d " " -f 2`',
-            shell=True, stdout=PIPE, stderr=PIPE)
-        out,err = p.communicate()
-        if out: print "Output from command: ", out
-        if err: print "Output from command: ", err
-
     @classmethod
     def checkDbForUpdates(cls, send_packet_flag):
         something_changed = False
@@ -53,23 +41,18 @@ class LpjIpTarget(object):
                     print 'Removing: ', target_obj.target_info
                 lpj.targets.remove(target_obj)
                 something_changed = True
-                try:
-                    # Remove target from list of ip's if target is in list
-                    LpjIpTarget.target_ips.remove(target_obj.getTargetString())
-                except ValueError:
-                    pass
 
             # If anything is left in the list, it is a new target 
             for target in targets_from_config:
                 if not trafcap.options.quiet: 
                     print 'Adding: ', target
                 a_target_obj = lpj.createTarget(target, send_packet_flag) 
-                LpjIpTarget.target_ips.append(a_target_obj.getTargetString())
                 something_changed = True
                 if send_packet_flag:
                     a_target_obj.start()
 
-            if not trafcap.options.quiet: print ''
+            if not trafcap.options.quiet:
+                print ''
 
         except Exception, e:
             print e
@@ -103,12 +86,6 @@ class LpjIpTarget(object):
                                     self.target_info[lpj.t_ip], \
                                     "  to  ", ip_addr[0]
 
-            #try:
-            #    # Remove target from list of ip's if target is in the list
-            #    LpjIpTarget.target_ips.remove(self.getTargetString())
-            #except ValueError:
-            #    pass
-
             # update mongo with IP
             criteria = {"_id":c_id}
             new_ip = ip_addr[0]
@@ -120,9 +97,10 @@ class LpjIpTarget(object):
             self.target_info[lpj.t_prev_ip] = old_ip 
             self.target_info[lpj.t_ip] = new_ip 
 
-            #LpjIpTarget.target_ips.append(self.getTargetString())
-
             return True
+
+        # Otherwise, If not a new IP, return false
+        return False
 
 
     def stop(self):
@@ -143,9 +121,6 @@ class LpjIpTarget(object):
 
 
 class LpjIcmpTarget(LpjIpTarget):
-    def __init__(self, target, send_packets_flag):
-        LpjIpTarget.__init__(self, target, send_packets_flag)
-
     def start(self):
         print 'Starting: ', self.target_info
         ping_task = IcmpTaskThread(self.target_info)
@@ -155,11 +130,11 @@ class LpjIcmpTarget(LpjIpTarget):
     def getTargetString(self):
         return self.target_info[lpj.t_ip]
 
+    def getPrevTargetString(self):
+        return self.target_info[lpj.t_prev_ip]
+
 
 class LpjTcpTarget(LpjIpTarget):
-    def __init__(self, target, send_packets_flag):
-        LpjIpTarget.__init__(self, target, send_packets_flag)
-
     def start(self):
         print 'Starting: ', self.target_info
         syn_task = TcpTaskThread(self.target_info)
@@ -168,6 +143,10 @@ class LpjTcpTarget(LpjIpTarget):
 
     def getTargetString(self):
         return self.target_info[lpj.t_ip] + "." + \
+               str(self.target_info[lpj.t_port]) 
+
+    def getPrevTargetString(self):
+        return self.target_info[lpj.t_prev_ip] + "." + \
                str(self.target_info[lpj.t_port]) 
 
 class TaskThread(threading.Thread):
@@ -188,7 +167,6 @@ class TaskThread(threading.Thread):
 
     def task(self):
         pass
-
 
 #  Tasks start / stop pings.  If target IP changes, old task is stopped
 #  and new task is started.
@@ -252,7 +230,6 @@ class TcpTaskThread(LpjTaskThread):
             print 'Exception in TcpTaskThread: ', e
             print '       ', self.target
 
-
 class CheckDbThread(TaskThread):
     def __init__(self, interval, send_packets_flag):
         TaskThread.__init__(self)
@@ -261,5 +238,5 @@ class CheckDbThread(TaskThread):
 
     def task(self):
         if LpjIpTarget.checkDbForUpdates(self.send_packets):
-            LpjIpTarget.signalLpjIngest()
+            lpj.updateLpj2MongoData()
 
