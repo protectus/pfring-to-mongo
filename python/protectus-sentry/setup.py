@@ -15,8 +15,9 @@ VERSION = '0.1'
 
 requires = [
     'pymongo >= 2.6',
-    'GeoIP < 1.3',
-    'PyYAML'
+    'GeoIP',
+    'PyYAML',
+    'passlib'
 ]
 
 setup_settings = {}
