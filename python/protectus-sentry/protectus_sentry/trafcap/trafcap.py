@@ -66,28 +66,40 @@ def convertLocalSubnets(local_subnet_strings):
         local_subnets.append(tuple(octets))
     return local_subnets
 
+def refreshConfigVars():
+    global error_log, session_expire_timeout, latency_expire_timeout
+    global store_timeout, bytes_to_read, nmi_db_update_wait_time
+    global cap_filter, sniff_interface, network_interface
+    global lrs_min_duration, rtp_portrange, http_save_url_qs
+    global local_subnets, local_subnet, config
+    global mongo_server, mongo_port, traffic_db, traffic_ttl
+    # Read settings from config file
+    config = ConfigParser.SafeConfigParser()
+    config.optionxform = str  # Read config keys case sensitively.
+    config.read(['/opt/sentry/etc/sentry.conf', '/opt/sentry/trafcap/trafcap.conf', '/opt/sentry/etc/custom_settings.conf'])
+    error_log = config.get('trafcap', 'error_logfile')
+    session_expire_timeout = config.getint('trafcap', 'session_expire_timeout')
+    latency_expire_timeout = config.getint('trafcap', 'latency_expire_timeout')
+    store_timeout = config.getint('trafcap', 'store_timeout')
+    bytes_to_read = config.getint('trafcap', 'bytes_to_read')
+    nmi_db_update_wait_time=config.getfloat('trafcap', 'nmi_db_update_wait_time')
+    cap_filter = config.get('trafcap', 'cap_filter')
+    sniff_interface = config.get('interface', 'sniff_interface')
+    network_interface = config.get('interface', 'network_interface')
+    lrs_min_duration = config.getint('trafcap', 'lrs_min_duration')
+    rtp_portrange = config.get('trafcap', 'rtp_portrange')
+    http_save_url_qs = config.getboolean('trafcap', 'http_save_url_qs')
 
-# Read settings from config file
-config = ConfigParser.SafeConfigParser()
-config.optionxform = str  # Read config keys case sensitively.
-config.read(['/opt/sentry/etc/sentry.conf', '/opt/sentry/trafcap/trafcap.conf', '/opt/sentry/etc/custom_settings.conf'])
-error_log = config.get('trafcap', 'error_logfile')
-session_expire_timeout = config.getint('trafcap', 'session_expire_timeout')
-latency_expire_timeout = config.getint('trafcap', 'latency_expire_timeout')
-store_timeout = config.getint('trafcap', 'store_timeout')
-bytes_to_read = config.getint('trafcap', 'bytes_to_read')
-nmi_db_update_wait_time=config.getfloat('trafcap', 'nmi_db_update_wait_time')
-cap_filter = config.get('trafcap', 'cap_filter')
-sniff_interface = config.get('interface', 'sniff_interface')
-network_interface = config.get('interface', 'network_interface')
-lrs_min_duration = config.getint('trafcap', 'lrs_min_duration')
-rtp_portrange = config.get('trafcap', 'rtp_portrange')
-http_save_url_qs = config.getboolean('trafcap', 'http_save_url_qs')
+    # Convert local_subnet strings from config file into a list of tuples
+    local_subnets = config.items('local_subnets')
+    local_subnet = convertLocalSubnets(local_subnets)
 
-# Convert local_subnet strings from config file into a list of tuples
-local_subnets = config.items('local_subnets')
-local_subnet = convertLocalSubnets(local_subnets)
+    mongo_server = config.get('mongo', 'mongo_server')
+    mongo_port = config.getint('mongo', 'mongo_port')
+    traffic_db = config.get('mongo', 'traffic_db')
+    traffic_ttl = config.get('mongo', 'traffic_ttl')
 
+refreshConfigVars()
 
 # Returns True if the ip is in the local subnet
 # Improvement needed to handle case of 0 in the subnet IP address
@@ -237,10 +249,6 @@ def checkIfRoot():
     if os.geteuid() != 0:
         sys.exit('Program must be run as root.')
 
-mongo_server = config.get('mongo', 'mongo_server')
-mongo_port = config.getint('mongo', 'mongo_port')
-traffic_db = config.get('mongo', 'traffic_db')
-traffic_ttl = config.get('mongo', 'traffic_ttl')
 
 #pymongo bindings
 sys.path.append('/opt/sentry/trafcap/lib')
