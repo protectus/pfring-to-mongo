@@ -22,8 +22,6 @@ requires = [
     'protectus-sentry'
 ]
 
-# For development, pyramid-debugtoolbar==1.0.7
-
 setup_settings = {}
 if sys.argv[1] in ['bdist_egg', 'install']:
     from Cython.Distutils import build_ext
@@ -33,6 +31,8 @@ if sys.argv[1] in ['bdist_egg', 'install']:
         'cmdclass': {'build_ext':build_ext},
         'ext_modules': cythonize(cythonize_glob)
     }
+elif sys.argv[1] == "develop":
+    requires.append("pyramid-debugtoolbar==1.0.7")
 
 setup(name='TrafMongo',
       version=VERSION,
