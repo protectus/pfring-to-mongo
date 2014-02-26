@@ -1,4 +1,7 @@
 #!/usr/bin/python
+#
+# Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
+#
 
 import sys, time, os, signal
 from select import select

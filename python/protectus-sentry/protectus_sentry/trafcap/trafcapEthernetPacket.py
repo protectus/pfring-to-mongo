@@ -1,4 +1,7 @@
 # trafcapEthernetPacket.py
+#
+# Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
+#
 # Classes to help pull data off the wire and update mongo
 import subprocess
 import time
