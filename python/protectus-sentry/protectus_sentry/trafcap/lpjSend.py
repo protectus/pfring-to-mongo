@@ -1,5 +1,8 @@
 #!/usr/bin/python
 # lpjSend.py
+#
+# Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
+#
 import sys, os, signal
 import random
 import threading

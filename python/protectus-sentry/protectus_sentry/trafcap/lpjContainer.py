@@ -1,4 +1,7 @@
 # lpjContainer.py
+#
+# Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
+#
 # Classes to help manage temporary storage of traffic in dictionaries
 # and writes to mongo
 import sys, time
