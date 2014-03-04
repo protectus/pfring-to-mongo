@@ -1,4 +1,7 @@
 # lpj.py
+#
+# Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
+#
 import trafcap
 import socket
 import signal

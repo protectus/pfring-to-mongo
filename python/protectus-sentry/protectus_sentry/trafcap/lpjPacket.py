@@ -1,4 +1,7 @@
 # lpjPacket.py
+#
+# Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
+#
 # Classes to aquire latetency, packet loss, jitter data 
 import subprocess
 import time

@@ -1,4 +1,7 @@
 # Classes used by lpjSend
+#
+# Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
+#
 import lpj 
 import threading
 from subprocess import Popen, PIPE
