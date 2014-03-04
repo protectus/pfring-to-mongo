@@ -164,7 +164,7 @@ class LpjIpPktContainer(LpjEthernetPktContainer):
                                           d_col_name)
         return
 
-    def updateInfoDict(self, req_key, sess_key, data):
+    def updateInfoDict(self, req_key, sess_key, data, c_id):
         pc = self.pc
 
         # Request / reply are single packets with specific seq nums.
@@ -223,7 +223,8 @@ class LpjIpPktContainer(LpjEthernetPktContainer):
                 a_info[pc.i_csldw] = True
 
             except KeyError:
-                c_id = pc.getId(data)
+                # c_id comes with the function arguments now
+                #c_id = pc.getId(data)
                 # Create new dictionary entry.
                 new_info = [list(data[pc.p_ip1]), list(data[pc.p_ip2]),
                             data[pc.p_etime], data[pc.p_etime],

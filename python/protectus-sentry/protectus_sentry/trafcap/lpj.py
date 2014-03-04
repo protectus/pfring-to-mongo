@@ -5,6 +5,7 @@ import signal
 import threading
 from lpjTarget import *
 
+
 t_target=0        # could be hostname or ip
 t_ip=1; t_prev_ip=2; t_c_id=3; t_title=4; t_interval=5; t_protocol=6
 #icmp
@@ -14,6 +15,22 @@ t_port=7
 
 targets = []     # list of target objects
 
+### Thread-safe deaddrop ###
+target_cids_changed = threading.Event()
+target_cids_lock = threading.Lock()
+target_cids = {}
+
+def updateLpj2MongoData():
+    with target_cids_lock:
+        target_cids.clear()
+        for target in targets:
+            c_id = target.target_info[t_c_id]
+            target_cids[target.getTargetString()] = c_id
+            if target.getPrevTargetString():
+                target_cids[target.getPrevTargetString()] = c_id
+
+    target_cids_changed.set()
+        
 def createTarget(target, send_packets_flag):
     if target[t_protocol] == 'icmp':
         a_target_obj = LpjIcmpTarget(target, send_packets_flag)
