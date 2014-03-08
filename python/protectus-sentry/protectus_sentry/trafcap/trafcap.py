@@ -74,7 +74,7 @@ def refreshConfigVars():
     global store_timeout, bytes_to_read, nmi_db_update_wait_time
     global cap_filter, sniff_interface, network_interface
     global lrs_min_duration, rtp_portrange, http_save_url_qs
-    global local_subnets, local_subnet, config
+    global local_subnets, local_subnet, config, time_server
     global mongo_server, mongo_port, traffic_db, traffic_ttl
     # Read settings from config file
     config = ConfigParser.SafeConfigParser()
