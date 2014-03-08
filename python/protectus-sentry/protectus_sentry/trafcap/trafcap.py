@@ -93,6 +93,8 @@ def refreshConfigVars():
     rtp_portrange = config.get('trafcap', 'rtp_portrange')
     http_save_url_qs = config.getboolean('trafcap', 'http_save_url_qs')
 
+    time_server = config.get('sentry', 'time_server')
+
     # Convert local_subnet strings from config file into a list of tuples
     local_subnets = config.items('local_subnets')
     local_subnet = convertLocalSubnets(local_subnets)
