@@ -374,7 +374,7 @@ class TcpPacket(IpPacket):
         filtr = 'ip ' + trafcap.cap_filter + ' and ip[9]==0x06'
         proc = subprocess.Popen(['/usr/sbin/tcpdump', 
                   '-i', trafcap.sniff_interface,
-                  '-n', '-tt', 
+                  '-n', '-tt', '-B', '40960',
                   '-f',
                    '('+filtr+') or (vlan and '+filtr+')'],
                    bufsize=-1, stdout=subprocess.PIPE)
