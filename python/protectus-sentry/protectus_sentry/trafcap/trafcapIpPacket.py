@@ -229,6 +229,7 @@ class TcpPacket(IpPacket):
     p_addr=0; p_port=1; p_bytes=2; p_flags=3
     p_etime=2
     p_proto=3
+    p_vlid=4   # vlan_id
 
     # Legend for how TCP packet data is stored in the Session Info 
     # dictionary and the Capture Info dictionary 
@@ -271,31 +272,79 @@ class TcpPacket(IpPacket):
         # ICMP traffic - not sure why the tshark filter allows this to be included with TCP traffic
         # 1362723521.581183 IP 192.168.253.1 > 192.168.253.26: ICMP host 8.8.8.8 unreachable, length 92
 
+        # Parsing for vlan id.  tcpdump version 4.3.0   libpcap version 1.3.0    Sentry 7.0-514
+        #
+        # Previous format:
+        # 1396467169.614347 IP 69.84.41.162.40005 > 10.100.10.244.47671: Flags [P.], seq 145:241 ....
+        #
+        # New format without vlan tag:
+        # 1396467098.199453 70:ca:9b:4b:f7:20 > 00:1b:78:59:e7:c2, 
+        #                   ethertype IPv4 (0x0800), length 162: 
+        #                   69.84.41.162.40008 > 192.168.5.198.42881: Flags [P.], seq 1441:1537 ....
+        #
+        # New format with vlan tag:
+        # 1396467098.199378 00:23:5e:f4:ee:ff > 00:00:5e:00:01:01, 
+        #                   ethertype 802.1Q (0x8100), length 166: vlan 1, p 1, 
+        #                   ethertype IPv4, 69.84.41.162.40008 > 192.168.5.198.42881: Flags [P.], seq 1441:1537 ....
+
         # parse packet off the wire
         if pkt and not doc:
             flag_list = [['_', '_', '_', '_', '_', '_', '_', '_'],
                          ['_', '_', '_', '_', '_', '_', '_', '_']]
-        
-            if pkt[5] == "ICMP":
-                return (),[]
-    
-            a1_1,a1_2,a1_3,a1_4,port1 = pkt[2].split(".")
-            a2_1,a2_2,a2_3,a2_4,port2 = pkt[4].strip(":").split(".")
-       
-            flag_string = pkt[6].strip(",").strip("[").strip("]")
+
+            # IPv4
+            if pkt[6] == '(0x0800),':
+
+                if pkt[12] == 'ICMP':
+                    return (),[]
+
+                bytes1 = int(pkt[8].strip(':'))
+                vlan_id = None
+                #vlan_pri = None
+                a1_1,a1_2,a1_3,a1_4,port1 = pkt[9].split(".")
+                a2_1,a2_2,a2_3,a2_4,port2 = pkt[11].strip(":").split(".")
+                flag_string = pkt[13].strip(",").strip("[").strip("]")
+
+            # 802.1Q (vlan) or 802.1qa (shortest path bridging) 
+            #   802.1qa not handled at this time - need sample traffic!
+            elif pkt[6] == '(0x8100),':
+
+                if pkt[18] == 'ICMP':
+                    return (),[]
+
+                bytes1 = int(pkt[8].strip(':'))
+                vlan_id = int(pkt[10].strip(','))
+                #vlan_pri = int(pkt[12].strip(','))
+                a1_1,a1_2,a1_3,a1_4,port1 = pkt[15].split(".")
+                a2_1,a2_2,a2_3,a2_4,port2 = pkt[17].strip(":").split(".")
+                flag_string = pkt[19].strip(",").strip("[").strip("]")
+
+            else:
+                # Record packet details for future handling
+                # IPv6 handled in Other traffic
+                raise Exception('Unexpected ethertype.')
+
+            #if pkt[5] == "ICMP":
+            #    return (),[]
+            # 
+            #a1_1,a1_2,a1_3,a1_4,port1 = pkt[2].split(".")
+            #a2_1,a2_2,a2_3,a2_4,port2 = pkt[4].strip(":").split(".")
+            # 
+            #flag_string = pkt[6].strip(",").strip("[").strip("]")
+
             # Handle case of SYN-ACK flag by changing the flag from S to s
             if (flag_string == "S."):
                 flag_string = "s"
 
-            if (":" in pkt[8]):
-                # TCP DNS - see traffic samples above
-                seq_start,seq_end = pkt[8].strip(",").split(":")
-                bytes1 = int(seq_end) - int(seq_start)
-                if bytes1 < 0: bytes1 = bytes1 + 4294967296
-            else:
-                len_index = pkt.index("length")
-                bytes1_match = pc.leading_num_re.match(pkt[len_index+1])
-                bytes1 = int(bytes1_match.group(1))
+            #if (":" in pkt[8]):
+            #    # TCP DNS - see traffic samples above
+            #    seq_start,seq_end = pkt[8].strip(",").split(":")
+            #    bytes1 = int(seq_end) - int(seq_start)
+            #    if bytes1 < 0: bytes1 = bytes1 + 4294967296
+            #else:
+            #    len_index = pkt.index("length")
+            #    bytes1_match = pc.leading_num_re.match(pkt[len_index+1])
+            #    bytes1 = int(bytes1_match.group(1))
         
             # Handle case of multiple flags
             for index, c in enumerate(flag_string):
@@ -320,6 +369,11 @@ class TcpPacket(IpPacket):
             flag_list = [doc['f1'], doc['f2']]
             epoch_time = doc['tb']
             proto = doc['pr']
+            try:
+                vlan_id = doc['vid'] 
+            except KeyError:
+                vlan_id = None
+            #vlan_pri = None
                 
         else:
             return (), [] 
@@ -332,6 +386,8 @@ class TcpPacket(IpPacket):
         # Add packet data - unrelated to any IP
         data.append(epoch_time)
         data.append(proto)
+        data.append(vlan_id)
+        #data.append(vlan_pri)
     
         #         0            1           2           3
         #        ip1     ,   port1   ,    ip2    ,   port2
@@ -374,7 +430,7 @@ class TcpPacket(IpPacket):
         filtr = 'ip ' + trafcap.cap_filter + ' and ip[9]==0x06'
         proc = subprocess.Popen(['/usr/sbin/tcpdump', 
                   '-i', trafcap.sniff_interface,
-                  '-n', '-tt', '-B', '40960',
+                  '-n', '-e', '-tt', '-B', '40960', '-s', '127',
                   '-f',
                    '('+filtr+') or (vlan and '+filtr+')'],
                    bufsize=-1, stdout=subprocess.PIPE)
@@ -454,6 +510,7 @@ class UdpPacket(IpPacket):
     p_etime=2
     p_proto=3
     p_ci=4
+    p_vlid=5
 
     # Legend for how UDP packet data is stored in the Session Info 
     # dictionary and in the Capture Info dictionary 
@@ -473,28 +530,49 @@ class UdpPacket(IpPacket):
     @classmethod
     def parse(pc, pkt, doc):
         if pkt and not doc:
-            if len(pkt) == 5:
+            pkt_len = len(pkt)
+            if pkt_len == 5:
+                # UDP packet without ports:
                 # 1361040136.481161 192.168.168.5  239.255.255.250  996 IPv4
-
                 a1_1,a1_2,a1_3,a1_4 = pkt[1].split(".")
                 a2_1,a2_2,a2_3,a2_4 = pkt[2].split(".")
-
                 ports = [0, 0]
                 byts = [int(pkt[3]), 0]
                 proto = pkt[4]
+                vlan_id = None
 
-            else:
-                #
-                # pkt variable is a list with the following entries:
+            elif pkt_len == 6:
+                # UDP packet without ports and with vlan id:
+                # 1361040136.481161 192.168.168.5  239.255.255.250  996 IPv4 1
+                a1_1,a1_2,a1_3,a1_4 = pkt[1].split(".")
+                a2_1,a2_2,a2_3,a2_4 = pkt[2].split(".")
+                ports = [0, 0]
+                byts = [int(pkt[3]), 0]
+                proto = pkt[4]
+                vlan_id = int(pkt[5])
+
+            elif pkt_len == 7:
+                # Typical UDP pkt without vlan id
                 #        0               1          2         3         4  5  6 
                 # 1341226810.949555 192.168.1.127 32878 193.108.80.124 53 73 DNS
-    
                 a1_1,a1_2,a1_3,a1_4 = pkt[1].split(".")
                 a2_1,a2_2,a2_3,a2_4 = pkt[3].split(".")
-
                 ports = [int(pkt[2]), int(pkt[4])]
                 byts = [int(pkt[5]), 0]
                 proto = pkt[6]
+                vlan_id = None
+            
+            elif pkt_len == 8:
+                # Typical UDP packet with vlan id
+                a1_1,a1_2,a1_3,a1_4 = pkt[1].split(".")
+                a2_1,a2_2,a2_3,a2_4 = pkt[3].split(".")
+                ports = [int(pkt[2]), int(pkt[4])]
+                byts = [int(pkt[5]), 0]
+                proto = pkt[6]
+                vlan_id = int(pkt[7])
+
+            else:
+                raise Exception('Unexpected packet.')
             
             # Represent IP addresses a tuples instead of strings
             addr1 = (int(a1_1), int(a1_2), int(a1_3), int(a1_4))
@@ -510,6 +588,10 @@ class UdpPacket(IpPacket):
             byts = [doc['b1'], doc['b2']]
             epoch_time = doc['tb']
             proto = doc['pr']
+            try:
+                vlan_id = doc['vid']
+            except KeyError:
+                vlan_id = None
 
         else:
             return (), [] 
@@ -538,6 +620,7 @@ class UdpPacket(IpPacket):
             client_index = 1
 
         data.append(client_index)
+        data.append(vlan_id)
 
         return key, data
 
@@ -579,7 +662,7 @@ class UdpPacket(IpPacket):
                '-w', '/run/trafcap_udp',
                '-P',
                '-o', 
-               'column.format:"""time","%t", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "protocol","%p"""',
+               'column.format:"""time","%t", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "protocol","%p", "vid","%Cus:vlan.id"""',
                '-f',
                '('+filtr+') or (vlan and '+filtr+')'],
                bufsize=-1, stdout=subprocess.PIPE)
@@ -641,6 +724,7 @@ class IcmpPacket(IpPacket):
     p_etime=2
     p_proto=3
     p_ci=4
+    p_vlid=5
 
     # Legend for how packet data is stored in the Session Info 
     # dictionary and in the Capture Info dictionary 
@@ -696,19 +780,22 @@ class IcmpPacket(IpPacket):
     def parse(pc, pkt, doc):
         #
         # pkt variable is a list with the following entries:
-        #        0               1       2     3    4   5     6      7
-        # 1345665298.421280 192.168.1.1 178 8.8.8.8 8 0x00  51463 (0xc907)
+        #        0               1       2     3    4 5    6      7
+        # 1345665298.421280 192.168.1.1 178 8.8.8.8 8 0  51463 (0xc907)
         
         # pkt could also look like this:
-        #1357588547.607316 65.36.66.166 56,60 192.168.168.17 3 13 0 
+        #1357588547.607316 65.36.66.166 56,60 192.168.168.17 3 13 
 
         # or this
         # 1362723521.580996 192.168.253.1 112,84 192.168.253.26 3,8 1,0 49461 (0xc135) 
-        
+
+        # Adding vlan id
+        # 1396523050.738865 192.168.5.198 84 8.8.4.4      8 0 39917 (0x9bed) 1
+
         if pkt and not doc:
             # May not be a sequence number - if not, append zero for seq number 
-            if len(pkt) == 6:
-                pkt.append(0)
+            #if len(pkt) == 6:
+            #    pkt.append(0)
 
             a1_1,a1_2,a1_3,a1_4 = pkt[1].split(".")
             a2_1,a2_2,a2_3,a2_4 = pkt[3].split(".")
@@ -748,8 +835,29 @@ class IcmpPacket(IpPacket):
             epoch_time_float = float(pkt[0])
             epoch_time_int = int(epoch_time_float)
             proto = 'ICMP' 
-            seq = pkt[6]
-             
+
+            # ICMP types 8 (ping req), 0 (ping rply), 13,14, 17,18 have seq numbers.
+            # If other types have a pkt[6], then it must be a vlan_id
+            if ('8' in pkt[4] or '0' in pkt[4]) or\
+               ('13' in pkt[4] or '14' in pkt[4]) or\
+               ('17' in pkt[4] or '18' in pkt[4]):
+                # seq in decimal = pkt[6], seq in hex = pkt[7], vlan_id = pkt[8]
+                seq = pkt[6]
+                if len(pkt) == 9:
+                    vlan_id = int(pkt[8])
+                elif len(pkt) == 8:
+                    vlan_id = None
+                else:
+                    raise Exception('Unexpected ICMP packet')
+            else:
+                seq = 0 
+                if len(pkt) == 7:
+                    vlan_id = int(pkt[6])
+                elif len(pkt) == 6:
+                    vlan_id = None
+                else:
+                    raise Exception('Unexpected ICMP packet')
+                
             type_and_code_for_key = tuple(type_and_code[0])
             # Check if this seq number matches a previous packet
             if seq != 0:
@@ -787,6 +895,10 @@ class IcmpPacket(IpPacket):
             epoch_time = doc['tb']
             proto = 'ICMP' 
             type_and_code_for_key = (doc['ty1'])
+            try:
+                vlan_id = doc['vid']
+            except KeyError:
+                vlan_id = None
 
         else:
             return (), []
@@ -821,6 +933,7 @@ class IcmpPacket(IpPacket):
             client_index = 1
 
         data.append(client_index)
+        data.append(vlan_id)
 
         return key, data
 
@@ -930,7 +1043,7 @@ class IcmpPacket(IpPacket):
                '-w', '/run/trafcap_icmp',
                '-P',
                '-o', 
-               'column.format:"""time","%t", "src","%s", "iplen","%Cus:ip.len", "dst","%d", "type","%Cus:icmp.type", "code","%Cus:icmp.code", "seq","%Cus:icmp.seq"""',
+               'column.format:"""time","%t", "src","%s", "iplen","%Cus:ip.len", "dst","%d", "type","%Cus:icmp.type", "code","%Cus:icmp.code", "seq","%Cus:icmp.seq", "vid","%Cus:vlan.id"""',
                '-f',
                 '('+filtr+') or (vlan and '+filtr+')'],
                bufsize=-1, stdout=subprocess.PIPE)

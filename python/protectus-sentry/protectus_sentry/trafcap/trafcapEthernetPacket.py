@@ -219,6 +219,7 @@ class OtherPacket(EthernetPacket):
     p_proto=3
     p_msg=4
     p_ci=5
+    p_vlid=6
 
     @classmethod
     def parse(pc, pkt, doc):
@@ -228,17 +229,38 @@ class OtherPacket(EthernetPacket):
         #['1349186609.961972', '00:09:0f:50:aa:fc', '60', 'ff:ff:ff:ff:ff:ff', 
         #   4      5      6        7 ...........
         # 'ARP', 'Who', 'has', '192.168.2.2?', 'Tell', '192.168.1.1']
+
+        # Adding vlan id - PFG - April 2014
+        # No way of knowing how long the packet is so add vlan id after timestamp.
+        # If field after timestamp contains dots or colons, then it is a src (mac or ip).
+        # Otherwise, it must be a vlan id.
          
         if pkt and not doc:
-            msg = pkt[5]
-            for i in range(6, len(pkt), 1):
-                msg = msg + " " + pkt[i]
+            # If no vlan id present
+            if '.' in pkt[1] or ':' in pkt[1]:
+                msg = pkt[5]
+                for i in range(6, len(pkt), 1):
+                    msg = msg + " " + pkt[i]
     
-            data = [(pkt[1], int(pkt[2])), (pkt[3], 0), pkt[0], pkt[4], msg]
+                data = [(pkt[1], int(pkt[2])), (pkt[3], 0), pkt[0], pkt[4], msg]
     
-            #        0      1       2      
-            #       src  ,  dst  , msg
-            key = (pkt[1], pkt[3], msg)
+                #        0      1       2      
+                #       src  ,  dst  , msg
+                key = (pkt[1], pkt[3], msg)
+                vlan_id = None
+
+            # Vlan id is present - increment array indexes by one
+            else:
+                msg = pkt[6]
+                for i in range(7, len(pkt), 1):
+                    msg = msg + " " + pkt[i]
+    
+                data = [(pkt[2], int(pkt[3])), (pkt[4], 0), pkt[0], pkt[5], msg]
+    
+                #        0      1       2      
+                #       src  ,  dst  , msg
+                key = (pkt[2], pkt[4], msg)
+                vlan_id = int(pkt[1])
     
         elif doc and not pkt:
             data = [(doc['s'], doc['b1']), (doc['d'], doc['b2']), 
@@ -246,18 +268,24 @@ class OtherPacket(EthernetPacket):
 
             key = (doc['s'], doc['d'], doc['m'])
 
+            try:
+                vlan_id = doc['vid']
+            except KeyError:
+                vlan_id = None
+
         else:
             return (), []
 
         # Client index not used for Other traffic
         client_index = 0
         data.append(client_index)
+        data.append(vlan_id)
 
         return key, data
 
     @classmethod
     def startSniffer(pc):
-        filter = 'not tcp and not udp and not icmp ' + trafcap.cap_filter
+        filter = 'not (ip and tcp) and not (ip and udp) and not icmp ' + trafcap.cap_filter
         proc = subprocess.Popen(['/usr/bin/tshark', 
                '-i', trafcap.sniff_interface, 
                '-te', '-n', '-l',
@@ -266,7 +294,7 @@ class OtherPacket(EthernetPacket):
                '-w', '/run/trafcap_oth',
                '-P',
                '-o', 
-               'column.format:"""time","%t", "src","%s", "len","%Cus:frame.len", "dst","%d", "proto","%p", "i","%i"""',
+               'column.format:"""time","%t", "vid","%Cus:vlan.id", "src","%s", "len","%Cus:frame.len", "dst","%d", "proto","%p", "i","%i"""',
                '-f',
                '('+filter+' and not vlan) or (vlan and '+filter+')'],
                bufsize=-1, stdout=subprocess.PIPE)
