@@ -33,7 +33,7 @@ class IpPacket(object):
     #      [0]         [1] [2]               [3]                       [4]
     # ip1,p1,ip2,p2             offset                                 pkts 
     #  [list(key)   ,  sb,  se, [[0,   ip1_bytes,  ip2_bytes], [],...],  1]
-    b_key=0; b_addr1=0; b_port1=1; b_addr2=2; b_port2=3
+    b_key=0; b_addr1=0; b_port1=1; b_addr2=2; b_port2=3; b_vl=4
     b_sb=1; b_se=2; 
     b_array=3; b_offset=0; b_bytes1=1; b_bytes2=2
     b_pkts=4
@@ -43,6 +43,8 @@ class IpPacket(object):
     #b_loc1=8
     #b_cc2=9
     #b_loc2=10
+
+    capture_dict_key = ((0,0,0,0),0, (0,0,0,0),0,None)
 
     # Legend for Group dictionary data structure:
     #   0       1   2   3  4  5   6  7  8  9
@@ -61,9 +63,8 @@ class IpPacket(object):
     g_loc1=13
     g_cc2=14
     g_loc2=15
-    g_id=16
-
-    capture_dict_key = ((0,0,0,0),0, (0,0,0,0),0)
+    g_id=16      # mongo object id
+    g_vl=17      # vlan id
 
     # Session criteria is same for TCP and UDP....ICMP and Other must override
 #    @classmethod
@@ -229,7 +230,7 @@ class TcpPacket(IpPacket):
     p_addr=0; p_port=1; p_bytes=2; p_flags=3
     p_etime=2
     p_proto=3
-    p_vlid=4   # vlan_id
+    p_vl=4   # vlan_id
 
     # Legend for how TCP packet data is stored in the Session Info 
     # dictionary and the Capture Info dictionary 
@@ -244,8 +245,8 @@ class TcpPacket(IpPacket):
     i_loc1=11
     i_cc2=12
     i_loc2=13
-    i_id=14
-
+    i_id=14        # mongo object id
+    i_vl=15        # vlan id
 
     @classmethod
     def parse(pc, pkt, doc):
@@ -324,6 +325,14 @@ class TcpPacket(IpPacket):
                 # IPv6 handled in Other traffic
                 raise Exception('Unexpected ethertype.')
 
+            # Handle these cases:
+            # 1398119164.258130 70:ca:9b:4b:f7:20 > 00:23:5e:f4:ee:ff, ethertype IPv4 (0x0800), length 154: 192.168.5.146.1458359471 > 10.59.62.53.2049: 96 getattr fh 0,41/0
+            # 1398119164.259488 00:23:5e:f4:ee:ff > 00:00:5e:00:01:01, ethertype 802.1Q (0x8100), length 90: vlan 1, p 1, ethertype IPv4, 10.59.62.53.2049 > 192.168.5.146.1458359471: reply ok 28 getattr ERROR: Stale NFS file handle
+            port1_int = int(port1)
+            port2_int = int(port2)
+            if port1_int > 65535 or port2_int > 65535:
+                return (), [] 
+
             #if pkt[5] == "ICMP":
             #    return (),[]
             # 
@@ -355,7 +364,8 @@ class TcpPacket(IpPacket):
             addr2 = (int(a2_1), int(a2_2), int(a2_3), int(a2_4))
         
             addrs = [addr1, addr2]
-            ports = [int(port1), int(port2)]
+
+            ports = [port1_int, port2_int]
             byts = [bytes1, 0]
             epoch_time = pkt[0]
             proto = "_"                            # for future use 
@@ -370,7 +380,7 @@ class TcpPacket(IpPacket):
             epoch_time = doc['tb']
             proto = doc['pr']
             try:
-                vlan_id = doc['vid'] 
+                vlan_id = doc['vl'] 
             except KeyError:
                 vlan_id = None
             #vlan_pri = None
@@ -392,7 +402,8 @@ class TcpPacket(IpPacket):
         #         0            1           2           3
         #        ip1     ,   port1   ,    ip2    ,   port2
         key = (data[pc.p_ip1][pc.p_addr], data[pc.p_ip1][pc.p_port], 
-               data[pc.p_ip2][pc.p_addr], data[pc.p_ip2][pc.p_port])
+               data[pc.p_ip2][pc.p_addr], data[pc.p_ip2][pc.p_port],
+               data[pc.p_vl])
 
         return key, data
 
@@ -479,7 +490,7 @@ class TcpPacket(IpPacket):
                       float(data[pc.p_etime]), 0, float(data[pc.p_etime]),
                       1, 0, data[pc.p_proto],
                       float(data[pc.p_etime]),True,
-                      0, 0, 0, 0, None] 
+                      0, 0, 0, 0, None, None] 
         else:
             cc1, name1, loc1 = trafcap.geoIpLookup(data[pc.p_ip1][pc.p_addr])
             cc2, name2, loc2 = trafcap.geoIpLookup(data[pc.p_ip2][pc.p_addr])
@@ -490,7 +501,7 @@ class TcpPacket(IpPacket):
                         float(data[pc.p_etime]), 0, float(data[pc.p_etime]),
                         1, 0, data[pc.p_proto],
                         float(data[pc.p_etime]),True,
-                        cc1, loc1, cc2, loc2, None]
+                        cc1, loc1, cc2, loc2, None, data[pc.p_vl]]
 
             pc.findClient(data, new_info)
         return new_info
@@ -510,7 +521,7 @@ class UdpPacket(IpPacket):
     p_etime=2
     p_proto=3
     p_ci=4
-    p_vlid=5
+    p_vl=5 # vlan id
 
     # Legend for how UDP packet data is stored in the Session Info 
     # dictionary and in the Capture Info dictionary 
@@ -525,7 +536,8 @@ class UdpPacket(IpPacket):
     i_loc1=10
     i_cc2=11
     i_loc2=12
-    i_id=13
+    i_id=13       # mongo object id
+    i_vl=14       # vlan id
 
     @classmethod
     def parse(pc, pkt, doc):
@@ -589,7 +601,7 @@ class UdpPacket(IpPacket):
             epoch_time = doc['tb']
             proto = doc['pr']
             try:
-                vlan_id = doc['vid']
+                vlan_id = doc['vl']
             except KeyError:
                 vlan_id = None
 
@@ -609,7 +621,8 @@ class UdpPacket(IpPacket):
         #          0           1           2           3
         #         ip1    ,   port1   ,    ip2    ,   port2
         key = (data[pc.p_ip1][pc.p_addr], data[pc.p_ip1][pc.p_port], 
-               data[pc.p_ip2][pc.p_addr], data[pc.p_ip2][pc.p_port])
+               data[pc.p_ip2][pc.p_addr], data[pc.p_ip2][pc.p_port],
+               vlan_id)
 
         # For UDP, client is the first IP to send a packet.  Determine
         # client here since sorting done above may swap IP positions.
@@ -662,7 +675,7 @@ class UdpPacket(IpPacket):
                '-w', '/run/trafcap_udp',
                '-P',
                '-o', 
-               'column.format:"""time","%t", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "protocol","%p", "vid","%Cus:vlan.id"""',
+               'column.format:"""time","%t", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "protocol","%p", "vl","%Cus:vlan.id"""',
                '-f',
                '('+filtr+') or (vlan and '+filtr+')'],
                bufsize=-1, stdout=subprocess.PIPE)
@@ -687,7 +700,7 @@ class UdpPacket(IpPacket):
                       float(data[pc.p_etime]), float(data[pc.p_etime]),
                       1, 0, data[pc.p_proto],
                       float(data[pc.p_etime]),True,
-                      0, 0, 0, 0, None] 
+                      0, 0, 0, 0, None, None] 
         else:
             cc1, name1, loc1 = trafcap.geoIpLookup(data[pc.p_ip1][pc.p_addr])
             cc2, name2, loc2 = trafcap.geoIpLookup(data[pc.p_ip2][pc.p_addr])
@@ -698,7 +711,7 @@ class UdpPacket(IpPacket):
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
                         1, 0, data[pc.p_proto],
                         float(data[pc.p_etime]),True,
-                        cc1, loc1, cc2, loc2, None]
+                        cc1, loc1, cc2, loc2, None, data[pc.p_vl]]
 
             pc.findClient(data, new_info)
         return new_info
@@ -710,7 +723,6 @@ class IcmpPacket(IpPacket):
     def __init__(self):
         return
 
-    capture_dict_key = ((0,0,0,0), (0,0,0,0),())
 
     # Class attributes
     icmp_req = {}
@@ -724,7 +736,7 @@ class IcmpPacket(IpPacket):
     p_etime=2
     p_proto=3
     p_ci=4
-    p_vlid=5
+    p_vl=5  # vlan id
 
     # Legend for how packet data is stored in the Session Info 
     # dictionary and in the Capture Info dictionary 
@@ -739,14 +751,15 @@ class IcmpPacket(IpPacket):
     i_loc1=10
     i_cc2=11
     i_loc2=12
-    i_id=13
+    i_id=13       # mongo object id
+    i_vl=14       # vlan id
 
     # Legend for how data is stored in the Session Bytes dictionary 
     # and the Capture Bytes dictionary 
     #      [0]         [1] [2]               [3]                       [4]
     # ip1,ip2,type             offset                                 pkts 
     #  [list(key)   ,  sb,  se, [[0,   ip1_bytes,  ip2_bytes], [],...],  1]
-    b_key=0; b_addr1=0; b_addr2=1; b_type=2
+    b_key=0; b_addr1=0; b_addr2=1; b_type=2; b_vl=3
     b_sb=1; b_se=2; 
     b_array=3; b_offset=0; b_bytes1=1; b_bytes2=2
     b_pkts=4
@@ -756,6 +769,7 @@ class IcmpPacket(IpPacket):
     #b_loc1=8
     #b_cc2=9
     #b_loc1=10
+    capture_dict_key = ((0,0,0,0), (0,0,0,0),(), None)
 
     # Legend for Group dictionary data structure:
     #   0  1   2   3    4   5   6  7  8  9 
@@ -774,7 +788,8 @@ class IcmpPacket(IpPacket):
     g_loc1=13
     g_cc2=14
     g_loc2=15
-    g_id=16
+    g_id=16        # mongo object id
+    g_vl=17        # vlan id
 
     @classmethod
     def parse(pc, pkt, doc):
@@ -896,7 +911,7 @@ class IcmpPacket(IpPacket):
             proto = 'ICMP' 
             type_and_code_for_key = (doc['ty1'])
             try:
-                vlan_id = doc['vid']
+                vlan_id = doc['vl']
             except KeyError:
                 vlan_id = None
 
@@ -922,7 +937,7 @@ class IcmpPacket(IpPacket):
         #          0           1         2      
         #         ip1     ,   ip2  ,   type 
         key = (data[pc.p_ip1][pc.p_addr], data[pc.p_ip2][pc.p_addr], 
-               type_and_code_for_key)
+               type_and_code_for_key, vlan_id)
 
         # For ICMP, client is the first IP to send a packet.  Determine
         # client here since sorting done above may swap IP positions.
@@ -1043,7 +1058,7 @@ class IcmpPacket(IpPacket):
                '-w', '/run/trafcap_icmp',
                '-P',
                '-o', 
-               'column.format:"""time","%t", "src","%s", "iplen","%Cus:ip.len", "dst","%d", "type","%Cus:icmp.type", "code","%Cus:icmp.code", "seq","%Cus:icmp.seq", "vid","%Cus:vlan.id"""',
+               'column.format:"""time","%t", "src","%s", "iplen","%Cus:ip.len", "dst","%d", "type","%Cus:icmp.type", "code","%Cus:icmp.code", "seq","%Cus:icmp.seq", "vl","%Cus:vlan.id"""',
                '-f',
                 '('+filtr+') or (vlan and '+filtr+')'],
                bufsize=-1, stdout=subprocess.PIPE)
@@ -1098,7 +1113,7 @@ class IcmpPacket(IpPacket):
                       float(data[pc.p_etime]), float(data[pc.p_etime]),
                       1, 0, data[pc.p_proto],
                       float(data[pc.p_etime]),True,
-                      0, 0, 0, 0, None] 
+                      0, 0, 0, 0, None, None] 
         else:
             cc1, name1, loc1 = trafcap.geoIpLookup(data[pc.p_ip1][pc.p_addr])
             cc2, name2, loc2 = trafcap.geoIpLookup(data[pc.p_ip2][pc.p_addr])
@@ -1109,7 +1124,7 @@ class IcmpPacket(IpPacket):
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
                         1, 0, data[pc.p_proto],
                         float(data[pc.p_etime]),True,
-                        cc1, loc1, cc2, loc2, None]
+                        cc1, loc1, cc2, loc2, None, data[pc.p_vl]]
 
             pc.findClient(data, new_info)
         return new_info
@@ -1151,6 +1166,7 @@ class RtpPacket(IpPacket):
     p_seq=5
     p_smpl_time=6
     p_ci=7
+    p_vl=8
 
     # Legend for how UDP packet data is stored in the Session Info 
     # dictionary and in the Capture Info dictionary 
@@ -1162,17 +1178,18 @@ class RtpPacket(IpPacket):
     i_ssrc=7
     i_ini_seq=8
     i_ldwt=9      # last_db_write_time
-    i_csldw=10     # changed_since_last_db_write
+    i_csldw=10    # changed_since_last_db_write
     i_cc1=11
     i_loc1=12
     i_cc2=13
     i_loc2=14
-    i_id=15
+    i_id=15       # mongo object id
     i_circ_bufr=16; i_arvl_time=0; i_seq=1; i_smpl_time=2
+    i_vl=17       # vlan id
 
     # Legend for how data is stored in the Session Bytes dictionary 
     # and the Capture Bytes dictionary 
-    b_key=0; b_addr1=0; b_port1=1; b_addr2=2; b_port2=3; b_ssrc=4
+    b_key=0; b_addr1=0; b_port1=1; b_addr2=2; b_port2=3; b_ssrc=4; b_vl=5
     b_sb=1; b_se=2; 
     b_array=3; b_offset=0; b_bytes1=1; b_bytes2=2
     b_lpj_array=4; b_offset=0; b_ltnc=1; b_pkt_loss=2; b_jitr=3
@@ -1190,7 +1207,7 @@ class RtpPacket(IpPacket):
     #b_cc2=12
     #b_loc2=13
 
-    capture_dict_key = ((0,0,0,0),0, (0,0,0,0),0, '')
+    capture_dict_key = ((0,0,0,0),0, (0,0,0,0),0, '', None)
 
 # Need to handle:
 #Error parsing rtp packet:  ['1378211937.721699', '192.168.153.61', '10000', '192.168.154.206', '10090', '44', 'RTP', 'PT=DynamicRTP-Type-102,', 'SSRC=0x1FFD08E5,', 'Seq=10898,', 'Time=329132955']
@@ -1277,11 +1294,12 @@ class RtpPacket(IpPacket):
         data.append(sequence)
         data.append(sample_time)
 
+        vlan_id = None
         #          0           1           2           3
         #         ip1    ,   port1   ,    ip2    ,   port2
         key = (data[pc.p_ip1][pc.p_addr], data[pc.p_ip1][pc.p_port], 
                data[pc.p_ip2][pc.p_addr], data[pc.p_ip2][pc.p_port], 
-               data[pc.p_ssrc])
+               data[pc.p_ssrc], vlan_id)
 
         # For UDP, client is the first IP to send a packet.  Determine
         # client here since sorting done above may swap IP positions.
@@ -1292,9 +1310,9 @@ class RtpPacket(IpPacket):
             client_index = 1
 
         data.append(client_index)
+        data.append(vlan_id)
         print data
         return key, data
-
 
     @classmethod
     def buildInfoDoc(pc, ci, si, a_info):
@@ -1434,7 +1452,7 @@ class RtpPacket(IpPacket):
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
                         1, 0, '', '', 0,
                         float(data[pc.p_etime]), True, 
-                        0, 0, 0, 0, None, None] 
+                        0, 0, 0, 0, None, None, None] 
         else:
             # Skip country lookup - VoIP traffic usually intenral
             #cc1, name1, loc1 = trafcap.geoIpLookup(data[pc.p_ip1][pc.p_addr])
@@ -1453,7 +1471,7 @@ class RtpPacket(IpPacket):
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
                         1, 0, data[pc.p_proto], data[pc.p_ssrc], data[pc.p_seq],
                         float(data[pc.p_etime]), True, 
-                        cc1, loc1, cc2, loc2, None, circ_bufr]
+                        cc1, loc1, cc2, loc2, None, circ_bufr, data[pc.p_vl]]
 
             pc.findClient(data, new_info)
         return new_info

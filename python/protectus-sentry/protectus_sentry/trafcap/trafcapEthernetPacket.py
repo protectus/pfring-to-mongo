@@ -29,16 +29,19 @@ class EthernetPacket(object):
     i_msg=7
     i_ldwt=8      # last_db_write_time
     i_csldw=9     # changed_since_last_db_write
-    i_id=10
+    i_id=10       # mongo object id
+    i_vl=11       # vlan id
 
     # Legend for how data is stored in the Session Bytes dictionary 
     # and the Capture Bytes dictionary 
-    b_key=0; b_src=0; b_dst=1; b_msg=2
+    b_key=0; b_src=0; b_dst=1; b_msg=2; b_vl=3
     b_sb=1; b_se=2; 
     b_array=3; b_offset=0; b_bytes1=1; b_bytes2=2
     b_pkts=4
     b_ldwt=5      # last_db_write_time
     b_csldw=6     # changed_since_last_db_write
+
+    capture_dict_key = ('0', '0', '', None)
 
     # Legend for Group dictionary data structure:
     g_src=0; g_b1=1
@@ -50,8 +53,7 @@ class EthernetPacket(object):
     g_pkts=10
     g_proto=11
     g_id=12
-
-    capture_dict_key = ('0', '0','')
+    g_vl=13       # vlan id
 
     #@classmethod
     #def buildCriteriaDoc(pc, ci, si, a_info):
@@ -168,14 +170,14 @@ class EthernetPacket(object):
             new_info = [[0,0], [0,0], 
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
                         1, 0, '', '',
-                        float(data[pc.p_etime]), True, None] 
+                        float(data[pc.p_etime]), True, None, None] 
         else:
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
             new_info = [list(data[pc.p_src]), list(data[pc.p_dst]),
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
                         1, 0, data[pc.p_proto], data[pc.p_msg], 
-                        float(data[pc.p_etime]), True, None]
+                        float(data[pc.p_etime]), True, None, data[pc.p_vl]]
         return new_info
 
     @classmethod
@@ -219,7 +221,7 @@ class OtherPacket(EthernetPacket):
     p_proto=3
     p_msg=4
     p_ci=5
-    p_vlid=6
+    p_vl=6
 
     @classmethod
     def parse(pc, pkt, doc):
@@ -244,10 +246,10 @@ class OtherPacket(EthernetPacket):
     
                 data = [(pkt[1], int(pkt[2])), (pkt[3], 0), pkt[0], pkt[4], msg]
     
+                vlan_id = None
                 #        0      1       2      
                 #       src  ,  dst  , msg
-                key = (pkt[1], pkt[3], msg)
-                vlan_id = None
+                key = (pkt[1], pkt[3], msg, vlan_id)
 
             # Vlan id is present - increment array indexes by one
             else:
@@ -255,23 +257,22 @@ class OtherPacket(EthernetPacket):
                 for i in range(7, len(pkt), 1):
                     msg = msg + " " + pkt[i]
     
+                vlan_id = int(pkt[1])
                 data = [(pkt[2], int(pkt[3])), (pkt[4], 0), pkt[0], pkt[5], msg]
-    
                 #        0      1       2      
                 #       src  ,  dst  , msg
-                key = (pkt[2], pkt[4], msg)
-                vlan_id = int(pkt[1])
+                key = (pkt[2], pkt[4], msg, vlan_id)
     
         elif doc and not pkt:
             data = [(doc['s'], doc['b1']), (doc['d'], doc['b2']), 
                      doc['tb'], doc['pr'], doc['m']]
 
-            key = (doc['s'], doc['d'], doc['m'])
-
             try:
-                vlan_id = doc['vid']
+                vlan_id = doc['vl']
             except KeyError:
                 vlan_id = None
+
+            key = (doc['s'], doc['d'], doc['m'], vlan_id)
 
         else:
             return (), []
@@ -294,7 +295,7 @@ class OtherPacket(EthernetPacket):
                '-w', '/run/trafcap_oth',
                '-P',
                '-o', 
-               'column.format:"""time","%t", "vid","%Cus:vlan.id", "src","%s", "len","%Cus:frame.len", "dst","%d", "proto","%p", "i","%i"""',
+               'column.format:"""time","%t", "vl","%Cus:vlan.id", "src","%s", "len","%Cus:frame.len", "dst","%d", "proto","%p", "i","%i"""',
                '-f',
                '('+filter+' and not vlan) or (vlan and '+filter+')'],
                bufsize=-1, stdout=subprocess.PIPE)
