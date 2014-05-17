@@ -80,7 +80,7 @@ class EthernetPacket(object):
                          "pk":a_bytes[pc.b_pkts],
                          "pr":a_info[pc.i_proto],
                          "b":a_bytes[pc.b_array]}
-        if a_info[pc.i_vl]: info_doc['vl'] = a_info[pc.i_vl]
+        if a_info[pc.i_vl]: session_bytes['vl'] = a_info[pc.i_vl]
         return session_bytes
 
     @classmethod
