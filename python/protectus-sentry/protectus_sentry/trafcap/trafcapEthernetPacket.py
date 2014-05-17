@@ -80,6 +80,7 @@ class EthernetPacket(object):
                          "pk":a_bytes[pc.b_pkts],
                          "pr":a_info[pc.i_proto],
                          "b":a_bytes[pc.b_array]}
+        if a_info[pc.i_vl]: info_doc['vl'] = a_info[pc.i_vl]
         return session_bytes
 
     @classmethod
@@ -99,8 +100,8 @@ class EthernetPacket(object):
                     "pk":a_info[pc.i_pkts],
                     "pr":a_info[pc.i_proto]}
         tdm = tem-tbm
-        if tdm >= trafcap.lrs_min_duration:
-            info_doc['tdm'] = tdm
+        if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
+        if a_info[pc.i_vl]: info_doc['vl'] = a_info[pc.i_vl]
         return info_doc
 
     @classmethod
@@ -126,6 +127,7 @@ class EthernetPacket(object):
                       #"pk":a_group[pc.g_pkts],
                       "pr":a_group[pc.g_proto],
                       "b":group_bytes}
+        if a_group[pc.g_vl]: group_data['vl'] = a_group[pc.g_vl]
         return group_data
 
     @classmethod
@@ -134,11 +136,14 @@ class EthernetPacket(object):
 
     @classmethod
     def getSessionKey(pc, a_bytes):
-        return (a_bytes['s'], a_bytes['d'], a_bytes['m'])
+        # If no vlan_id, set it to None so key is valid.  Happens at startup
+        # when reading docs in from mongo to create session_history
+        if not 'vl' in a_bytes: a_bytes['vl'] = None
+        return (a_bytes['s'], a_bytes['d'], a_bytes['m'], a_bytes['vl'])
 
     @classmethod
     def getGroupKey(pc, a_bytes):
-        return (a_bytes['s'], a_bytes['d'], a_bytes['m'])
+        return (a_bytes['s'], a_bytes['d'], a_bytes['m'], a_bytes['vl'])
 
     @classmethod
     def updateGroupsDict(pc, a_bytes, chunck_size, doc_win_start):
@@ -156,7 +161,7 @@ class EthernetPacket(object):
                   a_bytes['d'], 0, a_bytes['m'], 
                   doc_win_start, trafcap.secondsToMinute(a_bytes['se']),
                   0, 0,
-                  tmp_array, 0, a_bytes['pr'], None]
+                  tmp_array, 0, a_bytes['pr'], None, a_bytes['vl']]
         return a_group
 
     @classmethod

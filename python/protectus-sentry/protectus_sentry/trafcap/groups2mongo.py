@@ -290,8 +290,8 @@ def main():
             #    matched_ip = True
             #    print a_bytes 
 
-            group_key = pc.getGroupKey(a_bytes)
             session_key = pc.getSessionKey(a_bytes) 
+            group_key = pc.getGroupKey(a_bytes)
 
             session1.updateGroupsDict(group_key, a_bytes, chunck_size1, 
                                       doc_win_start1)

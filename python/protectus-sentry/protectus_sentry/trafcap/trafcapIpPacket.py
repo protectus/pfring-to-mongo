@@ -99,6 +99,7 @@ class IpPacket(object):
                          "loc1":a_info[pc.i_loc1],
                          "cc2":a_info[pc.i_cc2],
                          "loc2":a_info[pc.i_loc2]}
+        if a_info[pc.i_vl]: session_bytes['vl'] = a_info[pc.i_vl]
         return session_bytes
 
     @classmethod
@@ -129,6 +130,7 @@ class IpPacket(object):
                       "loc1":a_group[pc.g_loc1],
                       "cc2":a_group[pc.g_cc2],
                       "loc2":a_group[pc.g_loc2]}
+        if a_group[pc.g_vl]: group_data['vl'] = a_group[pc.g_vl]
         return group_data
 
     @classmethod
@@ -137,7 +139,10 @@ class IpPacket(object):
 
     @classmethod
     def getSessionKey(pc, a_bytes):
-        return (a_bytes['ip1'], a_bytes['p1'], a_bytes['ip2'], a_bytes['p2'])
+        # If no vlan_id, set it to None so key is valid.  Happens at startup
+        # when reading docs in from mongo to create session_history
+        if not 'vl' in a_bytes: a_bytes['vl'] = None
+        return (a_bytes['ip1'], a_bytes['p1'], a_bytes['ip2'], a_bytes['p2'], a_bytes['vl'])
 
     @classmethod
     def getGroupKey(pc, a_bytes):
@@ -155,7 +160,7 @@ class IpPacket(object):
                   0, 0,
                   tmp_array, 0, a_bytes['pr'],
                   a_bytes['cc1'], a_bytes['loc1'], 
-                  a_bytes['cc2'], a_bytes['loc2'], None]
+                  a_bytes['cc2'], a_bytes['loc2'], None, a_bytes['vl']]
         return a_group
 
     @classmethod
@@ -432,8 +437,8 @@ class TcpPacket(IpPacket):
                     "cc2":a_info[pc.i_cc2],
                     "loc2":a_info[pc.i_loc2]}
         tdm = tem-tbm
-        if tdm >= trafcap.lrs_min_duration:
-            info_doc['tdm'] = tdm
+        if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
+        if a_info[pc.i_vl]: info_doc['vl'] = a_info[pc.i_vl]
         return info_doc
 
     @classmethod
@@ -660,8 +665,8 @@ class UdpPacket(IpPacket):
                     "cc2":a_info[pc.i_cc2],
                     "loc2":a_info[pc.i_loc2]}
         tdm = tem-tbm
-        if tdm >= trafcap.lrs_min_duration:
-            info_doc['tdm'] = tdm
+        if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
+        if a_info[pc.i_vl]: info_doc['vl'] = a_info[pc.i_vl]
         return info_doc
 
     @classmethod
@@ -994,8 +999,8 @@ class IcmpPacket(IpPacket):
                     "cc2":a_info[pc.i_cc2],
                     "loc2":a_info[pc.i_loc2]}
         tdm = tem-tbm
-        if tdm >= trafcap.lrs_min_duration:
-            info_doc['tdm'] = tdm
+        if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
+        if a_info[pc.i_vl]: info_doc['vl'] = a_info[pc.i_vl]
         return info_doc
 
     @classmethod
@@ -1020,6 +1025,7 @@ class IcmpPacket(IpPacket):
                          "loc1":a_info[pc.i_loc1],
                          "cc2":a_info[pc.i_cc2],
                          "loc2":a_info[pc.i_loc2]}
+        if a_info[pc.i_vl]: session_bytes['vl'] = a_info[pc.i_vl]
         return session_bytes
 
     @classmethod
@@ -1045,6 +1051,7 @@ class IcmpPacket(IpPacket):
                       "loc1":a_group[pc.g_loc1],
                       "cc2":a_group[pc.g_cc2],
                       "loc2":a_group[pc.g_loc2]}
+        if a_group[pc.g_vl]: group_data['vl'] = a_group[pc.g_vl]
         return group_data
 
     @classmethod
@@ -1066,8 +1073,11 @@ class IcmpPacket(IpPacket):
     
     @classmethod
     def getSessionKey(pc, a_bytes):
+        # If no vlan_id, set it to None so key is valid.  Happens at startup
+        # when reading docs in from mongo to create session_history
+        if not 'vl' in a_bytes: a_bytes['vl'] = None
         return (a_bytes['ip1'], tuple(a_bytes['ty1']), 
-                a_bytes['ip2'], tuple(a_bytes['ty2']))
+                a_bytes['ip2'], tuple(a_bytes['ty2']), a_bytes['vl'])
 
     @classmethod
     def getGroupKey(pc, a_bytes):
@@ -1085,7 +1095,7 @@ class IcmpPacket(IpPacket):
                   0, 0,
                   tmp_array, 0, a_bytes['pr'],
                   a_bytes['cc1'], a_bytes['loc1'], 
-                  a_bytes['cc2'], a_bytes['loc2'], None]
+                  a_bytes['cc2'], a_bytes['loc2'], None, a_bytes['vl']]
         return a_group
 
     @classmethod
@@ -1337,8 +1347,8 @@ class RtpPacket(IpPacket):
                     #"loc2":a_info[pc.i_loc2],
                     "ssrc":a_info[pc.i_ssrc]}
         tdm = tem-tbm
-        if tdm >= trafcap.lrs_min_duration:
-            info_doc['tdm'] = tdm
+        if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
+        if a_info[pc.i_vl]: info_doc['vl'] = a_info[pc.i_vl]
         return info_doc
 
     @classmethod
@@ -1360,6 +1370,7 @@ class RtpPacket(IpPacket):
                          "b":a_bytes[pc.b_array],
                          "ssrc":a_info[pc.i_ssrc],
                          "lpj":a_bytes[pc.b_lpj_array]}
+        if a_info[pc.i_vl]: session_bytes['vl'] = a_info[pc.i_vl]
 
 # Not using cir_bufr for packet_loss calculation at this time
 #        # Use circ_bufr data (indexed by rtp seq #) to calculate packet loss
