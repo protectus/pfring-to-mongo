@@ -560,7 +560,7 @@ class UdpPacket(IpPacket):
 
             elif pkt_len == 6:
                 # UDP packet without ports and with vlan id:
-                # 1361040136.481161 192.168.168.5  239.255.255.250  996 IPv4 1
+                # 1361040136.481161 1 192.168.168.5  239.255.255.250  996 IPv4
                 a1_1,a1_2,a1_3,a1_4 = pkt[1].split(".")
                 a2_1,a2_2,a2_3,a2_4 = pkt[2].split(".")
                 ports = [0, 0]
@@ -568,7 +568,8 @@ class UdpPacket(IpPacket):
                 proto = pkt[4]
                 vlan_id = int(pkt[5])
 
-            elif pkt_len == 7:
+            # packets with port numbers with have length 7 or more
+            elif '.' in pkt[1]:
                 # Typical UDP pkt without vlan id
                 #        0               1          2         3         4  5  6 
                 # 1341226810.949555 192.168.1.127 32878 193.108.80.124 53 73 DNS
@@ -576,21 +577,20 @@ class UdpPacket(IpPacket):
                 a2_1,a2_2,a2_3,a2_4 = pkt[3].split(".")
                 ports = [int(pkt[2]), int(pkt[4])]
                 byts = [int(pkt[5]), 0]
-                proto = pkt[6]
+                proto = " ".join(pkt[6:])
                 vlan_id = None
             
-            elif pkt_len == 8:
-                # Typical UDP packet with vlan id
-                a1_1,a1_2,a1_3,a1_4 = pkt[1].split(".")
-                a2_1,a2_2,a2_3,a2_4 = pkt[3].split(".")
-                ports = [int(pkt[2]), int(pkt[4])]
-                byts = [int(pkt[5]), 0]
-                proto = pkt[6]
-                vlan_id = int(pkt[7])
-
             else:
-                raise Exception('Unexpected packet.')
-            
+                # Typical UDP packet with vlan id
+                #        0          1      2          3         4         5  6  7 
+                # 1341226810.949555 1 192.168.1.127 32878 193.108.80.124 53 73 DNS
+                a1_1,a1_2,a1_3,a1_4 = pkt[2].split(".")
+                a2_1,a2_2,a2_3,a2_4 = pkt[4].split(".")
+                ports = [int(pkt[3]), int(pkt[5])]
+                byts = [int(pkt[6]), 0]
+                proto = " ".join(pkt[7:])
+                vlan_id = int(pkt[1])
+
             # Represent IP addresses a tuples instead of strings
             addr1 = (int(a1_1), int(a1_2), int(a1_3), int(a1_4))
             addr2 = (int(a2_1), int(a2_2), int(a2_3), int(a2_4))
@@ -680,7 +680,7 @@ class UdpPacket(IpPacket):
                '-w', '/run/trafcap_udp',
                '-P',
                '-o', 
-               'column.format:"""time","%t", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "protocol","%p", "vl","%Cus:vlan.id"""',
+               'column.format:"""time","%t", "vl","%Cus:vlan.id", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "protocol","%p"""',
                '-f',
                '('+filtr+') or (vlan and '+filtr+')'],
                bufsize=-1, stdout=subprocess.PIPE)
