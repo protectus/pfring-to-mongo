@@ -561,12 +561,12 @@ class UdpPacket(IpPacket):
             elif pkt_len == 6:
                 # UDP packet without ports and with vlan id:
                 # 1361040136.481161 1 192.168.168.5  239.255.255.250  996 IPv4
-                a1_1,a1_2,a1_3,a1_4 = pkt[1].split(".")
-                a2_1,a2_2,a2_3,a2_4 = pkt[2].split(".")
+                a1_1,a1_2,a1_3,a1_4 = pkt[2].split(".")
+                a2_1,a2_2,a2_3,a2_4 = pkt[3].split(".")
                 ports = [0, 0]
-                byts = [int(pkt[3]), 0]
-                proto = pkt[4]
-                vlan_id = int(pkt[5])
+                byts = [int(pkt[4]), 0]
+                proto = pkt[5]
+                vlan_id = int(pkt[1])
 
             # packets with port numbers with have length 7 or more
             elif '.' in pkt[1]:
