@@ -102,6 +102,13 @@ def refreshConfigVars():
     traffic_db = config.get('mongo', 'traffic_db')
     traffic_ttl = config.get('mongo', 'traffic_ttl')
 
+    # Also get and store the current installed system version.
+    global system_version
+    
+    sentry_version_file = open('/etc/sentry_version')
+    system_version = sentry_version_file.readline().strip()
+    sentry_version_file.close()
+
 refreshConfigVars()
 
 # Returns True if the ip is in the local subnet
