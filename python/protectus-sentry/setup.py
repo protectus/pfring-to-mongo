@@ -17,7 +17,8 @@ requires = [
     'pymongo >= 2.6',
     'GeoIP',
     'PyYAML',
-    'passlib'
+    'passlib',
+    'impacket'
 ]
 
 setup_settings = {}
