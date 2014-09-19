@@ -11,6 +11,8 @@ from calendar import timegm
 from datetime import datetime
 import traceback
 import sys
+import GeoIP
+import json
 
 last_seq_off_the_wire = 0
 current_time = 0.
@@ -76,6 +78,7 @@ def refreshConfigVars():
     global lrs_min_duration, rtp_portrange, http_save_url_qs
     global local_subnets, local_subnet, config
     global mongo_server, mongo_port, traffic_db, traffic_ttl
+    global inj_filter, allowed_cc 
     # Read settings from config file
     config = ConfigParser.SafeConfigParser()
     config.optionxform = str  # Read config keys case sensitively.
@@ -87,6 +90,8 @@ def refreshConfigVars():
     bytes_to_read = config.getint('trafcap', 'bytes_to_read')
     nmi_db_update_wait_time=config.getfloat('trafcap', 'nmi_db_update_wait_time')
     cap_filter = config.get('trafcap', 'cap_filter')
+    inj_filter = config.get('trafcap', 'inj_filter')
+    allowed_cc = json.loads(config.get('trafcap', 'allowed_cc'))
     sniff_interface = config.get('interface', 'sniff_interface')
     network_interface = config.get('interface', 'network_interface')
     lrs_min_duration = config.getint('trafcap', 'lrs_min_duration')
@@ -269,8 +274,6 @@ def mongoSetup():
     db = conn[traffic_db]
     return db
 
-import GeoIP
-import json
 gi = GeoIP.open("/opt/sentry/geoip/GeoLiteCity.dat",GeoIP.GEOIP_STANDARD)
 def  geoIpLookup(ip_addr):
     g_addr = gi.record_by_addr(tupleToString(ip_addr))
