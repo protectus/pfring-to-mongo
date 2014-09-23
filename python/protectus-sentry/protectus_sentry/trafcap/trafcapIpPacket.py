@@ -1606,12 +1606,15 @@ class TcpInjPacket(IpPacket):
     p_ack=7
 
     # Legend for how TCP packet data is stored in the blocked_info dict 
-    i_ip1=0; i_port1=1 
-    i_ip2=2; i_port2=3 
-    i_tb=4; i_te=5; i_pkts=6
-    i_ldwt=7      # last_db_write_time
-    i_csldw=8     # changed_since_last_db_write
-    i_id=9        # mongo object id
+    i_ip1=0; i_ip2=1     # must be 0 and 1 for i_bi index to work
+    i_port1=2; i_port2=3 
+    i_bi=4        # index of IP that caused block (0 or 1)
+    i_tb=5; i_te=6; i_pkts=7
+    i_ldwt=8      # last_db_write_time
+    i_csldw=9     # changed_since_last_db_write
+    i_cc=10
+    i_loc=11
+    i_id=12        # mongo object id
 
     @classmethod
     def parse(pc, pkt, doc):
@@ -1675,7 +1678,7 @@ class TcpInjPacket(IpPacket):
 
         ports = [port1_int, port2_int]
         byts = [bytes1, 0]
-        epoch_time = pkt[0]
+        epoch_time = float(pkt[0])
         proto = "_"                            # for future use 
 
         # Sort to get a consistent key for each TCP session
@@ -1739,6 +1742,7 @@ class TcpInjPacket(IpPacket):
             #            URG PSH
             tcp.set_th_flags(flags)
             tcp.set_th_seq(data[pc.p_seq]+1) 
+            #tcp.set_th_seq(data[pc.p_seq]+data[pc.p_bytes[0]]) 
             tcp.set_th_ack(0)         # 0 by default
             ip.contains(tcp)
             s.sendto(ip.get_packet(), 
@@ -1753,16 +1757,20 @@ class TcpInjPacket(IpPacket):
                 ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addrs][1]))
                 tcp.set_th_sport(data[pc.p_ports][0])
                 tcp.set_th_dport(data[pc.p_ports][1])
-                #             ACK RST
-                #           CWR | | FIN 
-                #             | | | |
-                flags = int('00010101',2)
-                #            | | | |
-                #          ECE | | SYN
-                #            URG PSH
+                tcp.set_th_seq(data[pc.p_seq]+data[pc.p_bytes][0]) 
+                if data[pc.p_ack]:
+                    tcp.set_th_ack(data[pc.p_ack])
+                    #             ACK RST
+                    #           CWR | | FIN 
+                    #             | | | |
+                    flags = int('00010101',2)
+                    #            | | | |
+                    #          ECE | | SYN
+                    #            URG PSH
+                else:
+                    tcp.set_th_ack(0)
+                    flags = int('00000101',2)
                 tcp.set_th_flags(flags)
-                tcp.set_th_seq(data[pc.p_seq]+1) 
-                tcp.set_th_ack(data[pc.p_ack])
                 ip.contains(tcp)
                 s.sendto(ip.get_packet(), 
                          (trafcap.tupleToString(data[pc.p_addrs][1]), 
@@ -1831,9 +1839,9 @@ class TcpInjPacket(IpPacket):
                      (trafcap.tupleToString(data[pc.p_addrs][0]), 
                      data[pc.p_ports][0]))
 
-        #print 'G2B', data
+        # Send packet to attacker
         if data[pc.p_seq]:   
-            # Send FIN packet to bad IP
+            # Send RST packet to bad IP
             ip = ImpactPacket.IP()
             tcp = ImpactPacket.TCP()
             tcp.set_th_off(5)
@@ -1861,6 +1869,11 @@ class TcpInjPacket(IpPacket):
     def buildInfoDoc(pc, a_info):
         tbm=trafcap.secondsToMinute(a_info[pc.i_tb])
         tem=trafcap.secondsToMinute(a_info[pc.i_te])
+        if a_info[pc.i_cc] == None:
+            cc, name, loc = trafcap.geoIpLookup(a_info[a_info[pc.i_bi]])
+            a_info[pc.i_cc] = cc
+            a_info[pc.i_loc] = loc 
+            
         info_doc = {"ip1":trafcap.tupleToInt(a_info[pc.i_ip1]),
                     "p1":a_info[pc.i_port1],
                     "ip2":trafcap.tupleToInt(a_info[pc.i_ip2]),
@@ -1869,6 +1882,8 @@ class TcpInjPacket(IpPacket):
                     "tem":tem,
                     "tb":a_info[pc.i_tb],
                     "te":a_info[pc.i_te],
+                    "cc":a_info[pc.i_cc],
+                    "loc":a_info[pc.i_loc],
                     "pk":a_info[pc.i_pkts]}
         tdm = tem-tbm
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
