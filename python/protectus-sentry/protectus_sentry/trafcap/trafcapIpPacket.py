@@ -308,12 +308,19 @@ class TcpPacket(IpPacket):
                 if pkt[12] == 'ICMP':
                     return (),[]
 
-                bytes1 = int(pkt[8].strip(':'))
                 vlan_id = None
                 #vlan_pri = None
                 a1_1,a1_2,a1_3,a1_4,port1 = pkt[9].split(".")
                 a2_1,a2_2,a2_3,a2_4,port2 = pkt[11].strip(":").split(".")
                 flag_string = pkt[13].strip(",").strip("[").strip("]")
+                if pkt[14] == 'seq' and ':' in pkt[15]:
+                    # Add typical ETH + IP + TCP header of 60 bytes
+                    seq_begin,seq_end = pkt[15].strip(',').split(':')
+                    bytes1 = int(seq_end) - int(seq_begin) + 60
+                else:
+                    # Header length included
+                    bytes1 = int(pkt[8].strip(':'))
+
 
             # 802.1Q (vlan) or 802.1qa (shortest path bridging) 
             #   802.1qa not handled at this time - need sample traffic!
@@ -322,12 +329,19 @@ class TcpPacket(IpPacket):
                 if pkt[18] == 'ICMP':
                     return (),[]
 
-                bytes1 = int(pkt[8].strip(':'))
                 vlan_id = int(pkt[10].strip(','))
                 #vlan_pri = int(pkt[12].strip(','))
                 a1_1,a1_2,a1_3,a1_4,port1 = pkt[15].split(".")
                 a2_1,a2_2,a2_3,a2_4,port2 = pkt[17].strip(":").split(".")
                 flag_string = pkt[19].strip(",").strip("[").strip("]")
+                if pkt[20] == 'seq' and ':' in pkt[21]:
+                    seq_begin,seq_end = pkt[21].strip(',').split(':')
+                    # Add typical ETH + IP + TCP header of 60 bytes
+                    bytes1 = int(seq_end) - int(seq_begin) + 60
+                else:
+                    # Header length included
+                    bytes1 = int(pkt[8].strip(':'))
+
 
             else:
                 # Record packet details for future handling
