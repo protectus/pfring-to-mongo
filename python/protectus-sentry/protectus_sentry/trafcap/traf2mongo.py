@@ -53,7 +53,7 @@ def exitNow(message):
         os.kill(proc.pid, signal.SIGTERM)
     sys.exit(message)
 
-def main():
+def OLDmain():
     options = parseOptions()     # Could combine this line with next line
     trafcap.options = options
 
@@ -322,6 +322,30 @@ def main():
             sys.stdout.flush()
 
     exitNow('')
+
+def main():
+    # The main function is responsible for setting up and kicking off the parse
+    # function and the injest function.  It tries to be responsible for all
+    # interupts, fatal errors, and cleanup.
+
+    #TODO: Options processing should probably go here, as well as interrupt code.
+
+    parsed_packets = multiprocessing.Queue(maxsize=100000)
+    parser = multiprocessing.Process(target = parse, args=(parsed_packets,options))
+    injester = multiprocessing.Process(target = injest, args=(parsed_packets,options))
+
+    injester.start()
+    parser.start()
+
+    running = True
+    while running:
+        # TODO: Status checks
+        # Handle problems
+
+    # Handle shutdown -- send signals?
+    parser.join()
+    injester.join()
+
 
 if __name__ == "__main__":
     main()
