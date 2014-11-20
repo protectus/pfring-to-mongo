@@ -14,8 +14,9 @@ import trafcap
 from trafcapIpPacket import *
 from trafcapEthernetPacket import *
 from trafcapContainer import *
+import multiprocessing
 
-proc = None
+#proc = None
 
 trafcap.checkIfRoot()
 
@@ -116,7 +117,7 @@ def OLDmain():
                             capture_bytes_collection_name, "capture")
 
 
-    def catchSignal1(signum, stac):
+    def catchSignal1(signum, stack):
         num_sessions = len(session.info_dict)
         print "\n", num_sessions, " active sessions_info entries:"
         for k in session.info_dict:
@@ -323,28 +324,220 @@ def OLDmain():
 
     exitNow('')
 
+parse_running = True
+def parse(q, pc):
+    def parseCatchCntlC(signum, stack):
+        print 'Caught CntlC in parse...'
+        global parse_running
+        parse_running = False
+
+    signal.signal(signal.SIGINT, parseCatchCntlC)
+
+    proc = pc.startSniffer()
+
+    # to make stdout non-blocking 
+    #import fcntl  
+    #fd = proc.stdout.fileno() 
+    #fl = fcntl.fcntl(fd, fcntl.F_GETFL) 
+    #fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK) 
+
+    while parse_running:
+        try:
+            #for pkt in proc.stdout:  # blocks - not sure why
+            pkt = proc.stdout.readline()
+            q.put(pkt)
+
+        except IOError:
+            # Exception occurs if signal handled during read
+            print "Exception in parse loop...", parse_running
+            #time.sleep(1)
+            continue
+
+    # kill sniffer
+    if proc:
+        os.kill(proc.pid, signal.SIGTERM)
+
+
+ingest_running = True
+def ingest(q, pc, options, session, capture):
+    def ingestCatchCntlC(signum, stack):
+        print 'Caught CntlC in ingest...'
+        global ingest_running
+        ingest_running = False
+
+    signal.signal(signal.SIGINT, ingestCatchCntlC)
+    ### Need to handle this functionality somhow without a select loop
+    # Update current_time approx once per second.  Current_time used to decide
+    # when to write dictionary items to db so high precision not needed.
+    #select_loop_counter += select_wait
+    #if select_loop_counter >= 1.:
+    #    trafcap.current_time = time.time()
+    #    select_loop_counter = 0.
+    while ingest_running:
+        #time.sleep(1)
+        try:
+            pkt = q.get()   # Blocks if queue is empty
+            key, data = pc.parse(pkt.split(), None)
+        except IOError:
+            # Exception occurs if signal handled during get
+            continue
+        except Exception, e:
+            # Something went wrong with parsing the line. Save for analysis
+            if not options.quiet:
+                print e
+                print "\n-------------pkt------------------\n"
+                print pkt 
+                print traceback.format_exc()
+      
+            trafcap.logException(e, pkt=pkt)
+            continue     
+
+        # parsing problem can sometimes cause (),[] to be returned
+        if data == []: continue
+
+        # timestamp is always first item in the list
+        curr_seq = int(data[pc.p_etime].split(".")[0])
+        trafcap.last_seq_off_the_wire = curr_seq
+
+        # For session dicts, last two params are 0
+        session.updateInfoDict(key, data, 0, 0) 
+        session.updateBytesDict(key, data, curr_seq, 0, 0)
+
+        inbound_bytes, outbound_bytes = pc.findInOutBytes(data)
+
+        si = session.info_dict[key]
+        sb = session.bytes_dict[key]
+        capture.updateInfoDict(pc.capture_dict_key, data, inbound_bytes, 
+                                                          outbound_bytes)
+        capture.updateBytesDict(pc.capture_dict_key, data, curr_seq,
+                                            inbound_bytes, outbound_bytes) 
+
+        if not options.quiet: 
+            print "\rActive: ", len(session.info_dict), ", ", \
+                   len(session.bytes_dict), "\r",
+            sys.stdout.flush()
+
+
+
+main_running = True
 def main():
     # The main function is responsible for setting up and kicking off the parse
-    # function and the injest function.  It tries to be responsible for all
+    # function and the ingest function.  It tries to be responsible for all
     # interupts, fatal errors, and cleanup.
 
     #TODO: Options processing should probably go here, as well as interrupt code.
+    options = parseOptions()     # Could combine this line with next line
+    trafcap.options = options
+    running = True
+
+    option_check_counter = 0
+    if options.tcp: option_check_counter += 1
+    if options.udp: option_check_counter += 1
+    if options.icmp: option_check_counter += 1
+    if options.other: option_check_counter += 1
+    if options.rtp: option_check_counter += 1
+    if option_check_counter != 1:
+        sys.exit("Must use one of -t, -u, -i, or -o to specify a protocol.")
+
+    # Select protocol.  Note that packet_type variable must be set
+    if options.tcp:
+        packet_type = "TcpPacket"
+        session_info_collection_name = "tcp_sessionInfo"
+        session_bytes_collection_name = "tcp_sessionBytes"
+        capture_info_collection_name = "tcp_captureInfo"
+        capture_bytes_collection_name = "tcp_captureBytes"
+    elif options.udp:
+        packet_type = "UdpPacket"
+        session_info_collection_name = "udp_sessionInfo"
+        session_bytes_collection_name = "udp_sessionBytes"
+        capture_info_collection_name = "udp_captureInfo"
+        capture_bytes_collection_name = "udp_captureBytes"
+    elif options.icmp:
+        packet_type = "IcmpPacket"
+        session_info_collection_name = "icmp_sessionInfo"
+        session_bytes_collection_name = "icmp_sessionBytes"
+        capture_info_collection_name = "icmp_captureInfo"
+        capture_bytes_collection_name = "icmp_captureBytes"
+    elif options.other:
+        packet_type = "OtherPacket"
+        session_info_collection_name = "oth_sessionInfo"
+        session_bytes_collection_name = "oth_sessionBytes"
+        capture_info_collection_name = "oth_captureInfo"
+        capture_bytes_collection_name = "oth_captureBytes"
+    elif options.rtp:
+        packet_type = "RtpPacket"
+        session_info_collection_name = "rtp_sessionInfo"
+        session_bytes_collection_name = "rtp_sessionBytes"
+        capture_info_collection_name = "rtp_captureInfo"
+        capture_bytes_collection_name = "rtp_captureBytes"
+    else:
+       exitNow('Invalid protocol') 
+
+    # A python class is defined for each protocol (TCP, UDP, ...) and  
+    # each class encapsulates packet-specific information
+    pc = eval(packet_type)
+
+    if options.other:
+        container = eval("TrafcapEthPktContainer")
+    else:
+        container = eval("TrafcapIpPktContainer")
+        
+    session = container(pc, session_info_collection_name, 
+                            session_bytes_collection_name, "session")
+     
+    capture = container(pc, capture_info_collection_name, 
+                            capture_bytes_collection_name, "capture")
+
+
+    def catchSignal1(signum, stac):
+        print 'Caught Signal1 in main....'
+
+    def catchSignal2(signum, stack):
+        print 'Caught Signal2 in main....'
+
+    def catchCntlC(signum, stack):
+        print 'Caught CntlC in main....'
+        global main_running
+        main_running = False
+
+    signal.signal(signal.SIGUSR1, catchSignal1)
+    signal.signal(signal.SIGUSR2, catchSignal2)
+    signal.signal(signal.SIGINT, catchCntlC)
+    signal.signal(signal.SIGTERM, catchCntlC)
+
+    # Pre-build the sessionInfo dictionary for more more efficient db writes
+    print "Pre-building dictionaries..."
+    oldest_session_time = int(time.time()) - trafcap.session_expire_timeout
+
+    # sessionInfo dictionary
+    info_cursor = session.db[session.info_collection].find( \
+                             spec = {'tem':{'$gte':oldest_session_time}})
+
+    for a_doc in info_cursor:
+        key, data = pc.parse(None, a_doc)
+        session.updateInfoDict(key, data, 0, 0)
+        # Add packet, end time, and _id fields  - not done by updateInfoDict method
+        session.info_dict[key][pc.i_te] = a_doc['te']
+        session.info_dict[key][pc.i_pkts] = a_doc['pk']
+        session.info_dict[key][pc.i_id] = a_doc['_id']
+        session.info_dict[key][pc.i_csldw] = False 
 
     parsed_packets = multiprocessing.Queue(maxsize=100000)
-    parser = multiprocessing.Process(target = parse, args=(parsed_packets,options))
-    injester = multiprocessing.Process(target = injest, args=(parsed_packets,options))
+    parser = multiprocessing.Process(target = parse, 
+                                     args=(parsed_packets,pc,))
+    ingester = multiprocessing.Process(target = ingest, 
+                                       args=(parsed_packets,pc,options,session,capture,))
 
-    injester.start()
+    ingester.start()
     parser.start()
 
-    running = True
-    while running:
-        # TODO: Status checks
-        # Handle problems
+    while main_running:
+        time.sleep(5)
+        print 'Q len: ', parsed_packets.qsize()
 
     # Handle shutdown -- send signals?
     parser.join()
-    injester.join()
+    ingester.join()
 
 
 if __name__ == "__main__":

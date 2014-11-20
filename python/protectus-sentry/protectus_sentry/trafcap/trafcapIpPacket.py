@@ -14,6 +14,7 @@ from bisect import bisect_left, insort
 # for packet injection
 import socket
 from impacket import ImpactDecoder, ImpactPacket
+import os, sys
 
 
 class IpPacket(object):
@@ -1072,7 +1073,9 @@ class IcmpPacket(IpPacket):
                'column.format:"""time","%t", "src","%s", "iplen","%Cus:ip.len", "dst","%d", "type","%Cus:icmp.type", "code","%Cus:icmp.code", "seq","%Cus:icmp.seq", "vl","%Cus:vlan.id"""',
                '-f',
                 '('+filtr+') or (vlan and '+filtr+')'],
-               bufsize=-1, stdout=subprocess.PIPE)
+               bufsize=-1,
+               stdout=subprocess.PIPE, stderr=sys.stdout.fileno())
+               #stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'))
         return proc
     
     @classmethod
