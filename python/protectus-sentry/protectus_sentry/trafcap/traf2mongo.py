@@ -15,6 +15,7 @@ from trafcapIpPacket import *
 from trafcapEthernetPacket import *
 from trafcapContainer import *
 import multiprocessing
+import Queue
 
 #proc = None
 
@@ -324,14 +325,14 @@ def OLDmain():
 
     exitNow('')
 
-parse_running = True
-def parse(q, pc):
-    def parseCatchCntlC(signum, stack):
-        print 'Caught CntlC in parse...'
-        global parse_running
-        parse_running = False
+sniffPkts_running = True
+def sniffPkts(spq, pc):
+    def sniffPktsCatchCntlC(signum, stack):
+        print 'Caught CntlC in sniffPkts...'
+        global sniffPkts_running
+        sniffPkts_running = False
 
-    signal.signal(signal.SIGINT, parseCatchCntlC)
+    signal.signal(signal.SIGINT, sniffPktsCatchCntlC)
 
     proc = pc.startSniffer()
 
@@ -341,16 +342,14 @@ def parse(q, pc):
     #fl = fcntl.fcntl(fd, fcntl.F_GETFL) 
     #fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK) 
 
-    while parse_running:
+    while sniffPkts_running:
         try:
             #for pkt in proc.stdout:  # blocks - not sure why
             pkt = proc.stdout.readline()
-            q.put(pkt)
+            spq.put(pkt)
 
         except IOError:
             # Exception occurs if signal handled during read
-            print "Exception in parse loop...", parse_running
-            #time.sleep(1)
             continue
 
     # kill sniffer
@@ -358,25 +357,18 @@ def parse(q, pc):
         os.kill(proc.pid, signal.SIGTERM)
 
 
-ingest_running = True
-def ingest(q, pc, options, session, capture):
-    def ingestCatchCntlC(signum, stack):
-        print 'Caught CntlC in ingest...'
-        global ingest_running
-        ingest_running = False
+parsePkts_running = True
+def parsePkts(spq, ppq, pc, options):
+    def parsePktsCatchCntlC(signum, stack):
+        print 'Caught CntlC in parsePkts...'
+        global parsePkts_running
+        parsePkts_running = False
 
-    signal.signal(signal.SIGINT, ingestCatchCntlC)
-    ### Need to handle this functionality somhow without a select loop
-    # Update current_time approx once per second.  Current_time used to decide
-    # when to write dictionary items to db so high precision not needed.
-    #select_loop_counter += select_wait
-    #if select_loop_counter >= 1.:
-    #    trafcap.current_time = time.time()
-    #    select_loop_counter = 0.
-    while ingest_running:
-        #time.sleep(1)
+    signal.signal(signal.SIGINT, parsePktsCatchCntlC)
+    
+    while parsePkts_running:
         try:
-            pkt = q.get()   # Blocks if queue is empty
+            pkt = spq.get()   # Blocks if queue is empty
             key, data = pc.parse(pkt.split(), None)
         except IOError:
             # Exception occurs if signal handled during get
@@ -395,6 +387,42 @@ def ingest(q, pc, options, session, capture):
         # parsing problem can sometimes cause (),[] to be returned
         if data == []: continue
 
+        try:
+            ppq.put((key, data))   # Blocks if queue is empty
+        except IOError:
+            # Exception occurs if signal handled during put 
+            continue
+
+updateDict_running = True
+def updateDict(ppq, pc, options, session, capture):
+    def updateDictCatchCntlC(signum, stack):
+        print 'Caught CntlC in updateDict...'
+        global updateDict_running
+        updateDict_running = False
+
+    signal.signal(signal.SIGINT, updateDictCatchCntlC)
+    get_wait = 0.01
+    get_loop_counter = 0
+
+    update_db = False
+    while updateDict_running:
+        try:
+            (key, data) = ppq.get(True, get_wait)   # Blocks if queue is empty
+        except IOError:
+            # Exception occurs if signal handled during get
+            continue
+        except Queue.Empty:
+            update_db = True
+            continue
+
+        # Update current_time approx once per second.  Used to decide
+        # when to write dictionary items to db so high precision not needed.
+        get_loop_counter += get_wait
+        if get_loop_counter >= 1.:
+            trafcap.current_time = time.time()
+            get_loop_counter = 0.
+            update_db = True
+
         # timestamp is always first item in the list
         curr_seq = int(data[pc.p_etime].split(".")[0])
         trafcap.last_seq_off_the_wire = curr_seq
@@ -412,11 +440,15 @@ def ingest(q, pc, options, session, capture):
         capture.updateBytesDict(pc.capture_dict_key, data, curr_seq,
                                             inbound_bytes, outbound_bytes) 
 
+        if update_db:
+            session.updateDb()
+            capture.updateDb()
+            update_db = False
+
         if not options.quiet: 
             print "\rActive: ", len(session.info_dict), ", ", \
                    len(session.bytes_dict), "\r",
             sys.stdout.flush()
-
 
 
 main_running = True
@@ -516,28 +548,37 @@ def main():
     for a_doc in info_cursor:
         key, data = pc.parse(None, a_doc)
         session.updateInfoDict(key, data, 0, 0)
-        # Add packet, end time, and _id fields  - not done by updateInfoDict method
+        # Add packet, end time, and _id  - not done by updateInfoDict method
         session.info_dict[key][pc.i_te] = a_doc['te']
         session.info_dict[key][pc.i_pkts] = a_doc['pk']
         session.info_dict[key][pc.i_id] = a_doc['_id']
         session.info_dict[key][pc.i_csldw] = False 
 
+    sniffed_packets = multiprocessing.Queue(maxsize=100000)
     parsed_packets = multiprocessing.Queue(maxsize=100000)
-    parser = multiprocessing.Process(target = parse, 
-                                     args=(parsed_packets,pc,))
-    ingester = multiprocessing.Process(target = ingest, 
-                                       args=(parsed_packets,pc,options,session,capture,))
-
-    ingester.start()
+    sniffer = multiprocessing.Process(target = sniffPkts, 
+                                      args=(sniffed_packets,pc,))
+    parser = multiprocessing.Process(target = parsePkts, 
+                                     args=(sniffed_packets,
+                                           parsed_packets,pc,
+                                           options,))
+    updater = multiprocessing.Process(target = updateDict, 
+                                      args=(parsed_packets,pc,
+                                            options,session,capture,))
+    sniffer.start()
     parser.start()
+    updater.start()
 
     while main_running:
         time.sleep(5)
-        print 'Q len: ', parsed_packets.qsize()
+        print 'sniff: ', sniffed_packets.qsize(),
+        print 'parse: ', parsed_packets.qsize(), '\r',
+        sys.stdout.flush()
 
     # Handle shutdown -- send signals?
+    sniffer.join()
     parser.join()
-    ingester.join()
+    updater.join()
 
 
 if __name__ == "__main__":

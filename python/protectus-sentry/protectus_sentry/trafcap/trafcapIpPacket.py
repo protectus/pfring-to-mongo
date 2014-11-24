@@ -454,7 +454,8 @@ class TcpPacket(IpPacket):
                   '-n', '-e', '-tt', '-B', '40960', '-s', '127',
                   '-f',
                    '('+filtr+') or (vlan and '+filtr+')'],
-                   bufsize=-1, stdout=subprocess.PIPE)
+                   bufsize=-1,
+                   stdout=subprocess.PIPE, stderr=sys.stdout.fileno())
         return proc
 
     @classmethod
@@ -688,7 +689,8 @@ class UdpPacket(IpPacket):
                'column.format:"""time","%t", "vl","%Cus:vlan.id", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "protocol","%p"""',
                '-f',
                '('+filtr+') or (vlan and '+filtr+')'],
-               bufsize=-1, stdout=subprocess.PIPE)
+               bufsize=-1,
+               stdout=subprocess.PIPE, stderr=sys.stdout.fileno())
         return proc
     
     @classmethod
@@ -1075,7 +1077,6 @@ class IcmpPacket(IpPacket):
                 '('+filtr+') or (vlan and '+filtr+')'],
                bufsize=-1,
                stdout=subprocess.PIPE, stderr=sys.stdout.fileno())
-               #stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'))
         return proc
     
     @classmethod
@@ -1435,7 +1436,8 @@ class RtpPacket(IpPacket):
             insert_index+=2
             a_port+=2
 
-        proc = subprocess.Popen(param_list, bufsize=-1, stdout=subprocess.PIPE)
+        proc = subprocess.Popen(param_list, bufsize=-1,
+                          stdout=subprocess.PIPE, stderr=sys.stdout.fileno())
         return proc
     
     @classmethod
@@ -1713,7 +1715,8 @@ class TcpInjPacket(IpPacket):
                   '-n', '-tt', '-B', '40960', '-s', '127',
                   '-K', '-U', '-S', '-f',
                    '('+filtr+') or (vlan and '+filtr+')'],
-                   bufsize=-1, stdout=subprocess.PIPE)
+                   bufsize=-1,
+                   stdout=subprocess.PIPE, stderr=sys.stdout.fileno())
         return proc
 
     @classmethod

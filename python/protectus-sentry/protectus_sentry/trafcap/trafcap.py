@@ -268,9 +268,16 @@ def checkIfRoot():
 #pymongo bindings
 sys.path.append('/opt/sentry/trafcap/lib')
 
-def mongoSetup():
-    from pymongo import Connection
-    conn = Connection(mongo_server, mongo_port)
+#def mongoSetup():
+#    from pymongo import Connection
+#    conn = Connection(mongo_server, mongo_port)
+#    db = conn[traffic_db]
+#    return db
+
+def mongoSetup(**kwargs):
+    from pymongo import MongoClient
+    conn = MongoClient(host=mongo_server,
+                       port=mongo_port,**kwargs)
     db = conn[traffic_db]
     return db
 

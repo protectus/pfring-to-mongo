@@ -17,6 +17,7 @@ class TrafcapContainer(object):
     """
     def __init__(self, packet_class, i_col_name, b_col_name):
         self.db = None
+        self.db_no_wc = None
         self.pc = packet_class        # Packet class storing data in container 
         self.info_collection = i_col_name
         self.bytes_collection = b_col_name
@@ -39,6 +40,7 @@ class TrafcapGroupContainer(TrafcapContainer):
         
         # Even if not writing to db, need db connection to read input data
         self.db = trafcap.mongoSetup()
+        self.db_no_wc = trafcap.mongoSetup(w=0)
         return
 
     def updateGroupsDict(self, group_key, a_bytes, chunck_size, doc_win_start):
@@ -114,6 +116,7 @@ class TrafcapEthPktContainer(TrafcapContainer):
 
         # Even if not writing to db, need db connection to prebuild dictionary
         self.db = trafcap.mongoSetup()
+        self.db_no_wc = trafcap.mongoSetup(w=0)
 
         #if container_type == "capture":
             # Initialize Capture Bytes dictionary 
@@ -226,7 +229,7 @@ class TrafcapEthPktContainer(TrafcapContainer):
                         if a_info[pc.i_id] == None:
                             a_info[pc.i_id] = _id
 
-                        self.db[self.bytes_collection].insert(session_bytes_doc,
+                        self.db_no_wc[self.bytes_collection].insert(session_bytes_doc,
                                                           manipulate=False)
 
                     except Exception, e:

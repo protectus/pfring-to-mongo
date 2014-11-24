@@ -303,7 +303,8 @@ class OtherPacket(EthernetPacket):
                'column.format:"""time","%t", "vl","%Cus:vlan.id", "src","%s", "len","%Cus:frame.len", "dst","%d", "proto","%p", "i","%i"""',
                '-f',
                '('+filter+' and not vlan) or (vlan and '+filter+')'],
-               bufsize=-1, stdout=subprocess.PIPE)
+               bufsize=-1,
+               stdout=subprocess.PIPE, stderr=sys.stdout.fileno())
         return proc
     
     @classmethod
