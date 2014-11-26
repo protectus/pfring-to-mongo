@@ -7,6 +7,7 @@ from setuptools import setup, find_packages
 
 # Cython actually accepts an extended glob pattern, where ** means more than one directory
 cythonize_glob = 'protectus_sentry/**/*.py'
+pyx_glob = 'protectus_sentry/**/*.pyx'
 
 # "VERSION" is a keyword that the build system will look for.  Feel free to
 # change, but know that the build system is running sed, looking for
@@ -22,14 +23,16 @@ requires = [
 ]
 
 setup_settings = {}
-if sys.argv[1] in ['bdist_egg', 'install']:
-    from Cython.Distutils import build_ext
-    from Cython.Build import cythonize
+#if sys.argv[1] in ['bdist_egg', 'install']:
 
-    setup_settings = {
-        'cmdclass': {'build_ext':build_ext},
-        'ext_modules': cythonize(cythonize_glob)
-    }
+# This used to be conditional on a full install, but I want to see if 'develop' works.
+from Cython.Distutils import build_ext
+from Cython.Build import cythonize
+
+setup_settings = {
+    'cmdclass': {'build_ext':build_ext},
+    'ext_modules': cythonize(cythonize_glob) + cythonize(pyx_glob)
+}
 
 setup(name='protectus-sentry',
       version=VERSION,

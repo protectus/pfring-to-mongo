@@ -12,10 +12,15 @@ import math
 import traceback
 import trafcap
 from trafcapIpPacket import *
+from trafcapIpPacket cimport TCPPacketHeaders, parseTCPPacket
 from trafcapEthernetPacket import *
 from trafcapContainer import *
 import multiprocessing
 import Queue
+
+#CYTHON
+from cpython cimport array
+import ctypes
 
 #proc = None
 
@@ -357,8 +362,9 @@ def sniffPkts(spq, pc):
         os.kill(proc.pid, signal.SIGTERM)
 
 
-parsePkts_running = True
-def parsePkts(spq, ppq, pc, options):
+cdef bint parsePkts_running = True
+def parsePkts(spq, ppq, python_ppshared, pc, options):
+    # First, setup signal handling
     def parsePktsCatchCntlC(signum, stack):
         print 'Caught CntlC in parsePkts...'
         global parsePkts_running
@@ -366,13 +372,26 @@ def parsePkts(spq, ppq, pc, options):
 
     signal.signal(signal.SIGINT, parsePktsCatchCntlC)
     
+    # Give Cython code low-level access to the shared memory array
+    #cdef array.array halfway_ppshared = python_ppshared
+    #cdef TCPPacketHeaders[:] ppshared = halfway_ppshared
+    cdef long pointer = ctypes.addressof(python_ppshared)
+    cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>pointer
+
+    cdef int shared_pkt_cursor = 0
+    cdef TCPPacketHeaders* current_shared_pkt
+    cdef int parse_return_code
     while parsePkts_running:
         try:
             pkt = spq.get()   # Blocks if queue is empty
-            key, data = pc.parse(pkt.split(), None)
         except IOError:
             # Exception occurs if signal handled during get
             continue
+
+        current_shared_pkt = &ppshared[shared_pkt_cursor]
+
+        try:
+            parse_return_code = parseTCPPacket(current_shared_pkt, pkt, None)
         except Exception, e:
             # Something went wrong with parsing the line. Save for analysis
             if not options.quiet:
@@ -384,30 +403,72 @@ def parsePkts(spq, ppq, pc, options):
             trafcap.logException(e, pkt=pkt)
             continue     
 
-        # parsing problem can sometimes cause (),[] to be returned
-        if data == []: continue
+        # parsing problem can sometimes cause -1 to be returned
+        if parse_return_code == -1: continue
 
         try:
-            ppq.put((key, data))   # Blocks if queue is empty
+            ppq.put(shared_pkt_cursor)   # Blocks if queue is empty
+            shared_pkt_cursor += 1
         except IOError:
             # Exception occurs if signal handled during put 
             continue
 
-updateDict_running = True
-def updateDict(ppq, pc, options, session, capture):
+DEF GET_WAIT = 0.01
+cdef bint updateDict_running = True
+def updateDict(ppq, python_ppshared, pc, options, session, capture):
+    # Signal Handling
     def updateDictCatchCntlC(signum, stack):
         print 'Caught CntlC in updateDict...'
         global updateDict_running
         updateDict_running = False
 
     signal.signal(signal.SIGINT, updateDictCatchCntlC)
-    get_wait = 0.01
-    get_loop_counter = 0
 
-    update_db = False
+    # Cythonize access to the shared memory array
+    cdef long pointer = ctypes.addressof(python_ppshared)
+    cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>pointer
+
+    cdef int get_loop_counter = 0
+
+    cdef bint update_db = False
+    cdef TCPPacketHeaders* current_shared_pkt
+    cdef int shared_pkt_cursor
+
+    iptracker = set()
     while updateDict_running:
         try:
-            (key, data) = ppq.get(True, get_wait)   # Blocks if queue is empty
+            shared_pkt_cursor = ppq.get(True, GET_WAIT)   # Blocks if queue is empty
+        except IOError:
+            # Exception occurs if signal handled during get
+            continue
+        except Queue.Empty:
+            update_db = True
+            continue
+            
+        current_shared_pkt = &ppshared[shared_pkt_cursor]
+        iptracker.add(current_shared_pkt.ip1)
+        if len(iptracker) >= 10:
+            for ip in iptracker:
+                print ip
+
+        #TODO: Everything else
+
+
+
+cdef int updateDictOLD(ppq, pc, options, session, capture) except -1:
+    def updateDictCatchCntlC(signum, stack):
+        print 'Caught CntlC in updateDict...'
+        global updateDict_running
+        updateDict_running = False
+
+    signal.signal(signal.SIGINT, updateDictCatchCntlC)
+    cdef int get_loop_counter = 0
+
+    cdef bint update_db = False
+    cdef int shared_pkt_cursor
+    while updateDict_running:
+        try:
+            shared_pkt_cursor = ppq.get(True, get_wait)   # Blocks if queue is empty
         except IOError:
             # Exception occurs if signal handled during get
             continue
@@ -418,9 +479,9 @@ def updateDict(ppq, pc, options, session, capture):
         # Update current_time approx once per second.  Used to decide
         # when to write dictionary items to db so high precision not needed.
         get_loop_counter += get_wait
-        if get_loop_counter >= 1.:
+        if get_loop_counter >= 10:
             trafcap.current_time = time.time()
-            get_loop_counter = 0.
+            get_loop_counter = 0
             update_db = True
 
         # timestamp is always first item in the list
@@ -555,16 +616,18 @@ def main():
         session.info_dict[key][pc.i_csldw] = False 
 
     sniffed_packets = multiprocessing.Queue(maxsize=100000)
-    parsed_packets = multiprocessing.Queue(maxsize=100000)
+    parsed_packet_cursor_queue = multiprocessing.Queue(maxsize=100000)
+    parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
+
     sniffer = multiprocessing.Process(target = sniffPkts, 
-                                      args=(sniffed_packets,pc,))
+        args=(sniffed_packets,pc,))
     parser = multiprocessing.Process(target = parsePkts, 
-                                     args=(sniffed_packets,
-                                           parsed_packets,pc,
-                                           options,))
+        args=(sniffed_packets, parsed_packet_cursor_queue,
+              parsed_packet_buffer,pc, options,))
     updater = multiprocessing.Process(target = updateDict, 
-                                      args=(parsed_packets,pc,
-                                            options,session,capture,))
+        args=(parsed_packet_cursor_queue, parsed_packet_buffer, pc, options,
+              session,capture,))
+
     sniffer.start()
     parser.start()
     updater.start()
@@ -572,7 +635,7 @@ def main():
     while main_running:
         time.sleep(5)
         print 'sniff: ', sniffed_packets.qsize(),
-        print 'parse: ', parsed_packets.qsize(), '\r',
+        print 'parse: ', parsed_packet_cursor_queue.qsize(), '\r',
         sys.stdout.flush()
 
     # Handle shutdown -- send signals?

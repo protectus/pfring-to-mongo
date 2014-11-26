@@ -8,6 +8,7 @@ import time
 import trafcap
 from datetime import datetime
 import traceback
+import sys
 
 class EthernetPacket(object):
     """

@@ -15,6 +15,12 @@ from bisect import bisect_left, insort
 import socket
 from impacket import ImpactDecoder, ImpactPacket
 import os, sys
+from struct import unpack  # For IP Address parsing
+from ctypes import Structure, c_uint16, c_uint32, c_uint64, c_int16
+
+# CYTHON
+from libc.stdint cimport uint64_t,uint32_t,uint16_t,int16_t
+
 
 
 class IpPacket(object):
@@ -225,6 +231,175 @@ class IpPacket(object):
                          float(data[pc.p_etime]), True]
         return new_bytes
 
+# Heads up: These structs are defined twice so that both pure python and
+# lower-level cython can know about them.  Useful for shared memory stuff.
+cdef struct TCPPacketHeaders:
+    uint32_t timestamp
+    int16_t vlan_id
+
+    uint32_t ip1
+    uint16_t port1
+
+    uint32_t ip2
+    uint16_t port2
+
+    uint64_t bytes
+    uint16_t flags
+
+class PythonTCPPacketHeaders(Structure):
+    _fields_ = (("timestamp", c_uint32),
+        ("vlan_id", c_int16),
+        ("ip1", c_uint32),
+        ("port1", c_uint16),
+        ("ip2", c_uint32),
+        ("port2", c_uint16),
+        ("bytes", c_uint64),
+        ("flags", c_uint16))
+
+cdef int parseTCPPacket(TCPPacketHeaders* pkt_struct, pkt, doc) except -1:
+
+    # tcpdump v 4.1.1
+    #        0                     2                    4
+    # 1348367532.072244 IP 192.168.168.17.1696 > 204.210.192.2.25566:
+    #       6                                           14
+    #Flags [P.], seq 30:32, ack 4907, win 65021, length 2
+    # Remember that these are strings
+
+    # TCP DNS traffic
+    # 1360940004.915082 IP 192.168.168.20.49387 > 192.168.168.1.53: Flags [P.], seq 1:36, ack 1, win 256, length 3556043+ TXT? version.avg.com. (33)
+    # 1360940005.089718 IP 192.168.168.1.53 > 192.168.168.20.49387: Flags [P.], seq 2:785, ack 37, win 5840, length 78360289- [256q][|domain]
+
+    # Other TCP DNS traffic examples
+    #1363696331.309098 IP 10.10.80.108.53412 > 192.168.1.6.53: Flags [.], seq 1:1461, ack 1, win 256, length 146037477 [1au] TKEY? 1260-ms-7.1-d299.0595eadf-9091-11e2-368c-00216a5974e4. (1458)
+    #1363696331.316995 IP 10.10.80.108.53412 > 192.168.1.6.53: Flags [.], seq 1461:2921, ack 1, win 256, length 146035888 YXDomain-| [34976q],[|domain]
+
+    #1363696331.324992 IP 10.10.80.108.53412 > 192.168.1.6.53: Flags [P.], seq 2921:3142, ack 1, win 256, length 22161323 updateMA Resp13-| [25745q][|domain]
+    #1363696331.326078 IP 192.168.1.6.53 > 10.10.80.108.53412: Flags [P.], seq 1:455, ack 3142, win 65314, length 45437477- 1/0/1 ANY TKEY (452)
+
+
+    # ICMP traffic - not sure why the tshark filter allows this to be included with TCP traffic
+    # 1362723521.581183 IP 192.168.253.1 > 192.168.253.26: ICMP host 8.8.8.8 unreachable, length 92
+
+    # Parsing for vlan id.  tcpdump version 4.3.0   libpcap version 1.3.0    Sentry 7.0-514
+    #
+    # Previous format:
+    # 1396467169.614347 IP 69.84.41.162.40005 > 10.100.10.244.47671: Flags [P.], seq 145:241 ....
+    #
+    # New format without vlan tag:
+    # 1396467098.199453 70:ca:9b:4b:f7:20 > 00:1b:78:59:e7:c2, 
+    #                   ethertype IPv4 (0x0800), length 162: 
+    #                   69.84.41.162.40008 > 192.168.5.198.42881: Flags [P.], seq 1441:1537 ....
+    #
+    # New format with vlan tag:
+    # 1396467098.199378 00:23:5e:f4:ee:ff > 00:00:5e:00:01:01, 
+    #                   ethertype 802.1Q (0x8100), length 166: vlan 1, p 1, 
+    #                   ethertype IPv4, 69.84.41.162.40008 > 192.168.5.198.42881: Flags [P.], seq 1441:1537 ....
+
+    # parse packet off the wire
+    pkt = pkt.split()
+    if pkt and not doc:
+        flag_list = [['_', '_', '_', '_', '_', '_', '_', '_'],
+                     ['_', '_', '_', '_', '_', '_', '_', '_']]
+
+        # IPv4
+        if pkt[6] == '(0x0800),':
+
+            if pkt[12] == 'ICMP':
+                return 1
+
+            bytes1 = int(pkt[8].strip(':'))
+            vlan_id = -1
+            #vlan_pri = None
+            a1_1,a1_2,a1_3,a1_4,port1 = pkt[9].split(".")
+            a2_1,a2_2,a2_3,a2_4,port2 = pkt[11].strip(":").split(".")
+            flag_string = pkt[13].strip(",").strip("[").strip("]")
+
+        # 802.1Q (vlan) or 802.1qa (shortest path bridging) 
+        #   802.1qa not handled at this time - need sample traffic!
+        elif pkt[6] == '(0x8100),':
+
+            if pkt[18] == 'ICMP':
+                return 1
+
+            bytes1 = int(pkt[8].strip(':'))
+            vlan_id = int(pkt[10].strip(','))
+            #vlan_pri = int(pkt[12].strip(','))
+            a1_1,a1_2,a1_3,a1_4,port1 = pkt[15].split(".")
+            a2_1,a2_2,a2_3,a2_4,port2 = pkt[17].strip(":").split(".")
+            flag_string = pkt[19].strip(",").strip("[").strip("]")
+
+        else:
+            # Record packet details for future handling
+            # IPv6 handled in Other traffic
+            raise Exception('Unexpected ethertype.')
+
+        # Handle these cases:
+        # 1398119164.258130 70:ca:9b:4b:f7:20 > 00:23:5e:f4:ee:ff, ethertype IPv4 (0x0800), length 154: 192.168.5.146.1458359471 > 10.59.62.53.2049: 96 getattr fh 0,41/0
+        # 1398119164.259488 00:23:5e:f4:ee:ff > 00:00:5e:00:01:01, ethertype 802.1Q (0x8100), length 90: vlan 1, p 1, ethertype IPv4, 10.59.62.53.2049 > 192.168.5.146.1458359471: reply ok 28 getattr ERROR: Stale NFS file handle
+        port1_int = int(port1)
+        port2_int = int(port2)
+        if port1_int > 65535 or port2_int > 65535:
+            return 1
+
+        #if pkt[5] == "ICMP":
+        #    return (),[]
+        # 
+        #a1_1,a1_2,a1_3,a1_4,port1 = pkt[2].split(".")
+        #a2_1,a2_2,a2_3,a2_4,port2 = pkt[4].strip(":").split(".")
+        # 
+        #flag_string = pkt[6].strip(",").strip("[").strip("]")
+
+        # Handle case of SYN-ACK flag by changing the flag from S to s
+        if (flag_string == "S."):
+            flag_string = "s"
+
+        #if (":" in pkt[8]):
+        #    # TCP DNS - see traffic samples above
+        #    seq_start,seq_end = pkt[8].strip(",").split(":")
+        #    bytes1 = int(seq_end) - int(seq_start)
+        #    if bytes1 < 0: bytes1 = bytes1 + 4294967296
+        #else:
+        #    len_index = pkt.index("length")
+        #    bytes1_match = pc.leading_num_re.match(pkt[len_index+1])
+        #    bytes1 = int(bytes1_match.group(1))
+    
+        # Handle case of multiple flags
+        for index, c in enumerate(flag_string):
+            flag_list[0][index] = c
+
+        # Represent IP addresses a tuples instead of strings
+        addr1 = (a1_1, a1_2, a1_3, a1_4)
+        addr2 = (a2_1, a2_2, a2_3, a2_4)
+    
+        addrs = [addr1, addr2]
+
+        ports = [port1_int, port2_int]
+        byts = [bytes1, 0]
+        epoch_time = pkt[0]
+        proto = "_"                            # for future use 
+
+    # Sort to get a consistent key for each TCP session
+    data = sorted(zip(addrs, ports, byts, flag_list))
+
+
+    #[((1,2,3,4), 25254, 0, ['_', '_', '_', '_', '_', '_', '_', '_']),
+    # ((9,8,7,6), 22,  140, ['P', '_', '_', '_', '_', '_', '_', '_'])]
+
+    # Add packet data - unrelated to any IP
+    data.append(epoch_time)
+    data.append(proto)
+    data.append(vlan_id)
+    #data.append(vlan_pri)
+
+    pkt_struct.ip1 = unpack('>L',socket.inet_aton('.'.join(addr1)))[0]
+    pkt_struct.ip2 = unpack('>L',socket.inet_aton('.'.join(addr2)))[0]
+    pkt_struct.port1 = port1_int
+    pkt_struct.port2 = port2_int
+    pkt_struct.timestamp = int(float(epoch_time))
+    pkt_struct.vlan_id = vlan_id
+    pkt_struct.bytes = bytes1
+    #pkt_struct.flags = TODO
+
 
 class TcpPacket(IpPacket):
     """
@@ -259,144 +434,20 @@ class TcpPacket(IpPacket):
     i_vl=15        # vlan id
 
     @classmethod
-    def parse(pc, pkt, doc):
+    def parse_doc(pc, doc):
 
-        # tcpdump v 4.1.1
-        #        0                     2                    4
-        # 1348367532.072244 IP 192.168.168.17.1696 > 204.210.192.2.25566:
-        #       6                                           14
-        #Flags [P.], seq 30:32, ack 4907, win 65021, length 2
-        # Remember that these are strings
-
-        # TCP DNS traffic
-        # 1360940004.915082 IP 192.168.168.20.49387 > 192.168.168.1.53: Flags [P.], seq 1:36, ack 1, win 256, length 3556043+ TXT? version.avg.com. (33)
-        # 1360940005.089718 IP 192.168.168.1.53 > 192.168.168.20.49387: Flags [P.], seq 2:785, ack 37, win 5840, length 78360289- [256q][|domain]
-
-        # Other TCP DNS traffic examples
-        #1363696331.309098 IP 10.10.80.108.53412 > 192.168.1.6.53: Flags [.], seq 1:1461, ack 1, win 256, length 146037477 [1au] TKEY? 1260-ms-7.1-d299.0595eadf-9091-11e2-368c-00216a5974e4. (1458)
-        #1363696331.316995 IP 10.10.80.108.53412 > 192.168.1.6.53: Flags [.], seq 1461:2921, ack 1, win 256, length 146035888 YXDomain-| [34976q],[|domain]
-
-        #1363696331.324992 IP 10.10.80.108.53412 > 192.168.1.6.53: Flags [P.], seq 2921:3142, ack 1, win 256, length 22161323 updateMA Resp13-| [25745q][|domain]
-        #1363696331.326078 IP 192.168.1.6.53 > 10.10.80.108.53412: Flags [P.], seq 1:455, ack 3142, win 65314, length 45437477- 1/0/1 ANY TKEY (452)
-
-
-        # ICMP traffic - not sure why the tshark filter allows this to be included with TCP traffic
-        # 1362723521.581183 IP 192.168.253.1 > 192.168.253.26: ICMP host 8.8.8.8 unreachable, length 92
-
-        # Parsing for vlan id.  tcpdump version 4.3.0   libpcap version 1.3.0    Sentry 7.0-514
-        #
-        # Previous format:
-        # 1396467169.614347 IP 69.84.41.162.40005 > 10.100.10.244.47671: Flags [P.], seq 145:241 ....
-        #
-        # New format without vlan tag:
-        # 1396467098.199453 70:ca:9b:4b:f7:20 > 00:1b:78:59:e7:c2, 
-        #                   ethertype IPv4 (0x0800), length 162: 
-        #                   69.84.41.162.40008 > 192.168.5.198.42881: Flags [P.], seq 1441:1537 ....
-        #
-        # New format with vlan tag:
-        # 1396467098.199378 00:23:5e:f4:ee:ff > 00:00:5e:00:01:01, 
-        #                   ethertype 802.1Q (0x8100), length 166: vlan 1, p 1, 
-        #                   ethertype IPv4, 69.84.41.162.40008 > 192.168.5.198.42881: Flags [P.], seq 1441:1537 ....
-
-        # parse packet off the wire
-        if pkt and not doc:
-            flag_list = [['_', '_', '_', '_', '_', '_', '_', '_'],
-                         ['_', '_', '_', '_', '_', '_', '_', '_']]
-
-            # IPv4
-            if pkt[6] == '(0x0800),':
-
-                if pkt[12] == 'ICMP':
-                    return (),[]
-
-                bytes1 = int(pkt[8].strip(':'))
-                vlan_id = None
-                #vlan_pri = None
-                a1_1,a1_2,a1_3,a1_4,port1 = pkt[9].split(".")
-                a2_1,a2_2,a2_3,a2_4,port2 = pkt[11].strip(":").split(".")
-                flag_string = pkt[13].strip(",").strip("[").strip("]")
-
-            # 802.1Q (vlan) or 802.1qa (shortest path bridging) 
-            #   802.1qa not handled at this time - need sample traffic!
-            elif pkt[6] == '(0x8100),':
-
-                if pkt[18] == 'ICMP':
-                    return (),[]
-
-                bytes1 = int(pkt[8].strip(':'))
-                vlan_id = int(pkt[10].strip(','))
-                #vlan_pri = int(pkt[12].strip(','))
-                a1_1,a1_2,a1_3,a1_4,port1 = pkt[15].split(".")
-                a2_1,a2_2,a2_3,a2_4,port2 = pkt[17].strip(":").split(".")
-                flag_string = pkt[19].strip(",").strip("[").strip("]")
-
-            else:
-                # Record packet details for future handling
-                # IPv6 handled in Other traffic
-                raise Exception('Unexpected ethertype.')
-
-            # Handle these cases:
-            # 1398119164.258130 70:ca:9b:4b:f7:20 > 00:23:5e:f4:ee:ff, ethertype IPv4 (0x0800), length 154: 192.168.5.146.1458359471 > 10.59.62.53.2049: 96 getattr fh 0,41/0
-            # 1398119164.259488 00:23:5e:f4:ee:ff > 00:00:5e:00:01:01, ethertype 802.1Q (0x8100), length 90: vlan 1, p 1, ethertype IPv4, 10.59.62.53.2049 > 192.168.5.146.1458359471: reply ok 28 getattr ERROR: Stale NFS file handle
-            port1_int = int(port1)
-            port2_int = int(port2)
-            if port1_int > 65535 or port2_int > 65535:
-                return (), [] 
-
-            #if pkt[5] == "ICMP":
-            #    return (),[]
-            # 
-            #a1_1,a1_2,a1_3,a1_4,port1 = pkt[2].split(".")
-            #a2_1,a2_2,a2_3,a2_4,port2 = pkt[4].strip(":").split(".")
-            # 
-            #flag_string = pkt[6].strip(",").strip("[").strip("]")
-
-            # Handle case of SYN-ACK flag by changing the flag from S to s
-            if (flag_string == "S."):
-                flag_string = "s"
-
-            #if (":" in pkt[8]):
-            #    # TCP DNS - see traffic samples above
-            #    seq_start,seq_end = pkt[8].strip(",").split(":")
-            #    bytes1 = int(seq_end) - int(seq_start)
-            #    if bytes1 < 0: bytes1 = bytes1 + 4294967296
-            #else:
-            #    len_index = pkt.index("length")
-            #    bytes1_match = pc.leading_num_re.match(pkt[len_index+1])
-            #    bytes1 = int(bytes1_match.group(1))
-        
-            # Handle case of multiple flags
-            for index, c in enumerate(flag_string):
-                flag_list[0][index] = c
-    
-            # Represent IP addresses a tuples instead of strings
-            addr1 = (int(a1_1), int(a1_2), int(a1_3), int(a1_4))
-            addr2 = (int(a2_1), int(a2_2), int(a2_3), int(a2_4))
-        
-            addrs = [addr1, addr2]
-
-            ports = [port1_int, port2_int]
-            byts = [bytes1, 0]
-            epoch_time = pkt[0]
-            proto = "_"                            # for future use 
-
-        # parse doc from db 
-        elif doc and not pkt:
-            addrs = [trafcap.intToTuple(doc['ip1']),
-                     trafcap.intToTuple(doc['ip2'])]
-            ports = [doc['p1'], doc['p2']]
-            byts = [doc['b1'], doc['b2']]
-            flag_list = [doc['f1'], doc['f2']]
-            epoch_time = doc['tb']
-            proto = doc['pr']
-            try:
-                vlan_id = doc['vl'] 
-            except KeyError:
-                vlan_id = None
-            #vlan_pri = None
-                
-        else:
-            return (), [] 
+        addrs = [trafcap.intToTuple(doc['ip1']),
+                 trafcap.intToTuple(doc['ip2'])]
+        ports = [doc['p1'], doc['p2']]
+        byts = [doc['b1'], doc['b2']]
+        flag_list = [doc['f1'], doc['f2']]
+        epoch_time = doc['tb']
+        proto = doc['pr']
+        try:
+            vlan_id = doc['vl'] 
+        except KeyError:
+            vlan_id = None
+        #vlan_pri = None
         
         # Sort to get a consistent key for each TCP session
         data = sorted(zip(addrs, ports, byts, flag_list))
@@ -553,6 +604,7 @@ class UdpPacket(IpPacket):
     @classmethod
     def parse(pc, pkt, doc):
         if pkt and not doc:
+            pkt = pkt.split()
             pkt_len = len(pkt)
             if pkt_len == 5:
                 # UDP packet without ports:
