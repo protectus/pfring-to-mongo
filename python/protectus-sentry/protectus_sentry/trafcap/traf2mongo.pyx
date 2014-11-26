@@ -352,9 +352,9 @@ def sniffPkts(spq, pc):
 
     while sniffPkts_running:
         try:
-            #for pkt in proc.stdout:  # blocks - not sure why
-            pkt = proc.stdout.readline()
-            spq.put(pkt)
+            #pkt = proc.stdout.readline()   # causes 100% CPU
+            for pkt in proc.stdout:  
+                spq.put(pkt)
 
         except IOError:
             # Exception occurs if signal handled during read
