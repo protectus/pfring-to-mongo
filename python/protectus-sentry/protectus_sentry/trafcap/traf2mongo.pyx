@@ -332,6 +332,9 @@ def OLDmain():
 
 sniffPkts_running = True
 def sniffPkts(spq, pc):
+    # Allow exit without flush.
+    spq.cancel_join_thread()
+
     def sniffPktsCatchCntlC(signum, stack):
         print 'Caught CntlC in sniffPkts...'
         global sniffPkts_running
@@ -364,6 +367,10 @@ def sniffPkts(spq, pc):
 
 cdef bint parsePkts_running = True
 def parsePkts(spq, ppq, python_ppshared, pc, options):
+    # Allow exit without flush.
+    spq.cancel_join_thread()
+    ppq.cancel_join_thread()
+
     # First, setup signal handling
     def parsePktsCatchCntlC(signum, stack):
         print 'Caught CntlC in parsePkts...'
@@ -416,6 +423,9 @@ def parsePkts(spq, ppq, python_ppshared, pc, options):
 DEF GET_WAIT = 0.01
 cdef bint updateDict_running = True
 def updateDict(ppq, python_ppshared, pc, options, session, capture):
+    # Allow exit without flush.
+    ppq.cancel_join_thread()
+
     # Signal Handling
     def updateDictCatchCntlC(signum, stack):
         print 'Caught CntlC in updateDict...'
