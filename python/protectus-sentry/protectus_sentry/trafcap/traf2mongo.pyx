@@ -12,11 +12,12 @@ import math
 import traceback
 import trafcap
 from trafcapIpPacket import *
-from trafcapIpPacket cimport TCPPacketHeaders, parseTCPPacket
+from trafcapIpPacket cimport TCPPacketHeaders, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_session, generate_tcp_session_key_from_pkt
 from trafcapEthernetPacket import *
 from trafcapContainer import *
 import multiprocessing
 import Queue
+from collections import deque
 
 #CYTHON
 from cpython cimport array
@@ -398,7 +399,7 @@ def parsePkts(spq, ppq, python_ppshared, pc, options):
         current_shared_pkt = &ppshared[shared_pkt_cursor]
 
         try:
-            parse_return_code = parseTCPPacket(current_shared_pkt, pkt, None)
+            parse_return_code = parse_tcp_packet(current_shared_pkt, pkt, None)
         except Exception, e:
             # Something went wrong with parsing the line. Save for analysis
             if not options.quiet:
@@ -422,7 +423,7 @@ def parsePkts(spq, ppq, python_ppshared, pc, options):
 
 DEF GET_WAIT = 0.01
 cdef bint updateDict_running = True
-def updateDict(ppq, python_ppshared, pc, options, session, capture):
+def updateDict(ppq, python_ppshared, python_sessions_shared, pc, options):
     # Allow exit without flush.
     ppq.cancel_join_thread()
 
@@ -434,17 +435,39 @@ def updateDict(ppq, python_ppshared, pc, options, session, capture):
 
     signal.signal(signal.SIGINT, updateDictCatchCntlC)
 
-    # Cythonize access to the shared memory array
-    cdef long pointer = ctypes.addressof(python_ppshared)
-    cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>pointer
+    # Cythonize access to the shared packets
+    cdef long ppshared_pointer = ctypes.addressof(python_ppshared)
+    cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>ppshared_pointer
 
+    # Cythonize access to the shared sessions
+    cdef long sessions_pointer = ctypes.addressof(python_sessions_shared)
+    cdef TCPSession* sessions_shared = <TCPSession*>sessions_pointer
+
+    # Loop Variables
     cdef int get_loop_counter = 0
-
     cdef bint update_db = False
-    cdef TCPPacketHeaders* current_shared_pkt
-    cdef int shared_pkt_cursor
 
-    iptracker = set()
+    cdef int shared_pkt_cursor
+    cdef TCPPacketHeaders* packet
+
+    available_slots = deque(xrange(1000000))
+    session_slot_map = {}
+    cdef int session_slot
+    cdef TCPSession* session
+
+    # The primary packet loop
+    # General Strategy:
+    #   - Since we can't get C pointers right out of a python dictionary very
+    #     well, we just store a slot number, and use that to reference the
+    #     right place in shared memory.
+    #
+    #   - If we get a slot position from the dictionary, we update the struct
+    #     in memory
+    #
+    #   - If key isn't in the dictionary, we make a new one, and add it.
+    #
+    #   - We don't keep track of when connections expire.  We let the "database
+    #     phase" tell us when it's done with a connection.
     while updateDict_running:
         try:
             shared_pkt_cursor = ppq.get(True, GET_WAIT)   # Blocks if queue is empty
@@ -455,14 +478,31 @@ def updateDict(ppq, python_ppshared, pc, options, session, capture):
             update_db = True
             continue
             
-        current_shared_pkt = &ppshared[shared_pkt_cursor]
-        iptracker.add(current_shared_pkt.ip1)
-        if len(iptracker) >= 10:
-            for ip in iptracker:
-                print ip
+        packet = &ppshared[shared_pkt_cursor]
 
-        #TODO: Everything else
+        # Get the session's key for lookup
+        session_key = generate_tcp_session_key_from_pkt(packet)
 
+        # Let the dictionary tell us where the session lives
+        session_slot = session_slot_map.get(session_key,-1)
+
+        # If no session existed already, we need to make one.
+        if (session_slot == -1):
+            # Create new session from packet
+            new_slot_number = available_slots.popleft()
+            session = &sessions_shared[new_slot_number]
+            generate_tcp_session(session, packet)
+
+            #
+            session_slot_map[session_key] = new_slot_number
+            # TODO: Tell next phase about the new session
+        else:
+            # Update existing session
+            # TODO: Lock the session
+            session = &sessions_shared[session_slot]
+            update_tcp_session(session, packet)
+
+        # TODO: Get released slots from next phase
 
 
 cdef int updateDictOLD(ppq, pc, options, session, capture) except -1:
@@ -626,8 +666,9 @@ def main():
         session.info_dict[key][pc.i_csldw] = False 
 
     sniffed_packets = multiprocessing.Queue(maxsize=100000)
-    parsed_packet_cursor_queue = multiprocessing.Queue(maxsize=100000)
+    parsed_packet_cursor_queue = multiprocessing.Queue(maxsize=100000 - 5)
     parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
+    sessions_buffer = multiprocessing.RawArray(PythonTCPSession, 100000)
 
     sniffer = multiprocessing.Process(target = sniffPkts, 
         args=(sniffed_packets,pc,))
@@ -635,8 +676,7 @@ def main():
         args=(sniffed_packets, parsed_packet_cursor_queue,
               parsed_packet_buffer,pc, options,))
     updater = multiprocessing.Process(target = updateDict, 
-        args=(parsed_packet_cursor_queue, parsed_packet_buffer, pc, options,
-              session,capture,))
+        args=(parsed_packet_cursor_queue, parsed_packet_buffer, sessions_buffer, pc, options))
 
     sniffer.start()
     parser.start()

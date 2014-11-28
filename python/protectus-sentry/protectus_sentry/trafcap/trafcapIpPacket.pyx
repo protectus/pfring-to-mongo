@@ -16,10 +16,12 @@ import socket
 from impacket import ImpactDecoder, ImpactPacket
 import os, sys
 from struct import unpack  # For IP Address parsing
-from ctypes import Structure, c_uint16, c_uint32, c_uint64, c_int16
+from ctypes import Structure, c_uint16, c_uint32, c_uint64, c_int16, c_double
 
 # CYTHON
-from libc.stdint cimport uint64_t,uint32_t,uint16_t,int16_t
+from libc.stdint cimport uint64_t, uint32_t, uint16_t, int16_t
+from libc.string cimport memset
+from cpython.ref cimport PyObject
 
 
 
@@ -234,29 +236,72 @@ class IpPacket(object):
 # Heads up: These structs are defined twice so that both pure python and
 # lower-level cython can know about them.  Useful for shared memory stuff.
 cdef struct TCPPacketHeaders:
-    uint32_t timestamp
-    int16_t vlan_id
-
     uint32_t ip1
     uint16_t port1
 
     uint32_t ip2
     uint16_t port2
 
+    int16_t vlan_id
+    double timestamp
+
     uint64_t bytes
     uint16_t flags
 
 class PythonTCPPacketHeaders(Structure):
-    _fields_ = (("timestamp", c_uint32),
-        ("vlan_id", c_int16),
+    _fields_ = (
         ("ip1", c_uint32),
         ("port1", c_uint16),
         ("ip2", c_uint32),
+        ("vlan_id", c_int16),
+        ("timestamp", c_double),
         ("port2", c_uint16),
         ("bytes", c_uint64),
-        ("flags", c_uint16))
+        ("flags", c_uint16)
+    )
 
-cdef int parseTCPPacket(TCPPacketHeaders* pkt_struct, pkt, doc) except -1:
+
+cdef struct TCPSession:
+    uint32_t ip1
+    uint16_t port1
+    uint64_t bytes1
+    uint16_t flags1
+
+    uint32_t ip2
+    uint16_t port2
+    uint64_t bytes2
+    uint16_t flags2
+
+    int16_t vlan_id
+    double tb
+    double te
+    uint64_t packets
+
+    uint32_t[30][2] traffic_bytes
+
+
+class PythonTCPSession(Structure):
+    _fields_ = (
+        ("ip1", c_uint32),
+        ("port1", c_uint16),
+        ("bytes1", c_uint64),
+        ("flags1", c_uint16),
+
+        ("ip2", c_uint32),
+        ("port2", c_uint16),
+        ("bytes2", c_uint64),
+        ("flags2", c_uint16),
+
+        ("vlan_id", c_int16),
+        ("tb", c_double),
+        ("te", c_double),
+        ("packets", c_uint64),
+
+        ("traffic_bytes", c_uint32 * 30 * 2)
+    )
+
+
+cdef int parse_tcp_packet(TCPPacketHeaders* pkt_struct, pkt, doc) except -1:
 
     # tcpdump v 4.1.1
     #        0                     2                    4
@@ -379,16 +424,16 @@ cdef int parseTCPPacket(TCPPacketHeaders* pkt_struct, pkt, doc) except -1:
         proto = "_"                            # for future use 
 
     # Sort to get a consistent key for each TCP session
-    data = sorted(zip(addrs, ports, byts, flag_list))
+    #data = sorted(zip(addrs, ports, byts, flag_list))
 
 
     #[((1,2,3,4), 25254, 0, ['_', '_', '_', '_', '_', '_', '_', '_']),
     # ((9,8,7,6), 22,  140, ['P', '_', '_', '_', '_', '_', '_', '_'])]
 
     # Add packet data - unrelated to any IP
-    data.append(epoch_time)
-    data.append(proto)
-    data.append(vlan_id)
+    #data.append(epoch_time)
+    #data.append(proto)
+    #data.append(vlan_id)
     #data.append(vlan_pri)
 
     pkt_struct.ip1 = unpack('>L',socket.inet_aton('.'.join(addr1)))[0]
@@ -400,6 +445,113 @@ cdef int parseTCPPacket(TCPPacketHeaders* pkt_struct, pkt, doc) except -1:
     pkt_struct.bytes = bytes1
     #pkt_struct.flags = TODO
 
+cdef int print_tcp_session(TCPSession* session) except -1:
+    print "IP1: ", str(session.ip1)
+    print "port1: ", str( session.port1)
+    print "bytes1: ", str( session.bytes1)
+    print "flags1: ", str( session.flags1)
+    print ""
+    print "IP2: ", str( session.ip2)
+    print "port2: ", str( session.port2)
+    print "bytes2: ", str( session.bytes2)
+    print "flags2: ", str( session.flags2)
+    print ""
+    print "vlanid: ", str( session.vlan_id)
+    print "time begin: ", str( session.tb)
+    print "time end: ", str( session.te)
+    print "num packets: ", str( session.packets)
+    print ""
+    print "B1\tB2"
+    for b in session.traffic_bytes:
+        print str(b[0])+"\t"+str(b[1])
+    
+
+cdef int generate_tcp_session(TCPSession* session, TCPPacketHeaders* packet):
+    session.ip1 = packet.ip1
+    session.port1 = packet.port1
+    session.bytes1 = packet.bytes
+    session.flags1 = packet.flags
+
+    session.ip2 = packet.ip2
+    session.port2 = packet.port2
+    session.bytes2 = 0
+    session.flags2 = 0
+
+    session.vlan_id = packet.vlan_id
+    session.tb = packet.timestamp
+    session.te = packet.timestamp
+    session.packets = 1
+
+    session.traffic_bytes[<uint64_t>packet.timestamp % 30][0] = packet.bytes
+
+    return 0
+    
+cdef int update_tcp_session(TCPSession* session, TCPPacketHeaders* packet):
+    # We need timestamp to be an int to navigate bytes
+    cdef uint64_t current_packet_second = <uint64_t>packet.timestamp
+    cdef uint64_t last_packet_second = <uint64_t>session.te
+
+    # Clean up old bytes slots, if needed.  The slots to be cleaned are
+    # everything between the last update and the current time, including
+    # the current time, but not including the last update.  
+    cdef int slot_second
+    if last_packet_second <= current_packet_second - 30:
+        # Clear everything
+        memset(session.traffic_bytes, 0, sizeof(session.traffic_bytes))
+    elif last_packet_second < current_packet_second:
+        # Only clear the slots that have occured between then and now.
+        for slot_second in range(last_packet_second + 1, current_packet_second + 1):
+            session.traffic_bytes[slot_second % 30][0] = 0
+            session.traffic_bytes[slot_second % 30][1] = 0
+
+    #session.vlan_id = vlan
+    #session.tb = 
+    session.te = packet.timestamp
+    session.packets += 1
+    cdef int bytes_slot = current_packet_second % 30
+    if (session.ip1 == packet.ip1):
+        #session.ip1 = packet.ip1
+        #session.port1 = packet.port1
+        session.bytes1 += packet.bytes
+        session.flags1 |= packet.flags
+        session.traffic_bytes[bytes_slot][0] += packet.bytes
+
+    else:
+        #session.ip2 = packet.ip2
+        #session.port2 = packet.port2
+        session.bytes2 += packet.bytes
+        session.flags2 += packet.flags
+        session.traffic_bytes[bytes_slot][1] += packet.bytes
+
+    return 0
+
+
+cdef object generate_tcp_session_key_from_pkt(TCPPacketHeaders* pkt):
+    
+    key = 0
+    if pkt.ip1 > pkt.ip2:
+        key += pkt.ip1
+        key *= 2 ** 16
+        key += pkt.port1
+        key *= 2 ** 32
+        key += pkt.ip2
+        key *= 2 ** 16
+        key += pkt.port2
+        key *= 2 ** 16
+    else:
+        key += pkt.ip2
+        key *= 2 ** 16
+        key += pkt.port2
+        key *= 2 ** 32
+        key += pkt.ip1
+        key *= 2 ** 16
+        key += pkt.port1
+        key *= 2 ** 16
+        
+    key += pkt.vlan_id
+
+    return <object>key
+        
 
 class TcpPacket(IpPacket):
     """
