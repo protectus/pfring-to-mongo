@@ -21,6 +21,9 @@ from collections import deque
 
 #CYTHON
 from cpython cimport array
+from libc.stdint cimport uint64_t, uint32_t
+from libc.string cimport memcpy, memset
+from libc.stdlib cimport malloc
 import ctypes
 
 #proc = None
@@ -423,7 +426,7 @@ def parsePkts(spq, ppq, python_ppshared, pc, options):
 
 DEF GET_WAIT = 0.01
 cdef bint updateDict_running = True
-def updateDict(ppq, python_ppshared, python_sessions_shared, pc, options):
+def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, session_alloc_pipe, pc, options):
     # Allow exit without flush.
     ppq.cancel_join_thread()
 
@@ -442,6 +445,9 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, pc, options):
     # Cythonize access to the shared sessions
     cdef long sessions_pointer = ctypes.addressof(python_sessions_shared)
     cdef TCPSession* sessions_shared = <TCPSession*>sessions_pointer
+
+    # Make the pipe data a raw buffer.  Enables cython later>
+    new_slot_number_pipeable = ctypes.c_uint32()
 
     # Loop Variables
     cdef int get_loop_counter = 0
@@ -493,16 +499,151 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, pc, options):
             session = &sessions_shared[new_slot_number]
             generate_tcp_session(session, packet)
 
-            #
+            # Map the key to the new session
             session_slot_map[session_key] = new_slot_number
-            # TODO: Tell next phase about the new session
+            # Tell next phase about the new session
+            new_slot_number_pipeable.value = new_slot_number
+            session_alloc_pipe.send_bytes(new_slot_number_pipeable)
         else:
             # Update existing session
-            # TODO: Lock the session
             session = &sessions_shared[session_slot]
+            lock = session_locks[session_slot % 1000]
+            lock.acquire()
             update_tcp_session(session, packet)
+            lock.release()
 
         # TODO: Get released slots from next phase
+
+
+cdef bint bookkeeper_running = True
+def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, options):
+    print "In bookkeeper"
+
+    # Signal Handling
+    def bookkeeperCatchCntlC(signum, stack):
+        print 'Caught CntlC in bookkeeper...'
+        global bookkeeper_running
+        bookkeeper_running = False
+
+    signal.signal(signal.SIGINT, bookkeeperCatchCntlC)
+
+    cdef int i
+
+    # Cythonize access to the shared sessions
+    cdef long sessions_pointer = ctypes.addressof(python_sessions_shared)
+    cdef TCPSession* sessions_shared = <TCPSession*>sessions_pointer
+
+    # Cythonize the current slot number
+    py_current_slot = ctypes.c_uint32()
+    cdef long session_slot_address = ctypes.addressof(py_current_slot)
+    cdef uint32_t* session_slot_p = <uint32_t*>session_slot_address
+
+    cdef TCPSession* session
+    cdef TCPSession[1] session_copy
+    cdef uint64_t session_start_second
+
+    # Setup a bunch of queues for second-by-second scheduling of writes to the database
+    cdef uint32_t schedule_sizes[30]
+    memset(schedule_sizes, 0, sizeof(schedule_sizes))
+
+    cdef uint32_t *schedule[30]
+    for i in range(30):
+        schedule[i] = <uint32_t*>malloc(sizeof(uint32_t) * 100000)
+        
+    cdef int schedule_number
+    cdef uint32_t* slots_to_write
+    cdef uint32_t slot
+
+    # Current second
+    cdef uint64_t current_second = 0
+    cdef uint64_t last_second_written = int(time.time()) - 1
+
+    cdef int imaginary_writes = 0
+    cdef int session_count = 0
+
+    # The primary loop
+    # There are several tasks to accomplish:
+    #   - Process new connections.  We'll receive word of new connections as
+    #     slot numbers via the pipe.  We need to add country data and schedule
+    #     a time for the first bytes document to be written to the database.
+    #
+    #   - Once a second, revisit connections that have been sitting around for
+    #     20 seconds.  These can be written to the database, and can sometimes
+    #     be closed out. If they're closed out, we need to send word back to
+    #     the update process, and open the slot back up.
+    while bookkeeper_running:
+        # Always check for new data.  If there is none, check the time
+        # TODO: Better time/loop management
+        while sessions_sync_pipe.poll():
+            # Read data from the pipe into a ctype, which is pointed to by
+            # cython.  No type cohersion or translation required.
+            # SIDE EFFECT: population of current_session_slot
+            sessions_sync_pipe.recv_bytes_into(py_current_slot)
+
+            session = &sessions_shared[session_slot_p[0]]
+
+            # This is this session's first check-in.  We need to schedule the
+            # first check-up.
+
+            # The schedule structure is 30 rows for 30 seconds.  The rows are
+            # numbered time mod 30 seconds.  
+            session_start_second = <uint64_t>session.tb
+            schedule_number = (session_start_second + 20) % 30
+            
+            #print "Scheduling",session_slot_p[0],"in",schedule_number,",",schedule_sizes[schedule_number]
+            schedule[schedule_number][schedule_sizes[schedule_number]] = session_slot_p[0]
+            schedule_sizes[schedule_number] += 1
+
+            session_count += 1
+
+            # Break out if we've crossed into a new second.
+            if session_start_second > current_second:
+                current_second = session_start_second
+                break
+
+        # Check for data to be written to the database
+        # We want to write the seconds up to but not including the current second.
+        # We use if, not while, as a throttling mechanism.
+        if (last_second_written + 1) < current_second:
+            schedule_number = (last_second_written + 1) % 30
+            slots_to_write = schedule[schedule_number]
+
+            # Iterate over all the slots scheduled to be dealt with this
+            # second, and deal with them.
+            for i in range(schedule_sizes[schedule_number]):
+                #print "Reading",schedule_number,i,":",schedule[schedule_number][i]
+                slot = slots_to_write[i]
+                session = &sessions_shared[slot]
+                lock = session_locks[slot % 1000]
+                lock.acquire()
+                # Get the data we need as quickly as possible so we can
+                # release the lock.
+                memcpy(session_copy, session, sizeof(TCPSession))
+                lock.release()
+
+                # TODO: Write to the database, or something.
+                #print_tcp_session(session_copy)
+                imaginary_writes += 2
+
+                # TODO: Either reschedule the session for another check-in,
+                # or de-allocate the slot.
+                # For now, schedule for the next 20 seconds
+
+                schedule_number = (last_second_written + 21) % 30
+            
+                schedule[schedule_number][schedule_sizes[schedule_number]] = slot
+                schedule_sizes[schedule_number] += 1
+
+
+            # Reset the schedule
+            schedule_sizes[schedule_number] = 0
+            # Mark that we've taken care of this second.
+            last_second_written += 1
+
+            print imaginary_writes, "imaginary mongo writes covering", session_count, "sessions"
+
+                
+        
 
 
 cdef int updateDictOLD(ppq, pc, options, session, capture) except -1:
@@ -648,27 +789,14 @@ def main():
     signal.signal(signal.SIGINT, catchCntlC)
     signal.signal(signal.SIGTERM, catchCntlC)
 
-    # Pre-build the sessionInfo dictionary for more more efficient db writes
-    print "Pre-building dictionaries..."
     oldest_session_time = int(time.time()) - trafcap.session_expire_timeout
-
-    # sessionInfo dictionary
-    info_cursor = session.db[session.info_collection].find( \
-                             spec = {'tem':{'$gte':oldest_session_time}})
-
-    for a_doc in info_cursor:
-        key, data = pc.parse(None, a_doc)
-        session.updateInfoDict(key, data, 0, 0)
-        # Add packet, end time, and _id  - not done by updateInfoDict method
-        session.info_dict[key][pc.i_te] = a_doc['te']
-        session.info_dict[key][pc.i_pkts] = a_doc['pk']
-        session.info_dict[key][pc.i_id] = a_doc['_id']
-        session.info_dict[key][pc.i_csldw] = False 
 
     sniffed_packets = multiprocessing.Queue(maxsize=100000)
     parsed_packet_cursor_queue = multiprocessing.Queue(maxsize=100000 - 5)
     parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
-    sessions_buffer = multiprocessing.RawArray(PythonTCPSession, 100000)
+    sessions_buffer = multiprocessing.RawArray(PythonTCPSession, 1000000)
+    sessions_sync_pipe = multiprocessing.Pipe()
+    session_locks = tuple((multiprocessing.Lock() for i in xrange(1000)))
 
     sniffer = multiprocessing.Process(target = sniffPkts, 
         args=(sniffed_packets,pc,))
@@ -676,11 +804,16 @@ def main():
         args=(sniffed_packets, parsed_packet_cursor_queue,
               parsed_packet_buffer,pc, options,))
     updater = multiprocessing.Process(target = updateDict, 
-        args=(parsed_packet_cursor_queue, parsed_packet_buffer, sessions_buffer, pc, options))
+        args=(parsed_packet_cursor_queue, parsed_packet_buffer, sessions_buffer, session_locks, sessions_sync_pipe[0], pc, options))
+    keeper = multiprocessing.Process(target = bookkeeper,
+        args=(sessions_buffer, session_locks, sessions_sync_pipe[1], options))
 
     sniffer.start()
     parser.start()
     updater.start()
+    print "Starting bookkeeper"
+    keeper.start()
+    print "Bookkeeper started at PID", keeper.pid
 
     while main_running:
         time.sleep(5)
@@ -692,6 +825,9 @@ def main():
     sniffer.join()
     parser.join()
     updater.join()
+    keeper.join()
+
+    print "Keeper exit code:", keeper.exitcode
 
 
 if __name__ == "__main__":
