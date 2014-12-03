@@ -12,7 +12,7 @@ import math
 import traceback
 import trafcap
 from trafcapIpPacket import *
-from trafcapIpPacket cimport TCPPacketHeaders, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_session, generate_tcp_session_key_from_pkt
+from trafcapIpPacket cimport TCPPacketHeaders, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_session, generate_tcp_session_key_from_pkt, generate_tcp_session_key_from_session
 from trafcapEthernetPacket import *
 from trafcapContainer import *
 import multiprocessing
@@ -419,7 +419,7 @@ def parsePkts(spq, ppq, python_ppshared, pc, options):
 
         try:
             ppq.put(shared_pkt_cursor)   # Blocks if queue is empty
-            shared_pkt_cursor += 1
+            shared_pkt_cursor = (shared_pkt_cursor + 1) % 100000
         except IOError:
             # Exception occurs if signal handled during put 
             continue
@@ -448,6 +448,8 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, sess
 
     # Make the pipe data a raw buffer.  Enables cython later>
     new_slot_number_pipeable = ctypes.c_uint32()
+    cdef long new_slot_number_address = ctypes.addressof(new_slot_number_pipeable)
+    cdef uint32_t* new_slot_number_p = <uint32_t*>new_slot_number_address
 
     # Loop Variables
     cdef int get_loop_counter = 0
@@ -457,7 +459,7 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, sess
     cdef TCPPacketHeaders* packet
 
     available_slots = deque(xrange(1000000))
-    session_slot_map = {}
+    cdef dict session_slot_map = {}
     cdef int session_slot
     cdef TCPSession* session
 
@@ -481,7 +483,6 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, sess
             # Exception occurs if signal handled during get
             continue
         except Queue.Empty:
-            update_db = True
             continue
             
         packet = &ppshared[shared_pkt_cursor]
@@ -495,15 +496,17 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, sess
         # If no session existed already, we need to make one.
         if (session_slot == -1):
             # Create new session from packet
-            new_slot_number = available_slots.popleft()
-            session = &sessions_shared[new_slot_number]
+            # This is linked to new_slot_number_pipeable!
+            new_slot_number_p[0] = available_slots.popleft()
+            session = &sessions_shared[new_slot_number_p[0]]
             generate_tcp_session(session, packet)
 
             # Map the key to the new session
-            session_slot_map[session_key] = new_slot_number
+            session_slot_map[session_key] = new_slot_number_p[0]
+            
             # Tell next phase about the new session
-            new_slot_number_pipeable.value = new_slot_number
             session_alloc_pipe.send_bytes(new_slot_number_pipeable)
+            print "Created new session at slot", new_slot_number_p[0]
         else:
             # Update existing session
             session = &sessions_shared[session_slot]
@@ -517,6 +520,10 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, sess
         if session_alloc_pipe.poll():
             session_alloc_pipe.recv_bytes_into(new_slot_number_pipeable)
             available_slots.append(new_slot_number_pipeable.value)
+            # Generate a key so we can delete it from the dictionary
+            del session_slot_map[generate_tcp_session_key_from_session(&sessions_shared[new_slot_number_p[0]])]
+            print "De-dictionary-ing session at slot", new_slot_number_p[0]
+                
 
 
 
@@ -638,9 +645,9 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, option
 
                 # Either reschedule the session for another check-in,
                 # or de-allocate the slot.
-                print second_to_write,":",i,": slot", slot, ", last data", current_second - <uint64_t>session_copy.te
+                #print second_to_write,":",i,": slot", slot, ", last data", current_second - <uint64_t>session_copy.te
                 if (current_second - <uint64_t>session_copy.te) > 100:
-                    print "Deallocating", slot
+                    #print "Deallocating", slot
                     # Write to updateDict about a newly freed slot.  On this
                     # end, all we have to do is forget about it.
 
@@ -814,7 +821,7 @@ def main():
     oldest_session_time = int(time.time()) - trafcap.session_expire_timeout
 
     sniffed_packets = multiprocessing.Queue(maxsize=100000)
-    parsed_packet_cursor_queue = multiprocessing.Queue(maxsize=100000 - 5)
+    parsed_packet_cursor_queue = multiprocessing.Queue(maxsize=100000)
     parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
     sessions_buffer = multiprocessing.RawArray(PythonTCPSession, 1000000)
     sessions_sync_pipe = multiprocessing.Pipe()
@@ -833,9 +840,7 @@ def main():
     sniffer.start()
     parser.start()
     updater.start()
-    print "Starting bookkeeper"
     keeper.start()
-    print "Bookkeeper started at PID", keeper.pid
 
     while main_running:
         time.sleep(5)
@@ -848,8 +853,6 @@ def main():
     parser.join()
     updater.join()
     keeper.join()
-
-    print "Keeper exit code:", keeper.exitcode
 
 
 if __name__ == "__main__":

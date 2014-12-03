@@ -38,6 +38,8 @@ cdef int parse_tcp_packet(TCPPacketHeaders* pkt_struct, pkt, doc) except -1
 
 cdef object generate_tcp_session_key_from_pkt(TCPPacketHeaders* pkt)
 
+cdef object generate_tcp_session_key_from_session(TCPSession* session)
+
 cdef int print_tcp_session(TCPSession* session) except -1
 
 cdef int generate_tcp_session(TCPSession* session, TCPPacketHeaders* packet)

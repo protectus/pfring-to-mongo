@@ -552,6 +552,31 @@ cdef object generate_tcp_session_key_from_pkt(TCPPacketHeaders* pkt):
 
     return <object>key
         
+cdef object generate_tcp_session_key_from_session(TCPSession* session):
+    
+    key = 0
+    if session.ip1 > session.ip2:
+        key += session.ip1
+        key *= 2 ** 16
+        key += session.port1
+        key *= 2 ** 32
+        key += session.ip2
+        key *= 2 ** 16
+        key += session.port2
+        key *= 2 ** 16
+    else:
+        key += session.ip2
+        key *= 2 ** 16
+        key += session.port2
+        key *= 2 ** 32
+        key += session.ip1
+        key *= 2 ** 16
+        key += session.port1
+        key *= 2 ** 16
+        
+    key += session.vlan_id
+
+    return <object>key
 
 class TcpPacket(IpPacket):
     """
