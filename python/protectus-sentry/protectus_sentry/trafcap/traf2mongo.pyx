@@ -512,7 +512,12 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, sess
             update_tcp_session(session, packet)
             lock.release()
 
-        # TODO: Get released slots from next phase
+        # Get released slots from next phase
+        # XXX: Dictionary not deallocating yet!  Major Memory leak
+        if session_alloc_pipe.poll():
+            session_alloc_pipe.recv_bytes_into(new_slot_number_pipeable)
+            available_slots.append(new_slot_number_pipeable.value)
+
 
 
 cdef bint bookkeeper_running = True
@@ -550,13 +555,14 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, option
     for i in range(30):
         schedule[i] = <uint32_t*>malloc(sizeof(uint32_t) * 100000)
         
-    cdef int schedule_number
+    cdef int schedule_number, next_schedule_number
     cdef uint32_t* slots_to_write
     cdef uint32_t slot
 
     # Current second
     cdef uint64_t current_second = 0
     cdef uint64_t last_second_written = int(time.time()) - 1
+    cdef uint64_t second_to_write
 
     cdef int imaginary_writes = 0
     cdef int session_count = 0
@@ -574,6 +580,10 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, option
     while bookkeeper_running:
         # Always check for new data.  If there is none, check the time
         # TODO: Better time/loop management
+        if not sessions_sync_pipe.poll():
+            current_second = max(current_second, int(time.time()-2))
+            time.sleep(0.02)
+
         while sessions_sync_pipe.poll():
             # Read data from the pipe into a ctype, which is pointed to by
             # cython.  No type cohersion or translation required.
@@ -605,7 +615,8 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, option
         # We want to write the seconds up to but not including the current second.
         # We use if, not while, as a throttling mechanism.
         if (last_second_written + 1) < current_second:
-            schedule_number = (last_second_written + 1) % 30
+            second_to_write = last_second_written + 1
+            schedule_number = second_to_write % 30
             slots_to_write = schedule[schedule_number]
 
             # Iterate over all the slots scheduled to be dealt with this
@@ -625,17 +636,28 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, option
                 #print_tcp_session(session_copy)
                 imaginary_writes += 2
 
-                # TODO: Either reschedule the session for another check-in,
+                # Either reschedule the session for another check-in,
                 # or de-allocate the slot.
-                # For now, schedule for the next 20 seconds
+                print second_to_write,":",i,": slot", slot, ", last data", current_second - <uint64_t>session_copy.te
+                if (current_second - <uint64_t>session_copy.te) > 100:
+                    print "Deallocating", slot
+                    # Write to updateDict about a newly freed slot.  On this
+                    # end, all we have to do is forget about it.
 
-                schedule_number = (last_second_written + 21) % 30
+                    # We're still linking to a python struct to get raw bytes
+                    # into a python Pipe.
+                    session_slot_p[0] = slot  # Linked to py_current_slot!
+                    sessions_sync_pipe.send_bytes(py_current_slot)
+                else:
+                    # For now, schedule for the next 20 seconds
+                    # TODO: Be more intelligent/efficient about this.
+                    next_schedule_number = (second_to_write + 20) % 30
             
-                schedule[schedule_number][schedule_sizes[schedule_number]] = slot
-                schedule_sizes[schedule_number] += 1
+                    schedule[next_schedule_number][schedule_sizes[next_schedule_number]] = slot
+                    schedule_sizes[next_schedule_number] += 1
 
 
-            # Reset the schedule
+            # Reset the now-finished schedule slot
             schedule_sizes[schedule_number] = 0
             # Mark that we've taken care of this second.
             last_second_written += 1
