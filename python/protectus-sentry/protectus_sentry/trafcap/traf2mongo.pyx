@@ -12,12 +12,13 @@ import math
 import traceback
 import trafcap
 from trafcapIpPacket import *
-from trafcapIpPacket cimport TCPPacketHeaders, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_session, generate_tcp_session_key_from_pkt, generate_tcp_session_key_from_session
+from trafcapIpPacket cimport TCPPacketHeaders, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_session, generate_tcp_session_key_from_pkt, generate_tcp_session_key_from_session, write_tcp_session
 from trafcapEthernetPacket import *
 from trafcapContainer import *
 import multiprocessing
 import Queue
 from collections import deque
+from pymongo.bulk import InvalidOperation
 
 #CYTHON
 from cpython cimport array
@@ -529,7 +530,6 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, sess
 
 cdef bint bookkeeper_running = True
 def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, options):
-    print "In bookkeeper"
 
     # Signal Handling
     def bookkeeperCatchCntlC(signum, stack):
@@ -539,11 +539,17 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, option
 
     signal.signal(signal.SIGINT, bookkeeperCatchCntlC)
 
+    # Mongo Database connection
+    db = trafcap.mongoSetup()
+
     cdef int i
 
     # Cythonize access to the shared sessions
     cdef long sessions_pointer = ctypes.addressof(python_sessions_shared)
     cdef TCPSession* sessions_shared = <TCPSession*>sessions_pointer
+
+    # Create a corresponding bunch of slots for mongoids
+    cdef list object_ids = [None for x in range(100000)]
 
     # Cythonize the current slot number
     py_current_slot = ctypes.c_uint32()
@@ -562,16 +568,23 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, option
     for i in range(30):
         schedule[i] = <uint32_t*>malloc(sizeof(uint32_t) * 100000)
         
+    # Variables during session check-ins
     cdef int schedule_number, next_schedule_number
     cdef uint32_t* slots_to_write
     cdef uint32_t slot
+
+    cdef int bytes_cursor
+    cdef uint32_t* bytes_subarray
+    cdef int seconds_since_latest_bytes
+    cdef int offset
+    cdef uint64_t next_scheduled_checkup_time
 
     # Current second
     cdef uint64_t current_second = 0
     cdef uint64_t last_second_written = int(time.time()) - 1
     cdef uint64_t second_to_write
 
-    cdef int imaginary_writes = 0
+    cdef int mongo_writes = 0
     cdef int session_count = 0
 
     # The primary loop
@@ -628,6 +641,8 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, option
 
             # Iterate over all the slots scheduled to be dealt with this
             # second, and deal with them.
+            info_bulk_writer = db.tcp_sessionInfo.initialize_unordered_bulk_op()
+            bytes_bulk_writer = db.tcp_sessionBytes.initialize_unordered_bulk_op()
             for i in range(schedule_sizes[schedule_number]):
                 #print "Reading",schedule_number,i,":",schedule[schedule_number][i]
                 slot = slots_to_write[i]
@@ -639,29 +654,52 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, option
                 memcpy(session_copy, session, sizeof(TCPSession))
                 lock.release()
 
-                # TODO: Write to the database, or something.
-                #print_tcp_session(session_copy)
-                imaginary_writes += 2
-
                 # Either reschedule the session for another check-in,
                 # or de-allocate the slot.
                 #print second_to_write,":",i,": slot", slot, ", last data", current_second - <uint64_t>session_copy.te
-                if (current_second - <uint64_t>session_copy.te) > 100:
+
+                seconds_since_last_bytes = current_second - <uint64_t>session_copy.te
+                # Bytes cursor is the point in the bytes array to start looking for data.
+                bytes_cursor = (second_to_write - 20) % 30
+
+                next_scheduled_checkup_time = 0
+                if (seconds_since_last_bytes) > 300:
                     #print "Deallocating", slot
                     # Write to updateDict about a newly freed slot.  On this
-                    # end, all we have to do is forget about it.
+                    # end, all we have to do is free up the objectid slot
+                    mongo_ids[slot] = None
 
                     # We're still linking to a python struct to get raw bytes
                     # into a python Pipe.
                     session_slot_p[0] = slot  # Linked to py_current_slot!
                     sessions_sync_pipe.send_bytes(py_current_slot)
+
+                elif (seconds_since_last_bytes) > 20:
+                    # There's nothing to read, reschedule for 20 seconds from now
+                    next_scheduled_checkup_time = second_to_write + 20
+
+                elif session.traffic_bytes[bytes_cursor][0] > 0 or session.traffic_bytes[bytes_cursor][1] > 0:
+                    # Write to database (or at least queue)
+                    write_tcp_session(info_bulk_writer, bytes_bulk_writer, object_ids, session_copy, slot, bytes_cursor, second_to_write)
+                    mongo_writes += 2
+                    next_scheduled_checkup_time = second_to_write + 20
+
                 else:
-                    # For now, schedule for the next 20 seconds
-                    # TODO: Be more intelligent/efficient about this.
-                    next_schedule_number = (second_to_write + 20) % 30
+                    # Find out where the next available byte is, and schedule a check-up for 20 seconds after that.
+                    for offset in range(20):
+                        bytes_subarray = session.traffic_bytes[(bytes_cursor + offset) % 30]
+                        if bytes_subarray[0] > 0 or bytes_subarray[1] > 0:
+                            next_scheduled_checkup_time = second_to_write + offset
+                            break
+                    print "Rescheduled for", offset,"seconds from now."
+
+                # Reschedule if we selected a time to do so.
+                if next_scheduled_checkup_time > 0:
+                    next_schedule_number = next_scheduled_checkup_time % 30
             
                     schedule[next_schedule_number][schedule_sizes[next_schedule_number]] = slot
                     schedule_sizes[next_schedule_number] += 1
+
 
 
             # Reset the now-finished schedule slot
@@ -669,7 +707,20 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, option
             # Mark that we've taken care of this second.
             last_second_written += 1
 
-            print imaginary_writes, "imaginary mongo writes covering", session_count, "sessions"
+            # Write pending bulk operations to mongo
+            try:
+                info_bulk_writer.execute()
+            except InvalidOperation as e:
+                if e.message != "No operations to execute":
+                    raise e
+
+            try:
+                bytes_bulk_writer.execute()
+            except InvalidOperation as e:
+                if e.message != "No operations to execute":
+                    raise e
+
+            print mongo_writes, "db writes covering", session_count, "sessions"
 
                 
         

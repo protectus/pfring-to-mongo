@@ -46,3 +46,5 @@ cdef int generate_tcp_session(TCPSession* session, TCPPacketHeaders* packet)
 
 cdef int update_tcp_session(TCPSession* session, TCPPacketHeaders* packet)
 
+cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, list object_ids, TCPSession* session, int slot, int bytes_cursor, uint64_t now) except -1
+

@@ -233,6 +233,9 @@ class IpPacket(object):
                          float(data[pc.p_etime]), True]
         return new_bytes
 
+cdef inline uint64_t peg_to_minute(uint64_t timestamp):
+    return timestamp - (timestamp % 60)
+
 # Heads up: These structs are defined twice so that both pure python and
 # lower-level cython can know about them.  Useful for shared memory stuff.
 cdef struct TCPPacketHeaders:
@@ -577,6 +580,110 @@ cdef object generate_tcp_session_key_from_session(TCPSession* session):
     key += session.vlan_id
 
     return <object>key
+
+
+# "Static Final" Mongo connection XXX: Not a good final solution
+tcp_sessionInfo_collection = trafcap.mongoSetup().tcp_sessionInfo
+
+cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, list object_ids, TCPSession* session, int slot, int bytes_cursor, uint64_t now) except -1:
+
+    cdef uint64_t sb = now - 20
+    cdef uint64_t se
+    cdef int tdm
+
+    # General Plan for writes:
+    # At this point, we know there needs to be a write.  The question is
+    # whether or not we need to create and insert a new info doc or not.  If we
+    # need a new info_doc, we insert without using the bulk_writer, because we
+    # want to get back the object id.  Everything else is just added to the
+    # bulk_writer for later execution.
+
+    object_id = object_ids[slot]
+    if not object_id:
+        # We need to insert a new info doc
+        info_doc = {
+            "ip1":session.ip1,
+            "p1":session.port1,
+            "b1":session.bytes1,
+            "f1":session.flags1,
+            "ip2":session.ip2,
+            "p2":session.port2,
+            "b2":session.bytes2,
+            "f2":session.flags2,
+            "bt":session.bytes1+session.bytes2,
+            "tbm":peg_to_minute(<uint64_t>session.tb),
+            "tem":peg_to_minute(<uint64_t>session.te),
+            "tb":session.tb,
+            "te":session.te,
+            "pk":session.packets
+            # Countries are TODO
+            #"cc1":a_info[pc.i_cc1],
+            #"loc1":a_info[pc.i_loc1],
+            #"cc2":a_info[pc.i_cc2],
+            #"loc2":a_info[pc.i_loc2]
+        }
+        tdm = (<int>(session.te - session.tb)) / 60
+        if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
+        if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
+
+        # Insert the new doc and record the objectid
+        object_ids[slot] = tcp_sessionInfo_collection.insert(info_doc)
+        print info_doc,"at",object_ids[slot]
+
+    else:
+        # If we're not inserting a new doc, we're updating an existing one.
+        info_update = {
+            "$set": {
+                "b1": session.bytes1,
+                "b2": session.bytes2,
+                "bt": session.bytes1+session.bytes2,
+                "pk": session.packets,
+                "te": session.te,
+                "tem": peg_to_minute(<uint64_t>session.te)
+            }
+        }
+
+        info_bulk_writer.find({"_id": object_ids[slot]}).update(info_update)
+        print info_update
+
+
+    # We always need to write a bytes doc.
+    bytes_to_write = []
+    bytes_doc = {
+            "ip1":session.ip1,
+            "p1":session.port1,
+            "b1":session.bytes1,
+            "ip2":session.ip2,
+            "p2":session.port2,
+            "b2":session.bytes2,
+            "b":bytes_to_write,
+            "sb": sb,
+            "sbm": peg_to_minute(sb)
+            # Country TODO
+    }
+    if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
+
+    cdef int offset, i
+    cdef uint32_t* bytes_subarray
+    # Generate the bytes array.
+    for offset in range(20):
+        i = (bytes_cursor + offset) % 30
+        bytes_subarray = session.traffic_bytes[i]
+        if bytes_subarray[0] > 0 or bytes_subarray[1] > 0:
+            se = sb+offset
+            bytes_to_write.append([offset, bytes_subarray[0], bytes_subarray[1]])
+
+    bytes_doc["se"] = se
+    bytes_doc["sem"] = peg_to_minute(se)
+
+    # add to writes
+    bytes_bulk_writer.insert(bytes_doc)
+
+    print bytes_doc
+
+    return 0
+
+
 
 class TcpPacket(IpPacket):
     """
