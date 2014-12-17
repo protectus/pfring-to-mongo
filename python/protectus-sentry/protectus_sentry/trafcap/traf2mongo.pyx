@@ -12,7 +12,7 @@ import math
 import traceback
 import trafcap
 from trafcapIpPacket import *
-from trafcapIpPacket cimport TCPPacketHeaders, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_session, generate_tcp_session_key_from_pkt, generate_tcp_session_key_from_session, write_tcp_session
+from trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, TCPPacketHeaders, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_session, generate_tcp_session_key_from_pkt, generate_tcp_session_key_from_session, write_tcp_session, init_tcp_capture_session
 from trafcapEthernetPacket import *
 from trafcapContainer import *
 import multiprocessing
@@ -22,7 +22,7 @@ from pymongo.bulk import InvalidOperation
 
 #CYTHON
 from cpython cimport array
-from libc.stdint cimport uint64_t, uint32_t, uint16_t, uint8_t
+from libc.stdint cimport uint64_t, uint32_t, uint16_t, uint8_t, int64_t
 from libc.string cimport memcpy, memset
 from libc.stdlib cimport malloc
 from posix.time cimport timeval 
@@ -66,276 +66,6 @@ def exitNow(message):
     if proc:
         os.kill(proc.pid, signal.SIGTERM)
     sys.exit(message)
-
-def OLDmain():
-    options = parseOptions()     # Could combine this line with next line
-    trafcap.options = options
-
-    option_check_counter = 0
-    if options.tcp: option_check_counter += 1
-    if options.udp: option_check_counter += 1
-    if options.icmp: option_check_counter += 1
-    if options.other: option_check_counter += 1
-    if options.rtp: option_check_counter += 1
-    if option_check_counter != 1:
-        sys.exit("Must use one of -t, -u, -i, or -o to specify a protocol.")
-
-    # Select protocol.  Note that packet_type variable must be set
-    if options.tcp:
-        packet_type = "TcpPacket"
-        session_info_collection_name = "tcp_sessionInfo"
-        session_bytes_collection_name = "tcp_sessionBytes"
-        capture_info_collection_name = "tcp_captureInfo"
-        capture_bytes_collection_name = "tcp_captureBytes"
-    elif options.udp:
-        packet_type = "UdpPacket"
-        session_info_collection_name = "udp_sessionInfo"
-        session_bytes_collection_name = "udp_sessionBytes"
-        capture_info_collection_name = "udp_captureInfo"
-        capture_bytes_collection_name = "udp_captureBytes"
-    elif options.icmp:
-        packet_type = "IcmpPacket"
-        session_info_collection_name = "icmp_sessionInfo"
-        session_bytes_collection_name = "icmp_sessionBytes"
-        capture_info_collection_name = "icmp_captureInfo"
-        capture_bytes_collection_name = "icmp_captureBytes"
-    elif options.other:
-        packet_type = "OtherPacket"
-        session_info_collection_name = "oth_sessionInfo"
-        session_bytes_collection_name = "oth_sessionBytes"
-        capture_info_collection_name = "oth_captureInfo"
-        capture_bytes_collection_name = "oth_captureBytes"
-    elif options.rtp:
-        packet_type = "RtpPacket"
-        session_info_collection_name = "rtp_sessionInfo"
-        session_bytes_collection_name = "rtp_sessionBytes"
-        capture_info_collection_name = "rtp_captureInfo"
-        capture_bytes_collection_name = "rtp_captureBytes"
-    else:
-       exitNow('Invalid protocol') 
-
-    # A python class is defined for each protocol (TCP, UDP, ...) and  
-    # each class encapsulates packet-specific information
-    pc = eval(packet_type)
-
-    if options.other:
-        container = eval("TrafcapEthPktContainer")
-    else:
-        container = eval("TrafcapIpPktContainer")
-        
-    session = container(pc, session_info_collection_name, 
-                            session_bytes_collection_name, "session")
-     
-    capture = container(pc, capture_info_collection_name, 
-                            capture_bytes_collection_name, "capture")
-
-
-    def catchSignal1(signum, stack):
-        num_sessions = len(session.info_dict)
-        print "\n", num_sessions, " active sessions_info entries:"
-        for k in session.info_dict:
-            print "   ",
-            print session.info_dict[k]
-        print " "
-        print capture.info_dict[pc.capture_dict_key]
-        if num_sessions >= 1:
-            print num_sessions, " active session_info entries displayed."
-
-    def catchSignal2(signum, stack):
-        num_sessions = len(session.bytes_dict)
-        print "\n", num_sessions, " active sessions byte entries:"
-        for k in session.bytes_dict:
-            print "   ",
-            print session.bytes_dict[k]
-        print " "
-        print capture.bytes_dict[pc.capture_dict_key]
-        if num_sessions >= 1:
-            print num_sessions, " active session_byte entries displayed."
-
-    def catchCntlC(signum, stack):
-        exitNow('')
-
-    signal.signal(signal.SIGUSR1, catchSignal1)
-    signal.signal(signal.SIGUSR2, catchSignal2)
-    signal.signal(signal.SIGINT, catchCntlC)
-    signal.signal(signal.SIGTERM, catchCntlC)
-
-    # Pre-build the sessionInfo dictionary for more more efficient db writes
-    print "Pre-building dictionaries..."
-    oldest_session_time = int(time.time()) - trafcap.session_expire_timeout
-
-    # sessionInfo dictionary
-    info_cursor = session.db[session.info_collection].find( \
-                             spec = {'tem':{'$gte':oldest_session_time}})
-
-    for a_doc in info_cursor:
-        key, data = pc.parse(None, a_doc)
-        session.updateInfoDict(key, data, 0, 0)
-        # Add packet, end time, and _id fields  - not done by updateInfoDict method
-        session.info_dict[key][pc.i_te] = a_doc['te']
-        session.info_dict[key][pc.i_pkts] = a_doc['pk']
-        session.info_dict[key][pc.i_id] = a_doc['_id']
-        session.info_dict[key][pc.i_csldw] = False 
-    #catchSignal1(None, None)
-
-    proc = pc.startSniffer()
-
-    # make stdout a non-blocking file - not sure if this is required 
-    import fcntl  
-    fd = proc.stdout.fileno() 
-    fl = fcntl.fcntl(fd, fcntl.F_GETFL) 
-    fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK) 
-
-    std_in = [fd]
-    std_out = []
-    std_err = []
-
-    the_buffer=''                        # stores partial lines between reads  
-    inputready = None
-    outputready = None
-    exceptready = None
-
-    #
-    # Begin main loop
-    #
-    select_loop_counter = 0.
-    select_wait = 0.01
-    while True:
-        try:
-            # Timeout of 0.0 seconds for non-blocking I/O causes 100% CPU usage
-            inputready,outputready,exceptready = select(std_in,std_out,std_err,
-                                                        select_wait)
-        except Exception, e:
-            # This code path is followed when a signal is caught
-            if e[0] != 4:        # Excetion not caused by USR1 and USR2 signals 
-                trafcap.logException(e, inputready=inputready,
-                                        outputready=outputready,
-                                        exceptready=exceptready)
-                continue
-
-        if exceptready:
-            print "Something in exceptready..."
-            print exceptready
-
-        if std_err:
-            print "Something in std_err..."
-            print std_err
-
-        # Update current_time approx once per second.  Current_time used to decide
-        # when to write dictionary items to db so high precision not needed.
-        select_loop_counter += select_wait
-        if select_loop_counter >= 1.:
-            trafcap.current_time = time.time()
-            select_loop_counter = 0.
-     
-        # No data to be read.  Use this time to update the database.
-        if not inputready:
-
-            session.updateDb()
-            
-            capture.updateDb()
-
-            if not options.quiet: print "\rActive: ", len(session.info_dict), \
-                                        ", ", len(session.bytes_dict), "\r",
-            sys.stdout.flush()
-       
-        else:
-            # Process data waiting to be read 
-            try:
-                raw_data = os.read(std_in[0],trafcap.bytes_to_read)
-            except OSError:
-                # This exception occurs if signal handled during read
-                continue
-            the_buffer += raw_data
-            if '\n' in raw_data:
-                tmp = the_buffer.split('\n')
-                lines, the_buffer = tmp[:-1], tmp[-1] 
-            else:
-                # not enough data has been read yet to make a full line 
-                lines = "" 
-     
-            for a_line in lines: 
-                try:
-                    # Handle empty lines
-                    if not a_line: continue
-
-                    # Handle traffic that tcpdump parses automatically
-                    #   TCP port 139 - NBT Session Packet: Unknown packet type 0x68Data
-                    #   [000] 00 10 47 00 E8 EC 23 00  00 68 BC 85 40 00 68 08  \0x00\0x10G\0x00\0xe8\0xec#\0x00 \0x00h\0xbc\0x85@\0x00h\0x08
-                    if a_line[0] == "[":
-                        continue
-
-                    line = a_line.split()
-     
-                    # Handle garbage lines / bad tcpdump output
-                    if len(line) <= 4: continue
-
-                    # For debug
-                    #print line
-                    key, data = pc.parse(line, None)
-
-                    # parsing problem can sometimes cause    (),[]   to be returned
-                    if data == []:
-                        continue
-
-                except Exception, e:
-                    # Something went wrong with parsing the line. Save for analysis
-                    if not options.quiet:
-                        print e
-                        print "\n-------------line------------------\n"
-                        print line
-                        print "\n-------------lines------------------\n"
-                        print lines
-                        print "\n-------------buffer------------------\n"
-                        print the_buffer
-                        print traceback.format_exc()
-       
-                    trafcap.logException(e, line=line, lines=lines, 
-                                            the_buffer=the_buffer)
-                    continue     
-      
-                # timestamp is always first item in the list
-                curr_seq = int(data[pc.p_etime].split(".")[0])
-                trafcap.last_seq_off_the_wire = curr_seq
-
-                # For session dicts, last two params are 0
-                session.updateInfoDict(key, data, 0, 0) 
-                session.updateBytesDict(key, data, curr_seq, 0, 0)
-
-                inbound_bytes, outbound_bytes = pc.findInOutBytes(data)
-
-                #print key
-                #print data
-                si = session.info_dict[key]
-                #print si
-                #print si[pc.i_ip1:pc.i_id+1]
-                #print si[pc.i_circ_bufr]
-                sb = session.bytes_dict[key]
-                #print sb
-                #print sb[pc.b_key:pc.b_se+1]
-                #print sb[pc.b_byt_ary]
-                #print sb[pc.b_lpj_ary]
-                #print sb[pc.b_r_sub_i:pc.b_csldw+1]
-                #print ''
-
-                capture.updateInfoDict(pc.capture_dict_key, data, inbound_bytes, 
-                                                                  outbound_bytes)
-                #print capture.info_dict[pc.capture_dict_key]
-                #print ''
-
-                capture.updateBytesDict(pc.capture_dict_key, data, curr_seq,
-                                                    inbound_bytes, outbound_bytes) 
-
-                #print capture.bytes_dict[pc.capture_dict_key]
-                #print ''
-                #continue
-
-            if not options.quiet: 
-                print "\rActive: ", len(session.info_dict), ", ", \
-                      len(session.bytes_dict), "\r",
-            sys.stdout.flush()
-
-    exitNow('')
 
 sniffPkts_running = True
 def sniffPkts(spq, pc):
@@ -643,7 +373,7 @@ def updateDict(updater_pkt_count, python_ppshared, python_sessions_shared, sessi
             available_slots.append(new_slot_number_pipeable.value)
             # Generate a key so we can delete it from the dictionary
             del session_slot_map[generate_tcp_session_key_from_session(&sessions_shared[new_slot_number_p[0]])]
-            print "De-dictionary-ing session at slot", new_slot_number_p[0]
+            #print "De-dictionary-ing session at slot", new_slot_number_p[0]
                 
 
 
@@ -664,6 +394,18 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
 
     cdef int i
 
+    # Initialize a capture session.
+    cdef TCPSession* capture_session = <TCPSession*>malloc(sizeof(TCPSession))
+    init_tcp_capture_session(capture_session)
+    # We also initialize a dummy session to aid code reuse below.  Everything
+    # that touches this variable is wasting time, but we only have to touch it
+    # once every 20 seconds or so.
+    cdef TCPSession* dummy_session = <TCPSession*>malloc(sizeof(TCPSession))
+
+    # Bookkeeping data for capture
+    cdef list capture_object_ids = [None] # Capture sessions are in a category of one
+    cdef uint64_t capture_scheduled_checkup_time = int(time.time())
+
     # Cythonize access to the shared sessions
     cdef long sessions_pointer = ctypes.addressof(python_sessions_shared)
     cdef TCPSession* sessions_shared = <TCPSession*>sessions_pointer
@@ -681,13 +423,13 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
     cdef uint64_t session_start_second
 
     # Setup a bunch of queues for second-by-second scheduling of writes to the database
-    cdef uint32_t schedule_sizes[30]
+    cdef uint32_t schedule_sizes[BYTES_RING_SIZE]
     memset(schedule_sizes, 0, sizeof(schedule_sizes))
 
-    cdef uint32_t *schedule[30]
-    for i in range(30):
+    cdef uint32_t *schedule[BYTES_RING_SIZE]
+    for i in range(BYTES_RING_SIZE):
         schedule[i] = <uint32_t*>malloc(sizeof(uint32_t) * 100000)
-        
+
     # Variables during session check-ins
     cdef int schedule_number, next_schedule_number
     cdef uint32_t* slots_to_write
@@ -695,17 +437,20 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
 
     cdef int bytes_cursor
     cdef uint32_t* bytes_subarray
-    cdef int seconds_since_latest_bytes
+    cdef int64_t seconds_since_last_bytes
     cdef int offset
     cdef uint64_t next_scheduled_checkup_time
 
     # Current second
     cdef uint64_t current_second = 0
     cdef uint64_t last_second_written = int(time.time()) - 1
-    cdef uint64_t second_to_write
+    cdef uint64_t second_to_write, second_to_write_from
 
     cdef int mongo_writes = 0
     cdef int session_count = 0
+    
+    ## Connection-Tracking Debugging ##
+    #tracked_slots = set()
 
     # The primary loop
     # There are several tasks to accomplish:
@@ -735,10 +480,10 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
             # This is this session's first check-in.  We need to schedule the
             # first check-up.
 
-            # The schedule structure is 30 rows for 30 seconds.  The rows are
+            # The schedule structure is BYTES_RING_SIZE (30) rows for 30 seconds.  The rows are
             # numbered time mod 30 seconds.  
             session_start_second = <uint64_t>session.tb
-            schedule_number = (session_start_second + 20) % 30
+            schedule_number = (session_start_second + BYTES_DOC_SIZE) % BYTES_RING_SIZE
             
             #print "Scheduling",session_slot_p[0],"in",schedule_number,",",schedule_sizes[schedule_number]
             schedule[schedule_number][schedule_sizes[schedule_number]] = session_slot_p[0]
@@ -751,13 +496,29 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                 current_second = session_start_second
                 break
 
+            ## Connection-Tracking Debug ##
+            #if len(tracked_slots) < 1:
+            #    print "Tracking slot", session_slot_p[0]
+            #    tracked_slots.add(session_slot_p[0])
+
         # Check for data to be written to the database
         # We want to write the seconds up to but not including the current second.
         # We use if, not while, as a throttling mechanism.
         if (last_second_written + 1) < current_second:
             second_to_write = last_second_written + 1
-            schedule_number = second_to_write % 30
+            second_to_write_from = second_to_write - BYTES_DOC_SIZE
+            # Bytes cursor is the point in the bytes array to start looking for data.
+            bytes_cursor = second_to_write_from % BYTES_RING_SIZE
+
+            schedule_number = second_to_write % BYTES_RING_SIZE
             slots_to_write = schedule[schedule_number]
+
+            print "Processing",second_to_write
+
+            # Upcoming session writes will write up to but not into
+            # second_to_write, so we clear that out.
+            capture_session.traffic_bytes[(second_to_write - 1) % BYTES_RING_SIZE][0] = 0
+            capture_session.traffic_bytes[(second_to_write - 1) % BYTES_RING_SIZE][1] = 0
 
             # Iterate over all the slots scheduled to be dealt with this
             # second, and deal with them.
@@ -774,58 +535,66 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                 memcpy(session_copy, session, sizeof(TCPSession))
                 lock.release()
 
-                # Either reschedule the session for another check-in,
-                # or de-allocate the slot.
+                #if slot in tracked_slots:
+                #    print_tcp_session(session, second_to_write_from)
                 #print second_to_write,":",i,": slot", slot, ", last data", current_second - <uint64_t>session_copy.te
 
-                seconds_since_last_bytes = current_second - <uint64_t>session_copy.te
-                # Bytes cursor is the point in the bytes array to start looking for data.
-                bytes_cursor = (second_to_write - 20) % 30
+                seconds_since_last_bytes = <int64_t>(second_to_write - <uint64_t>session_copy.te)
 
+                # Either reschedule the session for another check-in,
+                # or de-allocate the slot.
                 next_scheduled_checkup_time = 0
                 if (seconds_since_last_bytes) > 300:
                     #print "Deallocating", slot
                     # Write to updateDict about a newly freed slot.  On this
-                    # end, all we have to do is free up the objectid slot
-                    mongo_ids[slot] = None
+                    # end, all we have to do is free up the objectid slot and
+                    # update the capture packets counter with all the packets
+                    # from this session.
+                    capture_session.packets += session.packets
+                    object_ids[slot] = None
 
                     # We're still linking to a python struct to get raw bytes
                     # into a python Pipe.
                     session_slot_p[0] = slot  # Linked to py_current_slot!
                     sessions_sync_pipe.send_bytes(py_current_slot)
 
-                elif (seconds_since_last_bytes) > 20:
+                    ## Connection-Tracking Debug ##
+                    #if slot in tracked_slots:
+                    #    print second_to_write,": Deallocating", slot
+                    #    tracked_slots.remove(slot)
+
+                elif (seconds_since_last_bytes) > BYTES_DOC_SIZE:
                     # There's nothing to read, reschedule for 20 seconds from now
-                    next_scheduled_checkup_time = second_to_write + 20
+                    next_scheduled_checkup_time = second_to_write + BYTES_DOC_SIZE
 
                 elif session.traffic_bytes[bytes_cursor][0] > 0 or session.traffic_bytes[bytes_cursor][1] > 0:
                     # Write to database (or at least queue)
-                    write_tcp_session(info_bulk_writer, bytes_bulk_writer, object_ids, session_copy, slot, bytes_cursor, second_to_write)
+                    write_tcp_session(info_bulk_writer, bytes_bulk_writer, db.tcp_sessionInfo, object_ids, session_copy, slot, second_to_write_from, second_to_write, capture_session)
                     mongo_writes += 2
-                    next_scheduled_checkup_time = second_to_write + 20
+                    next_scheduled_checkup_time = second_to_write + BYTES_DOC_SIZE
+
+                    ## Connection-Tracking Debug ##
+                    #if slot in tracked_slots:
+                    #    print second_to_write,": Writing slot",slot
 
                 else:
-                    # Find out where the next available byte is, and schedule a check-up for 20 seconds after that.
-                    for offset in range(20):
-                        bytes_subarray = session.traffic_bytes[(bytes_cursor + offset) % 30]
+                    # Find out where the next available byte is, and schedule a
+                    # check-up for 20 seconds after that.
+                    for offset in range(BYTES_DOC_SIZE):
+                        bytes_subarray = session.traffic_bytes[(bytes_cursor + offset) % BYTES_RING_SIZE]
                         if bytes_subarray[0] > 0 or bytes_subarray[1] > 0:
                             next_scheduled_checkup_time = second_to_write + offset
                             break
-                    print "Rescheduled for", offset,"seconds from now."
 
                 # Reschedule if we selected a time to do so.
                 if next_scheduled_checkup_time > 0:
-                    next_schedule_number = next_scheduled_checkup_time % 30
+                    next_schedule_number = next_scheduled_checkup_time % BYTES_RING_SIZE
             
                     schedule[next_schedule_number][schedule_sizes[next_schedule_number]] = slot
                     schedule_sizes[next_schedule_number] += 1
-
-
-
-            # Reset the now-finished schedule slot
-            schedule_sizes[schedule_number] = 0
-            # Mark that we've taken care of this second.
-            last_second_written += 1
+                    ## Connection-Tracking Debug ##
+                    #if slot in tracked_slots:
+                    #    print second_to_write,": Rescheduling", slot, "for", next_scheduled_checkup_time, "(", (next_scheduled_checkup_time - second_to_write), "seconds)"
 
             # Write pending bulk operations to mongo
             try:
@@ -840,69 +609,43 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                 if e.message != "No operations to execute":
                     raise e
 
-            print mongo_writes, "db writes covering", session_count, "sessions"
+
+            # Check to see if capture info/bytes should be written.  This only
+            # happens once a second, so we're not super concerned about
+            # efficiency.
+            if capture_scheduled_checkup_time <= second_to_write:
+                print_tcp_session(capture_session, capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2))
+                # Not so unlike writing a normal session, but with some
+                # shortcuts and dummy data.
+                info_bulk_writer = db.tcp_captureInfo.initialize_unordered_bulk_op()
+                bytes_bulk_writer = db.tcp_captureBytes.initialize_unordered_bulk_op()
+                write_tcp_session(info_bulk_writer, bytes_bulk_writer, db.tcp_captureInfo, capture_object_ids, capture_session, 0, capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2), capture_scheduled_checkup_time - BYTES_DOC_SIZE, dummy_session)
+                mongo_writes += 2
+                capture_scheduled_checkup_time = second_to_write + (BYTES_DOC_SIZE / 2)
+
+                # Write pending bulk operations to mongo
+                try:
+                    info_bulk_writer.execute()
+                except InvalidOperation as e:
+                    if e.message != "No operations to execute":
+                        raise e
+
+                try:
+                    bytes_bulk_writer.execute()
+                except InvalidOperation as e:
+                    if e.message != "No operations to execute":
+                        raise e
+                
+
+            #print mongo_writes, "db writes covering", session_count, "sessions"
+
+            # Reset the now-finished schedule slot
+            schedule_sizes[schedule_number] = 0
+            # Mark that we've taken care of this second.
+            last_second_written += 1
+
 
                 
-        
-
-
-cdef int updateDictOLD(ppq, pc, options, session, capture) except -1:
-    def updateDictCatchCntlC(signum, stack):
-        print 'Caught CntlC in updateDict...'
-        global updateDict_running
-        updateDict_running = False
-
-    signal.signal(signal.SIGINT, updateDictCatchCntlC)
-    cdef int get_loop_counter = 0
-
-    cdef bint update_db = False
-    cdef int shared_pkt_cursor
-    while updateDict_running:
-        try:
-            shared_pkt_cursor = ppq.get(True, get_wait)   # Blocks if queue is empty
-        except IOError:
-            # Exception occurs if signal handled during get
-            continue
-        except Queue.Empty:
-            update_db = True
-            continue
-
-        # Update current_time approx once per second.  Used to decide
-        # when to write dictionary items to db so high precision not needed.
-        get_loop_counter += get_wait
-        if get_loop_counter >= 10:
-            trafcap.current_time = time.time()
-            get_loop_counter = 0
-            update_db = True
-
-        # timestamp is always first item in the list
-        curr_seq = int(data[pc.p_etime].split(".")[0])
-        trafcap.last_seq_off_the_wire = curr_seq
-
-        # For session dicts, last two params are 0
-        session.updateInfoDict(key, data, 0, 0) 
-        session.updateBytesDict(key, data, curr_seq, 0, 0)
-
-        inbound_bytes, outbound_bytes = pc.findInOutBytes(data)
-
-        si = session.info_dict[key]
-        sb = session.bytes_dict[key]
-        capture.updateInfoDict(pc.capture_dict_key, data, inbound_bytes, 
-                                                          outbound_bytes)
-        capture.updateBytesDict(pc.capture_dict_key, data, curr_seq,
-                                            inbound_bytes, outbound_bytes) 
-
-        if update_db:
-            session.updateDb()
-            capture.updateDb()
-            update_db = False
-
-        if not options.quiet: 
-            print "\rActive: ", len(session.info_dict), ", ", \
-                   len(session.bytes_dict), "\r",
-            sys.stdout.flush()
-
-
 main_running = True
 def main():
     # The main function is responsible for setting up and kicking off the parse

@@ -19,10 +19,9 @@ from struct import unpack  # For IP Address parsing
 from ctypes import Structure, c_uint16, c_uint32, c_uint64, c_int16, c_double
 
 # CYTHON
+from trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, TCPPacketHeaders, TCPSession
 from libc.stdint cimport uint64_t, uint32_t, uint16_t, int16_t
 from libc.string cimport memset
-from cpython.ref cimport PyObject
-
 
 
 class IpPacket(object):
@@ -233,24 +232,12 @@ class IpPacket(object):
                          float(data[pc.p_etime]), True]
         return new_bytes
 
+
 cdef inline uint64_t peg_to_minute(uint64_t timestamp):
     return timestamp - (timestamp % 60)
 
 # Heads up: These structs are defined twice so that both pure python and
 # lower-level cython can know about them.  Useful for shared memory stuff.
-cdef struct TCPPacketHeaders:
-    uint32_t ip1
-    uint16_t port1
-
-    uint32_t ip2
-    uint16_t port2
-
-    int16_t vlan_id
-    double timestamp
-
-    uint64_t bytes
-    uint16_t flags
-
 class PythonTCPPacketHeaders(Structure):
     _fields_ = (
         ("ip1", c_uint32),
@@ -262,25 +249,6 @@ class PythonTCPPacketHeaders(Structure):
         ("bytes", c_uint64),
         ("flags", c_uint16)
     )
-
-
-cdef struct TCPSession:
-    uint32_t ip1
-    uint16_t port1
-    uint64_t bytes1
-    uint16_t flags1
-
-    uint32_t ip2
-    uint16_t port2
-    uint64_t bytes2
-    uint16_t flags2
-
-    int16_t vlan_id
-    double tb
-    double te
-    uint64_t packets
-
-    uint32_t[30][2] traffic_bytes
 
 
 class PythonTCPSession(Structure):
@@ -300,7 +268,7 @@ class PythonTCPSession(Structure):
         ("te", c_double),
         ("packets", c_uint64),
 
-        ("traffic_bytes", c_uint32 * 30 * 2)
+        ("traffic_bytes", c_uint32 * BYTES_RING_SIZE * 2)
     )
 
 
@@ -448,7 +416,7 @@ cdef int parse_tcp_packet(TCPPacketHeaders* pkt_struct, pkt, doc) except -1:
     pkt_struct.bytes = bytes1
     #pkt_struct.flags = TODO
 
-cdef int print_tcp_session(TCPSession* session) except -1:
+cdef int print_tcp_session(TCPSession* session, uint64_t time_marker) except -1:
     print "IP1: ", str(session.ip1)
     print "port1: ", str( session.port1)
     print "bytes1: ", str( session.bytes1)
@@ -465,9 +433,19 @@ cdef int print_tcp_session(TCPSession* session) except -1:
     print "num packets: ", str( session.packets)
     print ""
     print "B1\tB2"
-    for b in session.traffic_bytes:
-        print str(b[0])+"\t"+str(b[1])
+    for cursor in range(BYTES_RING_SIZE):
+        b = session.traffic_bytes[cursor]
+        print str(b[0])+"\t"+str(b[1])+("<--" if cursor == time_marker % BYTES_RING_SIZE else "")
     
+cdef int init_tcp_capture_session(TCPSession* session):
+    # Zero out almost everything
+    memset(session, 0, sizeof(TCPSession))
+
+    session.tb = time.time()
+    session.te = time.time()
+    session.vlan_id = -1
+
+    return 0
 
 cdef int generate_tcp_session(TCPSession* session, TCPPacketHeaders* packet):
     session.ip1 = packet.ip1
@@ -485,7 +463,7 @@ cdef int generate_tcp_session(TCPSession* session, TCPPacketHeaders* packet):
     session.te = packet.timestamp
     session.packets = 1
 
-    session.traffic_bytes[<uint64_t>packet.timestamp % 30][0] = packet.bytes
+    session.traffic_bytes[<uint64_t>packet.timestamp % BYTES_RING_SIZE][0] = packet.bytes
 
     return 0
     
@@ -498,20 +476,20 @@ cdef int update_tcp_session(TCPSession* session, TCPPacketHeaders* packet):
     # everything between the last update and the current time, including
     # the current time, but not including the last update.  
     cdef int slot_second
-    if last_packet_second <= current_packet_second - 30:
+    if last_packet_second <= current_packet_second - BYTES_RING_SIZE:
         # Clear everything
         memset(session.traffic_bytes, 0, sizeof(session.traffic_bytes))
     elif last_packet_second < current_packet_second:
         # Only clear the slots that have occured between then and now.
         for slot_second in range(last_packet_second + 1, current_packet_second + 1):
-            session.traffic_bytes[slot_second % 30][0] = 0
-            session.traffic_bytes[slot_second % 30][1] = 0
+            session.traffic_bytes[slot_second % BYTES_RING_SIZE][0] = 0
+            session.traffic_bytes[slot_second % BYTES_RING_SIZE][1] = 0
 
     #session.vlan_id = vlan
     #session.tb = 
     session.te = packet.timestamp
     session.packets += 1
-    cdef int bytes_slot = current_packet_second % 30
+    cdef int bytes_slot = current_packet_second % BYTES_RING_SIZE
     if (session.ip1 == packet.ip1):
         #session.ip1 = packet.ip1
         #session.port1 = packet.port1
@@ -523,7 +501,7 @@ cdef int update_tcp_session(TCPSession* session, TCPPacketHeaders* packet):
         #session.ip2 = packet.ip2
         #session.port2 = packet.port2
         session.bytes2 += packet.bytes
-        session.flags2 += packet.flags
+        session.flags2 |= packet.flags
         session.traffic_bytes[bytes_slot][1] += packet.bytes
 
     return 0
@@ -582,12 +560,9 @@ cdef object generate_tcp_session_key_from_session(TCPSession* session):
     return <object>key
 
 
-# "Static Final" Mongo connection XXX: Not a good final solution
-tcp_sessionInfo_collection = trafcap.mongoSetup().tcp_sessionInfo
+cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, TCPSession* session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, TCPSession* capture_session) except -1:
 
-cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, list object_ids, TCPSession* session, int slot, int bytes_cursor, uint64_t now) except -1:
-
-    cdef uint64_t sb = now - 20
+    cdef uint64_t sb = second_to_write_from
     cdef uint64_t se
     cdef int tdm
 
@@ -598,24 +573,29 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, li
     # want to get back the object id.  Everything else is just added to the
     # bulk_writer for later execution.
 
+    # Note: Sometimes we wrap numbers in python int() before we commit them to
+    # a dictionary.  This is to prevent Cython from making uint64 into python
+    # Longs by default.  (Since we're commiting to disk, we'll do our best to
+    # save bytes.
+
     object_id = object_ids[slot]
     if not object_id:
         # We need to insert a new info doc
         info_doc = {
             "ip1":session.ip1,
             "p1":session.port1,
-            "b1":session.bytes1,
+            "b1":int(session.bytes1),
             "f1":session.flags1,
             "ip2":session.ip2,
             "p2":session.port2,
-            "b2":session.bytes2,
+            "b2":int(session.bytes2),
             "f2":session.flags2,
-            "bt":session.bytes1+session.bytes2,
+            "bt":int(session.bytes1+session.bytes2),
             "tbm":peg_to_minute(<uint64_t>session.tb),
             "tem":peg_to_minute(<uint64_t>session.te),
             "tb":session.tb,
             "te":session.te,
-            "pk":session.packets
+            "pk":int(session.packets)
             # Countries are TODO
             #"cc1":a_info[pc.i_cc1],
             #"loc1":a_info[pc.i_loc1],
@@ -627,24 +607,25 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, li
         if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
 
         # Insert the new doc and record the objectid
-        object_ids[slot] = tcp_sessionInfo_collection.insert(info_doc)
-        print info_doc,"at",object_ids[slot]
+        object_ids[slot] = info_collection.insert(info_doc)
+        #print info_doc,"at",object_ids[slot]
 
     else:
         # If we're not inserting a new doc, we're updating an existing one.
         info_update = {
             "$set": {
-                "b1": session.bytes1,
-                "b2": session.bytes2,
-                "bt": session.bytes1+session.bytes2,
-                "pk": session.packets,
+                "b1": int(session.bytes1),
+                "b2": int(session.bytes2),
+                "bt": int(session.bytes1+session.bytes2),
+                "pk": int(session.packets),
                 "te": session.te,
                 "tem": peg_to_minute(<uint64_t>session.te)
             }
         }
 
         info_bulk_writer.find({"_id": object_ids[slot]}).update(info_update)
-        print info_update
+        if session.ip1 == 0:
+            print info_update
 
 
     # We always need to write a bytes doc.
@@ -652,10 +633,10 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, li
     bytes_doc = {
             "ip1":session.ip1,
             "p1":session.port1,
-            "b1":session.bytes1,
+            "b1":int(session.bytes1),
             "ip2":session.ip2,
             "p2":session.port2,
-            "b2":session.bytes2,
+            "b2":int(session.bytes2),
             "b":bytes_to_write,
             "sb": sb,
             "sbm": peg_to_minute(sb)
@@ -663,23 +644,39 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, li
     }
     if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
 
-    cdef int offset, i
+    cdef int second, i
     cdef uint32_t* bytes_subarray
-    # Generate the bytes array.
-    for offset in range(20):
-        i = (bytes_cursor + offset) % 30
+    # Generate the bytes array.  Write all non-zero sub-arrays from the second
+    # to write up to the end of the data we have, inclusive.
+    for second in range(second_to_write_from, min(second_to_write_to, <uint64_t>session.te + 1)):
+        i = second % BYTES_RING_SIZE
         bytes_subarray = session.traffic_bytes[i]
         if bytes_subarray[0] > 0 or bytes_subarray[1] > 0:
-            se = sb+offset
-            bytes_to_write.append([offset, bytes_subarray[0], bytes_subarray[1]])
+            # Update the session end time
+            se = second
+            # Append a new Bytes subarray
+            bytes_to_write.append([
+                int(second - second_to_write_from),
+                bytes_subarray[0],
+                bytes_subarray[1]
+            ])
+            # Update the capture session
+            capture_session.bytes1 += bytes_subarray[0]
+            capture_session.bytes2 += bytes_subarray[1]
+            capture_session.traffic_bytes[i][0] += bytes_subarray[0]
+            capture_session.traffic_bytes[i][1] += bytes_subarray[1]
 
     bytes_doc["se"] = se
     bytes_doc["sem"] = peg_to_minute(se)
 
+    # Update capture_session timestamp
+    capture_session.te = max(capture_session.te, session.te)
+
     # add to writes
     bytes_bulk_writer.insert(bytes_doc)
 
-    print bytes_doc
+    if session.ip1 == 0:
+        print bytes_doc
 
     return 0
 
