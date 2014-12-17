@@ -22,10 +22,12 @@ from pymongo.bulk import InvalidOperation
 
 #CYTHON
 from cpython cimport array
-from libc.stdint cimport uint64_t, uint32_t
+from libc.stdint cimport uint64_t, uint32_t, uint16_t, uint8_t
 from libc.string cimport memcpy, memset
 from libc.stdlib cimport malloc
+from posix.time cimport timeval 
 import ctypes
+
 
 #proc = None
 
@@ -369,67 +371,185 @@ def sniffPkts(spq, pc):
     if proc:
         os.kill(proc.pid, signal.SIGTERM)
 
+cdef extern from "linux/pf_ring.h":
+    cdef union ip_addr:
+        uint32_t v4
 
-cdef bint parsePkts_running = True
-def parsePkts(spq, ppq, python_ppshared, pc, options):
-    # Allow exit without flush.
-    spq.cancel_join_thread()
-    ppq.cancel_join_thread()
+    cdef struct pkt_parsing_info:
+        uint8_t dmac[6]
+        uint8_t smac[6]
+        uint16_t eth_type
+        uint16_t vlan_id
+        uint8_t ip_version
+        uint8_t l3_proto 
+        uint8_t ip_tos 
+        ip_addr ip_src
+        ip_addr ip_dst
+        uint16_t l4_src_port 
+        uint16_t l4_dst_port 
+
+    cdef struct pfring_extended_pkthdr:
+        uint64_t timestamp_ns
+        pkt_parsing_info parsed_pkt
+
+    cdef struct pfring_pkthdr:
+        timeval ts
+        uint32_t caplen
+        uint32_t len
+        pfring_extended_pkthdr extended_hdr
+
+
+ctypedef void (*pfringProcesssPacket)(const pfring_pkthdr *h, const char *p, const char *user_bytes)
+
+cdef extern from "pfring.h":
+    struct pfring:
+        pass
+    struct pfring_stat:
+        uint64_t recv 
+        uint64_t drop 
+    pfring* pfring_open(const char *device_name, uint32_t caplen, uint32_t flags)
+    int pfring_enable_ring(pfring *ring)
+    int pfring_loop(pfring *ring, pfringProcesssPacket looper, 
+                     char *user_bytes, uint8_t wait_for_packet)
+    void pfring_breakloop(pfring *ring)
+    void pfring_close(pfring *ring)
+    int pfring_stats(pfring *ring, pfring_stat *stats)
+
+# Globals moved out of main() so processPacket callback function can access them
+cdef object parser_packet_count = multiprocessing.Value(ctypes.c_uint64)
+parser_packet_count.value = 0
+cdef object parsed_packet_pipe = multiprocessing.Pipe()
+cdef int shared_packet_cursor_in = 0
+cdef object python_parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
+
+cdef void processPacket(const pfring_pkthdr *h, const char *p, const char *user_bytes):
+    cdef pfring_extended_pkthdr eh = h.extended_hdr
+    cdef pkt_parsing_info pp = h.extended_hdr.parsed_pkt
+    global parser_packet_count
+    global parsed_packet_pipe
+    global shared_packet_cursor_in
+    global python_parsed_packet_buffer
+
+    #print "clen:", h.caplen, ", ", h.ts.tv_sec, ".", h.ts.tv_usec,
+    #print ", smac:", hex(pp.smac[0])[2:], hex(pp.smac[1])[2:], hex(pp.smac[2])[2:],
+    #print ", dmac:", hex(pp.dmac[0])[2:], hex(pp.dmac[1])[2:], hex(pp.dmac[2])[2:],
+    #print ", et:", pp.eth_type, ", vl:", pp.vlan_id, ", ipv:", pp.ip_version
+
+    cdef long pointer = ctypes.addressof(python_parsed_packet_buffer)
+    cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>pointer
+    cdef TCPPacketHeaders* current_shared_pkt
+
+    current_shared_pkt = &ppshared[shared_packet_cursor_in]
+
+    current_shared_pkt.ip1 = pp.ip_src.v4
+    current_shared_pkt.ip2 = pp.ip_dst.v4
+    current_shared_pkt.port1 = pp.l4_src_port 
+    current_shared_pkt.port2 = pp.l4_dst_port 
+    current_shared_pkt.timestamp = eh.timestamp_ns 
+    current_shared_pkt.vlan_id = pp.vlan_id 
+    current_shared_pkt.bytes = h.len 
+    #current_shared_pkt.flags = TODO
+
+    parser_packet_count.value += 1
+    parsed_packet_pipe[0].send(shared_packet_cursor_in)  
+    shared_packet_cursor_in = (shared_packet_cursor_in + 1) % 100000
+
+    # Sending to pipe inside of try/except caused compile error
+    #ppp_in = parsed_packet_pipe[0]
+    #try:
+    #    ppp_in.send(shared_packet_cursor_in)  
+    #    shared_packet_cursor_in = (shared_packet_cursor_in + 1) % 100000
+    #except IOError:
+    #    # Exception occurs if signal handled during put 
+    #    continue
+
+# Hack to bypass error when importing macro from pfring.h
+DEF PF_RING_LONG_HEADER = 4
+
+cdef bint parsePkts_running = False 
+def parsePkts(pc, options):
+    cdef pfring *pd
 
     # First, setup signal handling
     def parsePktsCatchCntlC(signum, stack):
         print 'Caught CntlC in parsePkts...'
         global parsePkts_running
         parsePkts_running = False
+        pfring_breakloop(pd)
 
     signal.signal(signal.SIGINT, parsePktsCatchCntlC)
     
     # Give Cython code low-level access to the shared memory array
     #cdef array.array halfway_ppshared = python_ppshared
     #cdef TCPPacketHeaders[:] ppshared = halfway_ppshared
-    cdef long pointer = ctypes.addressof(python_ppshared)
-    cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>pointer
+    #cdef long pointer = ctypes.addressof(python_ppshared)
+    #cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>pointer
 
-    cdef int shared_pkt_cursor = 0
-    cdef TCPPacketHeaders* current_shared_pkt
-    cdef int parse_return_code
-    while parsePkts_running:
-        try:
-            pkt = spq.get()   # Blocks if queue is empty
-        except IOError:
-            # Exception occurs if signal handled during get
-            continue
+    #cdef int shared_pkt_cursor = 0
+    #cdef TCPPacketHeaders* current_shared_pkt
+    #cdef int parse_return_code
 
-        current_shared_pkt = &ppshared[shared_pkt_cursor]
+    cdef uint32_t flags = 0
+    cdef char* device = 'sniff0'
+    cdef int snaplen = 128
+    flags |= PF_RING_LONG_HEADER
+    cdef int wait_for_packet = 1
+    
+    print "Starting parsePkts..."
 
-        try:
-            parse_return_code = parse_tcp_packet(current_shared_pkt, pkt, None)
-        except Exception, e:
-            # Something went wrong with parsing the line. Save for analysis
-            if not options.quiet:
-                print e
-                print "\n-------------pkt------------------\n"
-                print pkt 
-                print traceback.format_exc()
-      
-            trafcap.logException(e, pkt=pkt)
-            continue     
+    pd = pfring_open(device, snaplen, flags)
+    pfring_enable_ring(pd)
+    pfring_loop(pd, processPacket, "", wait_for_packet) 
 
-        # parsing problem can sometimes cause -1 to be returned
-        if parse_return_code == -1: continue
+    #while parsePkts_running:
+    #    time.sleep(1)
+    #    #pfring_stats(pd, &pfringStat)
+    #    print "pfring_stats here..."
 
-        try:
-            ppq.put(shared_pkt_cursor)   # Blocks if queue is empty
-            shared_pkt_cursor = (shared_pkt_cursor + 1) % 100000
-        except IOError:
-            # Exception occurs if signal handled during put 
-            continue
+    #    try:
+    #        # PF_RING stuff here...
+    #        pass
+    #    except Exception, e:
+    #        if not options.quiet:
+    #            print e
+    #            print "\n-------------pkt------------------\n"
+    #            print pkt 
+    #            print traceback.format_exc()
+    #  
+    #        trafcap.logException(e, pkt=pkt)
+    #        continue     
+#
+#        current_shared_pkt = &ppshared[shared_pkt_cursor]
+#        try:
+#            parse_return_code = parse_tcp_packet(current_shared_pkt, pkt, None)
+#        except Exception, e:
+#            # Something went wrong with parsing the line. Save for analysis
+#            if not options.quiet:
+#                print e
+#                print "\n-------------pkt------------------\n"
+#                print pkt 
+#                print traceback.format_exc()
+#      
+#            trafcap.logException(e, pkt=pkt)
+#            continue     
+#
+#        # parsing problem can sometimes cause -1 to be returned
+#        if parse_return_code == -1: continue
+#
+#        try:
+#            ppp.send(shared_pkt_cursor)  
+#            shared_pkt_cursor = (shared_pkt_cursor + 1) % 100000
+#        except IOError:
+#            # Exception occurs if signal handled during put 
+#            continue
+
+    time.sleep(1)   # sample code included this - not sure of benefit 
+    pfring_close(pd)
+
 
 DEF GET_WAIT = 0.01
 cdef bint updateDict_running = True
-def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, session_alloc_pipe, pc, options):
-    # Allow exit without flush.
-    ppq.cancel_join_thread()
+def updateDict(updater_pkt_count, python_ppshared, python_sessions_shared, session_locks, session_alloc_pipe, updater_sessions_count, pc, options):
 
     # Signal Handling
     def updateDictCatchCntlC(signum, stack):
@@ -456,13 +576,14 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, sess
     cdef int get_loop_counter = 0
     cdef bint update_db = False
 
-    cdef int shared_pkt_cursor
+    cdef int shared_packet_cursor_out
     cdef TCPPacketHeaders* packet
 
     available_slots = deque(xrange(1000000))
     cdef dict session_slot_map = {}
     cdef int session_slot
     cdef TCPSession* session
+    global parsed_packet_pipe
 
     # The primary packet loop
     # General Strategy:
@@ -479,14 +600,13 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, sess
     #     phase" tell us when it's done with a connection.
     while updateDict_running:
         try:
-            shared_pkt_cursor = ppq.get(True, GET_WAIT)   # Blocks if queue is empty
+            shared_packet_cursor_out = parsed_packet_pipe[1].recv()
+            updater_pkt_count.value += 1
         except IOError:
             # Exception occurs if signal handled during get
             continue
-        except Queue.Empty:
-            continue
-            
-        packet = &ppshared[shared_pkt_cursor]
+
+        packet = &ppshared[shared_packet_cursor_out]
 
         # Get the session's key for lookup
         session_key = generate_tcp_session_key_from_pkt(packet)
@@ -507,7 +627,7 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, sess
             
             # Tell next phase about the new session
             session_alloc_pipe.send_bytes(new_slot_number_pipeable)
-            print "Created new session at slot", new_slot_number_p[0]
+            #print "Created new session at slot", new_slot_number_p[0]
         else:
             # Update existing session
             session = &sessions_shared[session_slot]
@@ -529,7 +649,7 @@ def updateDict(ppq, python_ppshared, python_sessions_shared, session_locks, sess
 
 
 cdef bint bookkeeper_running = True
-def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, options):
+def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper_session_count, options):
 
     # Signal Handling
     def bookkeeperCatchCntlC(signum, stack):
@@ -871,36 +991,63 @@ def main():
 
     oldest_session_time = int(time.time()) - trafcap.session_expire_timeout
 
-    sniffed_packets = multiprocessing.Queue(maxsize=100000)
-    parsed_packet_cursor_queue = multiprocessing.Queue(maxsize=100000)
-    parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
+    # Made global
+    #parser_packet_count = multiprocessing.Value(ctypes.c_uint64)
+    #parser_packet_count.value = 0
+
+    updater_packet_count = multiprocessing.Value(ctypes.c_uint64)
+    updater_packet_count.value = 0
+    updater_session_count = multiprocessing.Value(ctypes.c_uint64)
+    updater_session_count.value = 0
+    keeper_session_count = multiprocessing.Value(ctypes.c_uint64)
+    keeper_session_count.value = 0
+
+    # Made global
+    #parsed_packet_pipe = multiprocessing.Pipe()
+    #parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
+
     sessions_buffer = multiprocessing.RawArray(PythonTCPSession, 1000000)
     sessions_sync_pipe = multiprocessing.Pipe()
     session_locks = tuple((multiprocessing.Lock() for i in xrange(1000)))
 
-    sniffer = multiprocessing.Process(target = sniffPkts, 
-        args=(sniffed_packets,pc,))
+    #sniffer = multiprocessing.Process(target = sniffPkts, 
+    #    args=(sniffed_packets,pc,))
     parser = multiprocessing.Process(target = parsePkts, 
-        args=(sniffed_packets, parsed_packet_cursor_queue,
-              parsed_packet_buffer,pc, options,))
+        args=(pc, options))
     updater = multiprocessing.Process(target = updateDict, 
-        args=(parsed_packet_cursor_queue, parsed_packet_buffer, sessions_buffer, session_locks, sessions_sync_pipe[0], pc, options))
+        args=(updater_packet_count, 
+              python_parsed_packet_buffer, sessions_buffer, session_locks, 
+              sessions_sync_pipe[0], updater_session_count,
+              pc, options))
     keeper = multiprocessing.Process(target = bookkeeper,
-        args=(sessions_buffer, session_locks, sessions_sync_pipe[1], options))
+        args=(sessions_buffer, session_locks, 
+              sessions_sync_pipe[1], keeper_session_count, options))
 
-    sniffer.start()
+    #sniffer.start()
     parser.start()
     updater.start()
     keeper.start()
 
+    prev_packet_count = 0
     while main_running:
-        time.sleep(5)
-        print 'sniff: ', sniffed_packets.qsize(),
-        print 'parse: ', parsed_packet_cursor_queue.qsize(), '\r',
+        time.sleep(1)
+        ppc = parser_packet_count.value
+        upc = updater_packet_count.value
+        usc = updater_session_count.value
+        ksc = keeper_session_count.value
+        print 'pps: ', ppc - prev_packet_count,
+        #print 'ppc: ', ppc,
+        print 'ppp: (', ppc - upc, ') ',
+        #print 'u: ', upc,
+        #print 'us: ', usc,
+        print ', sp: (', usc - ksc, ') ',
+        print 'ks: ', ksc
         sys.stdout.flush()
+        prev_packet_count = ppc
+
 
     # Handle shutdown -- send signals?
-    sniffer.join()
+    #sniffer.join()
     parser.join()
     updater.join()
     keeper.join()

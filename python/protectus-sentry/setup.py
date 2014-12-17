@@ -2,8 +2,8 @@ import os
 import sys
 from zipfile import ZipFile # For egg manipulation
 import glob
-
-from setuptools import setup, find_packages
+#from distutils.extension import Extension
+from setuptools import setup, find_packages, Extension
 
 # Cython actually accepts an extended glob pattern, where ** means more than one directory
 cythonize_glob = 'protectus_sentry/**/*.py'
@@ -29,9 +29,15 @@ setup_settings = {}
 from Cython.Distutils import build_ext
 from Cython.Build import cythonize
 
+extensions = [
+    Extension("traf2mongo", ["protectus_sentry/**/traf2mongo.pyx"],
+       libraries = ["pfring", "pcap", "numa"],
+       library_dirs = ["/usr/local/lib", "/home/sentry/PF_RING-6.0.2/userland/libpcap"])
+]
+print isinstance(extensions[0], Extension)
 setup_settings = {
     'cmdclass': {'build_ext':build_ext},
-    'ext_modules': cythonize(cythonize_glob) + cythonize(pyx_glob)
+    'ext_modules': cythonize(extensions) + cythonize(cythonize_glob) + cythonize(pyx_glob)
 }
 
 setup(name='protectus-sentry',
