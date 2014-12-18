@@ -625,7 +625,9 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
         info_bulk_writer.find({"_id": object_ids[slot]}).update(info_update)
         if session.ip1 == 0:
-            print info_update
+            # PFG
+            #print info_update
+            pass
 
 
     # We always need to write a bytes doc.
@@ -642,7 +644,8 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             "sbm": peg_to_minute(sb)
             # Country TODO
     }
-    if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
+    # PFG
+    #if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
 
     cdef int second, i
     cdef uint32_t* bytes_subarray
@@ -676,7 +679,9 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
     bytes_bulk_writer.insert(bytes_doc)
 
     if session.ip1 == 0:
-        print bytes_doc
+        # PFG
+        #print bytes_doc
+        pass
 
     return 0
 

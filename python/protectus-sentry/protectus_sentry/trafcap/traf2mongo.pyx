@@ -25,9 +25,8 @@ from cpython cimport array
 from libc.stdint cimport uint64_t, uint32_t, uint16_t, uint8_t, int64_t
 from libc.string cimport memcpy, memset
 from libc.stdlib cimport malloc
-from posix.time cimport timeval 
 import ctypes
-
+from cpf_ring cimport * 
 
 #proc = None
 
@@ -101,185 +100,147 @@ def sniffPkts(spq, pc):
     if proc:
         os.kill(proc.pid, signal.SIGTERM)
 
-cdef extern from "linux/pf_ring.h":
-    cdef union ip_addr:
-        uint32_t v4
-
-    cdef struct pkt_parsing_info:
-        uint8_t dmac[6]
-        uint8_t smac[6]
-        uint16_t eth_type
-        uint16_t vlan_id
-        uint8_t ip_version
-        uint8_t l3_proto 
-        uint8_t ip_tos 
-        ip_addr ip_src
-        ip_addr ip_dst
-        uint16_t l4_src_port 
-        uint16_t l4_dst_port 
-
-    cdef struct pfring_extended_pkthdr:
-        uint64_t timestamp_ns
-        pkt_parsing_info parsed_pkt
-
-    cdef struct pfring_pkthdr:
-        timeval ts
-        uint32_t caplen
-        uint32_t len
-        pfring_extended_pkthdr extended_hdr
-
-
-ctypedef void (*pfringProcesssPacket)(const pfring_pkthdr *h, const char *p, const char *user_bytes)
-
-cdef extern from "pfring.h":
-    struct pfring:
-        pass
-    struct pfring_stat:
-        uint64_t recv 
-        uint64_t drop 
-    pfring* pfring_open(const char *device_name, uint32_t caplen, uint32_t flags)
-    int pfring_enable_ring(pfring *ring)
-    int pfring_loop(pfring *ring, pfringProcesssPacket looper, 
-                     char *user_bytes, uint8_t wait_for_packet)
-    void pfring_breakloop(pfring *ring)
-    void pfring_close(pfring *ring)
-    int pfring_stats(pfring *ring, pfring_stat *stats)
-
 # Globals moved out of main() so processPacket callback function can access them
-cdef object parser_packet_count = multiprocessing.Value(ctypes.c_uint64)
-parser_packet_count.value = 0
-cdef object parsed_packet_pipe = multiprocessing.Pipe()
-cdef int shared_packet_cursor_in = 0
-cdef object python_parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
-
-cdef void processPacket(const pfring_pkthdr *h, const char *p, const char *user_bytes):
-    cdef pfring_extended_pkthdr eh = h.extended_hdr
-    cdef pkt_parsing_info pp = h.extended_hdr.parsed_pkt
-    global parser_packet_count
-    global parsed_packet_pipe
-    global shared_packet_cursor_in
-    global python_parsed_packet_buffer
-
-    #print "clen:", h.caplen, ", ", h.ts.tv_sec, ".", h.ts.tv_usec,
-    #print ", smac:", hex(pp.smac[0])[2:], hex(pp.smac[1])[2:], hex(pp.smac[2])[2:],
-    #print ", dmac:", hex(pp.dmac[0])[2:], hex(pp.dmac[1])[2:], hex(pp.dmac[2])[2:],
-    #print ", et:", pp.eth_type, ", vl:", pp.vlan_id, ", ipv:", pp.ip_version
-
-    cdef long pointer = ctypes.addressof(python_parsed_packet_buffer)
-    cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>pointer
-    cdef TCPPacketHeaders* current_shared_pkt
-
-    current_shared_pkt = &ppshared[shared_packet_cursor_in]
-
-    current_shared_pkt.ip1 = pp.ip_src.v4
-    current_shared_pkt.ip2 = pp.ip_dst.v4
-    current_shared_pkt.port1 = pp.l4_src_port 
-    current_shared_pkt.port2 = pp.l4_dst_port 
-    current_shared_pkt.timestamp = eh.timestamp_ns 
-    current_shared_pkt.vlan_id = pp.vlan_id 
-    current_shared_pkt.bytes = h.len 
-    #current_shared_pkt.flags = TODO
-
-    parser_packet_count.value += 1
-    parsed_packet_pipe[0].send(shared_packet_cursor_in)  
-    shared_packet_cursor_in = (shared_packet_cursor_in + 1) % 100000
-
-    # Sending to pipe inside of try/except caused compile error
-    #ppp_in = parsed_packet_pipe[0]
-    #try:
-    #    ppp_in.send(shared_packet_cursor_in)  
-    #    shared_packet_cursor_in = (shared_packet_cursor_in + 1) % 100000
-    #except IOError:
-    #    # Exception occurs if signal handled during put 
-    #    continue
+#cdef object parser_packet_count = multiprocessing.Value(ctypes.c_uint64)
+#parser_packet_count.value = 0
+#cdef object parsed_packet_pipe = multiprocessing.Pipe()
+#cdef int shared_packet_cursor_in = 0
+#cdef object python_parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
+#
+#cdef void processPacket(const pfring_pkthdr *h, const char *p, const char *user_bytes):
+#    cdef pfring_extended_pkthdr eh = h.extended_hdr
+#    cdef pkt_parsing_info pp = h.extended_hdr.parsed_pkt
+#    global parser_packet_count
+#    global parsed_packet_pipe
+#    global shared_packet_cursor_in
+#    global python_parsed_packet_buffer
+#
+#    #print "clen:", h.caplen, ", ", h.ts.tv_sec, ".", h.ts.tv_usec,
+#    #print ", smac:", hex(pp.smac[0])[2:], hex(pp.smac[1])[2:], hex(pp.smac[2])[2:],
+#    #print ", dmac:", hex(pp.dmac[0])[2:], hex(pp.dmac[1])[2:], hex(pp.dmac[2])[2:],
+#    #print ", et:", pp.eth_type, ", vl:", pp.vlan_id, ", ipv:", pp.ip_version
+#
+#    cdef long pointer = ctypes.addressof(python_parsed_packet_buffer)
+#    cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>pointer
+#    cdef TCPPacketHeaders* current_shared_pkt
+#
+#    current_shared_pkt = &ppshared[shared_packet_cursor_in]
+#
+#    current_shared_pkt.ip1 = pp.ip_src.v4
+#    current_shared_pkt.ip2 = pp.ip_dst.v4
+#    current_shared_pkt.port1 = pp.l4_src_port 
+#    current_shared_pkt.port2 = pp.l4_dst_port 
+#    current_shared_pkt.timestamp = eh.timestamp_ns 
+#    current_shared_pkt.vlan_id = pp.vlan_id 
+#    current_shared_pkt.bytes = h.len 
+#    #current_shared_pkt.flags = TODO
+#
+#    parser_packet_count.value += 1
+#    parsed_packet_pipe[0].send(shared_packet_cursor_in)  
+#    shared_packet_cursor_in = (shared_packet_cursor_in + 1) % 100000
+#
+#    # Sending to pipe inside of try/except caused compile error
+#    #ppp_in = parsed_packet_pipe[0]
+#    #try:
+#    #    ppp_in.send(shared_packet_cursor_in)  
+#    #    shared_packet_cursor_in = (shared_packet_cursor_in + 1) % 100000
+#    #except IOError:
+#    #    # Exception occurs if signal handled during put 
+#    #    continue
 
 # Hack to bypass error when importing macro from pfring.h
 DEF PF_RING_LONG_HEADER = 4
+DEF NO_ZC_BUFFER_LEN = 256 
 
-cdef bint parsePkts_running = False 
-def parsePkts(pc, options):
-    cdef pfring *pd
+cdef bint parsePkts_running = True 
+def parsePkts(parsed_packet_pipe, parsed_packet_count, python_ppshared, 
+              recv_stats, drop_stats, pc, options):
 
     # First, setup signal handling
     def parsePktsCatchCntlC(signum, stack):
         print 'Caught CntlC in parsePkts...'
         global parsePkts_running
         parsePkts_running = False
-        pfring_breakloop(pd)
+        #pfring_breakloop(pd)
 
     signal.signal(signal.SIGINT, parsePktsCatchCntlC)
     
     # Give Cython code low-level access to the shared memory array
-    #cdef array.array halfway_ppshared = python_ppshared
-    #cdef TCPPacketHeaders[:] ppshared = halfway_ppshared
-    #cdef long pointer = ctypes.addressof(python_ppshared)
-    #cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>pointer
+    cdef long pointer = ctypes.addressof(python_ppshared)
+    cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>pointer
 
-    #cdef int shared_pkt_cursor = 0
-    #cdef TCPPacketHeaders* current_shared_pkt
+    # Make the pipe data a raw buffer.  Enables cython later>
+    python_shared_packet_cursor_in = ctypes.c_uint32()
+    cdef long shared_packet_cursor_in_address = ctypes.addressof(python_shared_packet_cursor_in)
+    cdef uint32_t* shared_packet_cursor_in_p = <uint32_t*>shared_packet_cursor_in_address
+
+    #cdef int shared_packet_cursor_in = 0
+    cdef TCPPacketHeaders* current_shared_pkt
     #cdef int parse_return_code
 
+    cdef char a_buffer[NO_ZC_BUFFER_LEN]
+    cdef char* buffer_p = a_buffer
+    cdef pfring_pkthdr hdr
+    cdef pfring_extended_pkthdr* eh = &hdr.extended_hdr
+    cdef pkt_parsing_info* pp = &hdr.extended_hdr.parsed_pkt
+    cdef pfring_stat ringstats
+
+    cdef pfring *pd
     cdef uint32_t flags = 0
     cdef char* device = 'sniff0'
     cdef int snaplen = 128
     flags |= PF_RING_LONG_HEADER
     cdef int wait_for_packet = 1
-    
-    print "Starting parsePkts..."
-
     pd = pfring_open(device, snaplen, flags)
+
+    pfring_set_bpf_filter(pd, 'tcp')
     pfring_enable_ring(pd)
-    pfring_loop(pd, processPacket, "", wait_for_packet) 
+    #pfring_loop(pd, processPacket, "", wait_for_packet) 
+    cdef int last_pkt_time_sec = 0
 
-    #while parsePkts_running:
-    #    time.sleep(1)
-    #    #pfring_stats(pd, &pfringStat)
-    #    print "pfring_stats here..."
+    while parsePkts_running:
 
-    #    try:
-    #        # PF_RING stuff here...
-    #        pass
-    #    except Exception, e:
-    #        if not options.quiet:
-    #            print e
-    #            print "\n-------------pkt------------------\n"
-    #            print pkt 
-    #            print traceback.format_exc()
-    #  
-    #        trafcap.logException(e, pkt=pkt)
-    #        continue     
-#
-#        current_shared_pkt = &ppshared[shared_pkt_cursor]
-#        try:
-#            parse_return_code = parse_tcp_packet(current_shared_pkt, pkt, None)
-#        except Exception, e:
-#            # Something went wrong with parsing the line. Save for analysis
-#            if not options.quiet:
-#                print e
-#                print "\n-------------pkt------------------\n"
-#                print pkt 
-#                print traceback.format_exc()
-#      
-#            trafcap.logException(e, pkt=pkt)
-#            continue     
-#
-#        # parsing problem can sometimes cause -1 to be returned
-#        if parse_return_code == -1: continue
-#
-#        try:
-#            ppp.send(shared_pkt_cursor)  
-#            shared_pkt_cursor = (shared_pkt_cursor + 1) % 100000
-#        except IOError:
-#            # Exception occurs if signal handled during put 
-#            continue
+        pfring_recv(pd, &buffer_p, NO_ZC_BUFFER_LEN, &hdr, wait_for_packet)
 
-    time.sleep(1)   # sample code included this - not sure of benefit 
+        if shared_packet_cursor_in_p[0] == 0:
+            #print "clen:", hdr.caplen, ", ", hdr.ts.tv_sec, ".", hdr.ts.tv_usec,
+            #print ",tns:", eh.timestamp_ns,
+            #print ",smac:", hex(pp.smac[0])[2:], hex(pp.smac[1])[2:], hex(pp.smac[2])[2:],
+            #print ",dmac:", hex(pp.dmac[0])[2:], hex(pp.dmac[1])[2:], hex(pp.dmac[2])[2:],
+            #print ",et:", pp.eth_type, ",vl:", pp.vlan_id, ",ipv:", pp.ip_version
+            pass
+
+        # Update dropped packet counter approx every second
+        if hdr.ts.tv_sec - last_pkt_time_sec > 1:
+            pfring_stats(pd, &ringstats)
+            #recv_stats.value = ringstats.recv
+            drop_stats.value = ringstats.drop
+            last_pkt_time_sec = hdr.ts.tv_sec
+
+    
+        current_shared_pkt = &ppshared[shared_packet_cursor_in_p[0]]
+    
+        current_shared_pkt.ip1 = pp.ip_src.v4
+        current_shared_pkt.ip2 = pp.ip_dst.v4
+        current_shared_pkt.port1 = pp.l4_src_port 
+        current_shared_pkt.port2 = pp.l4_dst_port 
+        current_shared_pkt.timestamp = eh.timestamp_ns 
+        current_shared_pkt.vlan_id = pp.vlan_id 
+        current_shared_pkt.bytes = hdr.c_len 
+        #current_shared_pkt.flags = TODO
+    
+        parsed_packet_count.value += 1
+        parsed_packet_pipe.send_bytes(python_shared_packet_cursor_in)  
+        shared_packet_cursor_in_p[0] = (shared_packet_cursor_in_p[0] + 1) % 100000
+
+
+    time.sleep(1)   # sample code included this - not sure if necessary
     pfring_close(pd)
 
 
 DEF GET_WAIT = 0.01
 cdef bint updateDict_running = True
-def updateDict(updater_pkt_count, python_ppshared, python_sessions_shared, session_locks, session_alloc_pipe, updater_sessions_count, pc, options):
+def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_sessions_shared, session_locks, session_alloc_pipe, updater_session_count, pc, options):
 
     # Signal Handling
     def updateDictCatchCntlC(signum, stack):
@@ -297,7 +258,7 @@ def updateDict(updater_pkt_count, python_ppshared, python_sessions_shared, sessi
     cdef long sessions_pointer = ctypes.addressof(python_sessions_shared)
     cdef TCPSession* sessions_shared = <TCPSession*>sessions_pointer
 
-    # Make the pipe data a raw buffer.  Enables cython later>
+    # Make the outgoing pipe data a raw buffer.  Enables cython later>
     new_slot_number_pipeable = ctypes.c_uint32()
     cdef long new_slot_number_address = ctypes.addressof(new_slot_number_pipeable)
     cdef uint32_t* new_slot_number_p = <uint32_t*>new_slot_number_address
@@ -306,14 +267,17 @@ def updateDict(updater_pkt_count, python_ppshared, python_sessions_shared, sessi
     cdef int get_loop_counter = 0
     cdef bint update_db = False
 
-    cdef int shared_packet_cursor_out
+    # Make the incoming pipe data a raw buffer.  Enables cython later>
+    python_shared_packet_cursor_out = ctypes.c_uint32()
+    cdef long shared_packet_cursor_out_address = ctypes.addressof(python_shared_packet_cursor_out)
+    cdef uint32_t* shared_packet_cursor_out_p = <uint32_t*>shared_packet_cursor_out_address
+
     cdef TCPPacketHeaders* packet
 
     available_slots = deque(xrange(1000000))
     cdef dict session_slot_map = {}
     cdef int session_slot
     cdef TCPSession* session
-    global parsed_packet_pipe
 
     # The primary packet loop
     # General Strategy:
@@ -330,13 +294,13 @@ def updateDict(updater_pkt_count, python_ppshared, python_sessions_shared, sessi
     #     phase" tell us when it's done with a connection.
     while updateDict_running:
         try:
-            shared_packet_cursor_out = parsed_packet_pipe[1].recv()
+            parsed_packet_pipe.recv_bytes_into(python_shared_packet_cursor_out)
             updater_pkt_count.value += 1
         except IOError:
             # Exception occurs if signal handled during get
             continue
 
-        packet = &ppshared[shared_packet_cursor_out]
+        packet = &ppshared[shared_packet_cursor_out_p[0]]
 
         # Get the session's key for lookup
         session_key = generate_tcp_session_key_from_pkt(packet)
@@ -358,6 +322,7 @@ def updateDict(updater_pkt_count, python_ppshared, python_sessions_shared, sessi
             # Tell next phase about the new session
             session_alloc_pipe.send_bytes(new_slot_number_pipeable)
             #print "Created new session at slot", new_slot_number_p[0]
+            updater_session_count.value += 1
         else:
             # Update existing session
             session = &sessions_shared[session_slot]
@@ -379,7 +344,7 @@ def updateDict(updater_pkt_count, python_ppshared, python_sessions_shared, sessi
 
 
 cdef bint bookkeeper_running = True
-def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper_session_count, options):
+def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper_session_count, keeper_live_session_count, options):
 
     # Signal Handling
     def bookkeeperCatchCntlC(signum, stack):
@@ -465,15 +430,17 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
     while bookkeeper_running:
         # Always check for new data.  If there is none, check the time
         # TODO: Better time/loop management
-        if not sessions_sync_pipe.poll():
+        if not sessions_sync_pipe.poll(0.02):
             current_second = max(current_second, int(time.time()-2))
-            time.sleep(0.02)
+            #time.sleep(0.02)
 
         while sessions_sync_pipe.poll():
             # Read data from the pipe into a ctype, which is pointed to by
             # cython.  No type cohersion or translation required.
             # SIDE EFFECT: population of current_session_slot
             sessions_sync_pipe.recv_bytes_into(py_current_slot)
+            keeper_session_count.value += 1
+            keeper_live_session_count.value += 1
 
             session = &sessions_shared[session_slot_p[0]]
 
@@ -513,7 +480,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
             schedule_number = second_to_write % BYTES_RING_SIZE
             slots_to_write = schedule[schedule_number]
 
-            print "Processing",second_to_write
+            #print "Processing",second_to_write
 
             # Upcoming session writes will write up to but not into
             # second_to_write, so we clear that out.
@@ -536,7 +503,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                 lock.release()
 
                 #if slot in tracked_slots:
-                #    print_tcp_session(session, second_to_write_from)
+                    #print_tcp_session(session, second_to_write_from)
                 #print second_to_write,":",i,": slot", slot, ", last data", current_second - <uint64_t>session_copy.te
 
                 seconds_since_last_bytes = <int64_t>(second_to_write - <uint64_t>session_copy.te)
@@ -557,6 +524,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                     # into a python Pipe.
                     session_slot_p[0] = slot  # Linked to py_current_slot!
                     sessions_sync_pipe.send_bytes(py_current_slot)
+                    keeper_live_session_count.value -= 1
 
                     ## Connection-Tracking Debug ##
                     #if slot in tracked_slots:
@@ -569,7 +537,9 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
 
                 elif session.traffic_bytes[bytes_cursor][0] > 0 or session.traffic_bytes[bytes_cursor][1] > 0:
                     # Write to database (or at least queue)
+                    # PFG
                     write_tcp_session(info_bulk_writer, bytes_bulk_writer, db.tcp_sessionInfo, object_ids, session_copy, slot, second_to_write_from, second_to_write, capture_session)
+                    
                     mongo_writes += 2
                     next_scheduled_checkup_time = second_to_write + BYTES_DOC_SIZE
 
@@ -614,12 +584,16 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
             # happens once a second, so we're not super concerned about
             # efficiency.
             if capture_scheduled_checkup_time <= second_to_write:
-                print_tcp_session(capture_session, capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2))
+                # PFG
+                #print_tcp_session(capture_session, capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2))
                 # Not so unlike writing a normal session, but with some
                 # shortcuts and dummy data.
                 info_bulk_writer = db.tcp_captureInfo.initialize_unordered_bulk_op()
                 bytes_bulk_writer = db.tcp_captureBytes.initialize_unordered_bulk_op()
+
+                # PFG
                 write_tcp_session(info_bulk_writer, bytes_bulk_writer, db.tcp_captureInfo, capture_object_ids, capture_session, 0, capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2), capture_scheduled_checkup_time - BYTES_DOC_SIZE, dummy_session)
+
                 mongo_writes += 2
                 capture_scheduled_checkup_time = second_to_write + (BYTES_DOC_SIZE / 2)
 
@@ -734,9 +708,9 @@ def main():
 
     oldest_session_time = int(time.time()) - trafcap.session_expire_timeout
 
-    # Made global
-    #parser_packet_count = multiprocessing.Value(ctypes.c_uint64)
-    #parser_packet_count.value = 0
+    # Will be replaced by ring stats 
+    parser_packet_count = multiprocessing.Value(ctypes.c_uint64)
+    parser_packet_count.value = 0
 
     updater_packet_count = multiprocessing.Value(ctypes.c_uint64)
     updater_packet_count.value = 0
@@ -744,10 +718,15 @@ def main():
     updater_session_count.value = 0
     keeper_session_count = multiprocessing.Value(ctypes.c_uint64)
     keeper_session_count.value = 0
+    keeper_live_session_count = multiprocessing.Value(ctypes.c_uint64)
+    keeper_live_session_count.value = 0
+    ring_stats_recv = multiprocessing.Value(ctypes.c_uint64)
+    ring_stats_recv.value = 0
+    ring_stats_drop = multiprocessing.Value(ctypes.c_uint64)
+    ring_stats_drop.value = 0
 
-    # Made global
-    #parsed_packet_pipe = multiprocessing.Pipe()
-    #parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
+    parsed_packet_pipe = multiprocessing.Pipe()
+    parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
 
     sessions_buffer = multiprocessing.RawArray(PythonTCPSession, 1000000)
     sessions_sync_pipe = multiprocessing.Pipe()
@@ -756,15 +735,19 @@ def main():
     #sniffer = multiprocessing.Process(target = sniffPkts, 
     #    args=(sniffed_packets,pc,))
     parser = multiprocessing.Process(target = parsePkts, 
-        args=(pc, options))
+        args=(parsed_packet_pipe[0], parser_packet_count, 
+              parsed_packet_buffer, 
+              ring_stats_recv, ring_stats_drop,
+              pc, options))
     updater = multiprocessing.Process(target = updateDict, 
-        args=(updater_packet_count, 
-              python_parsed_packet_buffer, sessions_buffer, session_locks, 
+        args=(parsed_packet_pipe[1], updater_packet_count, 
+              parsed_packet_buffer, sessions_buffer, session_locks, 
               sessions_sync_pipe[0], updater_session_count,
               pc, options))
     keeper = multiprocessing.Process(target = bookkeeper,
         args=(sessions_buffer, session_locks, 
-              sessions_sync_pipe[1], keeper_session_count, options))
+              sessions_sync_pipe[1], keeper_session_count, 
+              keeper_live_session_count, options))
 
     #sniffer.start()
     parser.start()
@@ -774,17 +757,23 @@ def main():
     prev_packet_count = 0
     while main_running:
         time.sleep(1)
+        #rsr = ring_stats_recv.value
+        rsd = ring_stats_drop.value
         ppc = parser_packet_count.value
         upc = updater_packet_count.value
         usc = updater_session_count.value
         ksc = keeper_session_count.value
-        print 'pps: ', ppc - prev_packet_count,
-        #print 'ppc: ', ppc,
-        print 'ppp: (', ppc - upc, ') ',
-        #print 'u: ', upc,
-        #print 'us: ', usc,
-        print ', sp: (', usc - ksc, ') ',
-        print 'ks: ', ksc
+        lsc = keeper_live_session_count.value
+        #print 'rsr: ', rsr,
+        print rsd, 'drp, ',
+        print ppc - prev_packet_count, 'pps',
+        print '\t pkts:',ppc, '=>',
+        print '(', ppc - upc, ')',
+        print '=>', upc,
+        print '\t sess: ', usc, '=>',
+        print '(', usc - ksc, ') ',
+        print '=>', ksc,
+        print '\t', lsc, 'live'
         sys.stdout.flush()
         prev_packet_count = ppc
 
