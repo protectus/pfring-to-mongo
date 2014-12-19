@@ -224,7 +224,8 @@ def parsePkts(parsed_packet_pipe, parsed_packet_count, python_ppshared,
         current_shared_pkt.ip2 = pp.ip_dst.v4
         current_shared_pkt.port1 = pp.l4_src_port 
         current_shared_pkt.port2 = pp.l4_dst_port 
-        current_shared_pkt.timestamp = eh.timestamp_ns 
+        #current_shared_pkt.timestamp = eh.timestamp_ns 
+        current_shared_pkt.timestamp = <double>hdr.ts.tv_sec + (<double>hdr.ts.tv_usec / 1000000.0)
         current_shared_pkt.vlan_id = pp.vlan_id 
         current_shared_pkt.bytes = hdr.c_len 
         #current_shared_pkt.flags = TODO
@@ -332,13 +333,12 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
             lock.release()
 
         # Get released slots from next phase
-        # XXX: Dictionary not deallocating yet!  Major Memory leak
         if session_alloc_pipe.poll():
             session_alloc_pipe.recv_bytes_into(new_slot_number_pipeable)
             available_slots.append(new_slot_number_pipeable.value)
             # Generate a key so we can delete it from the dictionary
             del session_slot_map[generate_tcp_session_key_from_session(&sessions_shared[new_slot_number_p[0]])]
-            #print "De-dictionary-ing session at slot", new_slot_number_p[0]
+            print "De-dictionary-ing session at slot", new_slot_number_p[0]
                 
 
 
@@ -376,7 +376,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
     cdef TCPSession* sessions_shared = <TCPSession*>sessions_pointer
 
     # Create a corresponding bunch of slots for mongoids
-    cdef list object_ids = [None for x in range(100000)]
+    cdef list object_ids = [None for x in range(1000000)]
 
     # Cythonize the current slot number
     py_current_slot = ctypes.c_uint32()
@@ -393,7 +393,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
 
     cdef uint32_t *schedule[BYTES_RING_SIZE]
     for i in range(BYTES_RING_SIZE):
-        schedule[i] = <uint32_t*>malloc(sizeof(uint32_t) * 100000)
+        schedule[i] = <uint32_t*>malloc(sizeof(uint32_t) * 1000000)
 
     # Variables during session check-ins
     cdef int schedule_number, next_schedule_number
@@ -452,7 +452,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
             session_start_second = <uint64_t>session.tb
             schedule_number = (session_start_second + BYTES_DOC_SIZE) % BYTES_RING_SIZE
             
-            #print "Scheduling",session_slot_p[0],"in",schedule_number,",",schedule_sizes[schedule_number]
+            #print "Scheduling",session_slot_p[0],"in",schedule_number,",",schedule_sizes[schedule_number], "( tb is ", int(session.tb),")"
             schedule[schedule_number][schedule_sizes[schedule_number]] = session_slot_p[0]
             schedule_sizes[schedule_number] += 1
 
@@ -480,7 +480,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
             schedule_number = second_to_write % BYTES_RING_SIZE
             slots_to_write = schedule[schedule_number]
 
-            #print "Processing",second_to_write
+            #print "Processing",second_to_write,"( schedule #", int(schedule_number), ")"
 
             # Upcoming session writes will write up to but not into
             # second_to_write, so we clear that out.
@@ -512,7 +512,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                 # or de-allocate the slot.
                 next_scheduled_checkup_time = 0
                 if (seconds_since_last_bytes) > 300:
-                    #print "Deallocating", slot
+                    print "Deallocating", slot
                     # Write to updateDict about a newly freed slot.  On this
                     # end, all we have to do is free up the objectid slot and
                     # update the capture packets counter with all the packets
@@ -538,6 +538,8 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                 elif session.traffic_bytes[bytes_cursor][0] > 0 or session.traffic_bytes[bytes_cursor][1] > 0:
                     # Write to database (or at least queue)
                     # PFG
+                    #print seconds_since_last_bytes
+                    #print_tcp_session(session_copy,0)
                     write_tcp_session(info_bulk_writer, bytes_bulk_writer, db.tcp_sessionInfo, object_ids, session_copy, slot, second_to_write_from, second_to_write, capture_session)
                     
                     mongo_writes += 2
@@ -730,6 +732,8 @@ def main():
 
     sessions_buffer = multiprocessing.RawArray(PythonTCPSession, 1000000)
     sessions_sync_pipe = multiprocessing.Pipe()
+    #allocated_session_slots = multiprocessing.Queue(1000000)
+    #deallocated_session_slots = multiprocessing.Queue(1000000)
     session_locks = tuple((multiprocessing.Lock() for i in xrange(1000)))
 
     #sniffer = multiprocessing.Process(target = sniffPkts, 
@@ -742,7 +746,7 @@ def main():
     updater = multiprocessing.Process(target = updateDict, 
         args=(parsed_packet_pipe[1], updater_packet_count, 
               parsed_packet_buffer, sessions_buffer, session_locks, 
-              sessions_sync_pipe[0], updater_session_count,
+              sessions_sync_pipe[0],  updater_session_count,
               pc, options))
     keeper = multiprocessing.Process(target = bookkeeper,
         args=(sessions_buffer, session_locks, 
