@@ -28,11 +28,13 @@ cdef struct TCPSession:
     uint16_t port1
     uint64_t bytes1
     uint16_t flags1
+    char[2] cc1
 
     uint32_t ip2
     uint16_t port2
     uint64_t bytes2
     uint16_t flags2
+    char[2] cc2
 
     int16_t vlan_id
     double tb

@@ -16,7 +16,7 @@ import socket
 from impacket import ImpactDecoder, ImpactPacket
 import os, sys
 from struct import unpack  # For IP Address parsing
-from ctypes import Structure, c_uint16, c_uint32, c_uint64, c_int16, c_double
+from ctypes import Structure, c_uint16, c_uint32, c_uint64, c_int16, c_double, c_char
 
 # CYTHON
 from trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, TCPPacketHeaders, TCPSession
@@ -257,11 +257,13 @@ class PythonTCPSession(Structure):
         ("port1", c_uint16),
         ("bytes1", c_uint64),
         ("flags1", c_uint16),
+        ("cc1", c_char * 2),
 
         ("ip2", c_uint32),
         ("port2", c_uint16),
         ("bytes2", c_uint64),
         ("flags2", c_uint16),
+        ("cc2", c_char * 2),
 
         ("vlan_id", c_int16),
         ("tb", c_double),
