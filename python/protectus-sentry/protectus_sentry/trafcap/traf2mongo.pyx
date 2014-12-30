@@ -12,7 +12,7 @@ import math
 import traceback
 import trafcap
 from trafcapIpPacket import *
-from trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, TCPPacketHeaders, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_session, generate_tcp_session_key_from_pkt, generate_tcp_session_key_from_session, write_tcp_session, init_tcp_capture_session
+from trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, GenericPacketHeaders, TCPPacketHeaders, GenericSession, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_session, generate_tcp_session_key_from_pkt, generate_tcp_session_key_from_session, write_tcp_session, alloc_tcp_capture_session
 from trafcapEthernetPacket import *
 from trafcapContainer import *
 import multiprocessing
@@ -225,7 +225,7 @@ def parsePkts(parsed_packet_pipe, parsed_packet_count, python_ppshared,
         current_shared_pkt.port1 = pp.l4_src_port 
         current_shared_pkt.port2 = pp.l4_dst_port 
         #current_shared_pkt.timestamp = eh.timestamp_ns 
-        current_shared_pkt.timestamp = <double>hdr.ts.tv_sec + (<double>hdr.ts.tv_usec / 1000000.0)
+        current_shared_pkt.base.timestamp = <double>hdr.ts.tv_sec + (<double>hdr.ts.tv_usec / 1000000.0)
         current_shared_pkt.vlan_id = pp.vlan_id 
         current_shared_pkt.bytes = hdr.c_len 
         #current_shared_pkt.flags = TODO
@@ -253,11 +253,11 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
 
     # Cythonize access to the shared packets
     cdef long ppshared_pointer = ctypes.addressof(python_ppshared)
-    cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>ppshared_pointer
+    cdef GenericPacketHeaders* ppshared = <GenericPacketHeaders*>ppshared_pointer
 
     # Cythonize access to the shared sessions
     cdef long sessions_pointer = ctypes.addressof(python_sessions_shared)
-    cdef TCPSession* sessions_shared = <TCPSession*>sessions_pointer
+    cdef GenericSession* sessions_shared = <GenericSession*>sessions_pointer
 
     # Make the outgoing pipe data a raw buffer.  Enables cython later>
     new_slot_number_pipeable = ctypes.c_uint32()
@@ -273,12 +273,12 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
     cdef long shared_packet_cursor_out_address = ctypes.addressof(python_shared_packet_cursor_out)
     cdef uint32_t* shared_packet_cursor_out_p = <uint32_t*>shared_packet_cursor_out_address
 
-    cdef TCPPacketHeaders* packet
+    cdef GenericPacketHeaders* packet
 
     available_slots = deque(xrange(1000000))
     cdef dict session_slot_map = {}
     cdef int session_slot
-    cdef TCPSession* session
+    cdef GenericSession* session
 
     # The primary packet loop
     # General Strategy:
@@ -360,12 +360,12 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
     cdef int i
 
     # Initialize a capture session.
-    cdef TCPSession* capture_session = <TCPSession*>malloc(sizeof(TCPSession))
-    init_tcp_capture_session(capture_session)
+    cdef GenericSession* capture_session = <GenericSession*>alloc_tcp_capture_session()
+
     # We also initialize a dummy session to aid code reuse below.  Everything
     # that touches this variable is wasting time, but we only have to touch it
     # once every 20 seconds or so.
-    cdef TCPSession* dummy_session = <TCPSession*>malloc(sizeof(TCPSession))
+    cdef GenericSession* dummy_session = <GenericSession*>alloc_tcp_capture_session()
 
     # Bookkeeping data for capture
     cdef list capture_object_ids = [None] # Capture sessions are in a category of one
@@ -373,7 +373,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
 
     # Cythonize access to the shared sessions
     cdef long sessions_pointer = ctypes.addressof(python_sessions_shared)
-    cdef TCPSession* sessions_shared = <TCPSession*>sessions_pointer
+    cdef GenericSession* sessions_shared = <GenericSession*>sessions_pointer
 
     # Create a corresponding bunch of slots for mongoids
     cdef list object_ids = [None for x in range(1000000)]
@@ -383,8 +383,12 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
     cdef long session_slot_address = ctypes.addressof(py_current_slot)
     cdef uint32_t* session_slot_p = <uint32_t*>session_slot_address
 
-    cdef TCPSession* session
-    cdef TCPSession[1] session_copy
+    cdef GenericSession* session
+    # We need to allocate a session for the session copy.  Since we don't know
+    # at compile time what the size is, we derive it by taking the size of the
+    # shared space and deviding it by the number of elements.  The end result
+    # should be sizeof TCPSession or UDPSession, or whatever.
+    cdef GenericSession* session_copy = <GenericSession*>malloc(sizeof(python_sessions_shared)/len(python_sessions_shared))
     cdef uint64_t session_start_second
 
     # Setup a bunch of queues for second-by-second scheduling of writes to the database
