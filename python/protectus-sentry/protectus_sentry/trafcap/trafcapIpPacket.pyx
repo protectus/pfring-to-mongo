@@ -431,6 +431,20 @@ cdef int parse_tcp_packet(GenericPacketHeaders* g_pkt_struct, pkt, doc) except -
     pkt_struct.bytes = bytes1
     #pkt_struct.flags = TODO
 
+cdef int print_tcp_packet(GenericPacketHeaders* g_packet) except -1:
+    cdef TCPPacketHeaders* packet = <TCPPacketHeaders*>g_packet
+
+    print "IP1: ", str(packet.ip1)
+    print "port1: ", str( packet.port1)
+    print ""
+    print "IP2: ", str( packet.ip2)
+    print "port2: ", str( packet.port2)
+    print ""
+    print "bytes: ", str( packet.bytes)
+    print "flags: ", str( packet.flags)
+    print "vlanid: ", str( packet.vlan_id)
+    print "timestamp: ", str( packet.base.timestamp)
+
 cdef int print_tcp_session(GenericSession* g_session, uint64_t time_marker) except -1:
     cdef TCPSession* session = <TCPSession*>g_session
 

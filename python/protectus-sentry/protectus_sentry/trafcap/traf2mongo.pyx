@@ -12,7 +12,7 @@ import math
 import traceback
 import trafcap
 from trafcapIpPacket import *
-from trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, GenericPacketHeaders, TCPPacketHeaders, GenericSession, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_session, generate_tcp_session_key_from_pkt, generate_tcp_session_key_from_session, write_tcp_session, alloc_tcp_capture_session
+from trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, GenericPacketHeaders, TCPPacketHeaders, GenericSession, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_packet, print_tcp_session, generate_tcp_session_key_from_pkt, generate_tcp_session_key_from_session, write_tcp_session, alloc_tcp_capture_session
 from trafcapEthernetPacket import *
 from trafcapContainer import *
 import multiprocessing
@@ -252,12 +252,18 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
     signal.signal(signal.SIGINT, updateDictCatchCntlC)
 
     # Cythonize access to the shared packets
-    cdef long ppshared_pointer = ctypes.addressof(python_ppshared)
-    cdef GenericPacketHeaders* ppshared = <GenericPacketHeaders*>ppshared_pointer
+    #print "Shared Packet space based at:", str(ctypes.addressof(python_ppshared))
+    cdef long ppshared_address = ctypes.addressof(python_ppshared)
+    cdef GenericPacketHeaders* ppshared = <GenericPacketHeaders*>ppshared_address
+    cdef int packet_struct_size = ctypes.sizeof(python_ppshared) / len(python_ppshared)
+    #print "Packet struct is of size", packet_struct_size
 
     # Cythonize access to the shared sessions
-    cdef long sessions_pointer = ctypes.addressof(python_sessions_shared)
-    cdef GenericSession* sessions_shared = <GenericSession*>sessions_pointer
+    #print "Shared session space based at:", str(ctypes.addressof(python_sessions_shared))
+    cdef long sessions_address = ctypes.addressof(python_sessions_shared)
+    cdef GenericSession* sessions_shared = <GenericSession*>sessions_address
+    cdef int session_struct_size = ctypes.sizeof(python_sessions_shared) / len(python_sessions_shared)
+    #print "Session struct is of size", session_struct_size
 
     # Make the outgoing pipe data a raw buffer.  Enables cython later>
     new_slot_number_pipeable = ctypes.c_uint32()
@@ -301,7 +307,10 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
             # Exception occurs if signal handled during get
             continue
 
-        packet = &ppshared[shared_packet_cursor_out_p[0]]
+        # Since ppshared is now generic, we need to do memory addresses ourselves.
+        packet = <GenericPacketHeaders*>(ppshared_address + (shared_packet_cursor_out_p[0] * packet_struct_size))
+        #print "Parsing Packet at", ppshared_address, "+", shared_packet_cursor_out_p[0], "*", packet_struct_size, "=",  str(<long>packet)
+        #print_tcp_packet(packet)
 
         # Get the session's key for lookup
         session_key = generate_tcp_session_key_from_pkt(packet)
@@ -314,7 +323,8 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
             # Create new session from packet
             # This is linked to new_slot_number_pipeable!
             new_slot_number_p[0] = available_slots.popleft()
-            session = &sessions_shared[new_slot_number_p[0]]
+            # Since sessions_shared is now generic, we need to do memory addresses ourselves.
+            session = <GenericSession *>(sessions_address + (new_slot_number_p[0] * session_struct_size))
             generate_tcp_session(session, packet)
 
             # Map the key to the new session
@@ -326,7 +336,8 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
             updater_session_count.value += 1
         else:
             # Update existing session
-            session = &sessions_shared[session_slot]
+            # Since sessions_shared is now generic, we need to do memory addresses ourselves.
+            session = <GenericSession *>(sessions_address + (session_slot * session_struct_size))
             lock = session_locks[session_slot % 1000]
             lock.acquire()
             update_tcp_session(session, packet)
@@ -337,8 +348,8 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
             session_alloc_pipe.recv_bytes_into(new_slot_number_pipeable)
             available_slots.append(new_slot_number_pipeable.value)
             # Generate a key so we can delete it from the dictionary
-            del session_slot_map[generate_tcp_session_key_from_session(&sessions_shared[new_slot_number_p[0]])]
-            print "De-dictionary-ing session at slot", new_slot_number_p[0]
+            del session_slot_map[generate_tcp_session_key_from_session(<GenericSession *>(sessions_address + (new_slot_number_p[0] * session_struct_size)))]
+            #print "De-dictionary-ing session at slot", new_slot_number_p[0]
                 
 
 
@@ -372,8 +383,9 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
     cdef uint64_t capture_scheduled_checkup_time = int(time.time())
 
     # Cythonize access to the shared sessions
-    cdef long sessions_pointer = ctypes.addressof(python_sessions_shared)
-    cdef GenericSession* sessions_shared = <GenericSession*>sessions_pointer
+    cdef long sessions_address = ctypes.addressof(python_sessions_shared)
+    cdef GenericSession* sessions_shared = <GenericSession*>sessions_address
+    cdef int session_struct_size = ctypes.sizeof(python_sessions_shared) / len(python_sessions_shared)
 
     # Create a corresponding bunch of slots for mongoids
     cdef list object_ids = [None for x in range(1000000)]
@@ -384,11 +396,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
     cdef uint32_t* session_slot_p = <uint32_t*>session_slot_address
 
     cdef GenericSession* session
-    # We need to allocate a session for the session copy.  Since we don't know
-    # at compile time what the size is, we derive it by taking the size of the
-    # shared space and deviding it by the number of elements.  The end result
-    # should be sizeof TCPSession or UDPSession, or whatever.
-    cdef GenericSession* session_copy = <GenericSession*>malloc(sizeof(python_sessions_shared)/len(python_sessions_shared))
+    cdef GenericSession* session_copy = <GenericSession*>malloc(session_struct_size)
     cdef uint64_t session_start_second
 
     # Setup a bunch of queues for second-by-second scheduling of writes to the database
@@ -446,7 +454,8 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
             keeper_session_count.value += 1
             keeper_live_session_count.value += 1
 
-            session = &sessions_shared[session_slot_p[0]]
+            # Since sessions_shared is now generic, we need to do memory addresses ourselves.
+            session = <GenericSession *>(sessions_address + (session_slot_p[0] * session_struct_size))
 
             # This is this session's first check-in.  We need to schedule the
             # first check-up.
@@ -498,7 +507,8 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
             for i in range(schedule_sizes[schedule_number]):
                 #print "Reading",schedule_number,i,":",schedule[schedule_number][i]
                 slot = slots_to_write[i]
-                session = &sessions_shared[slot]
+                # Since sessions_shared is now generic, we need to do memory addresses ourselves.
+                session = <GenericSession *>(sessions_address + (slot * session_struct_size))
                 lock = session_locks[slot % 1000]
                 lock.acquire()
                 # Get the data we need as quickly as possible so we can
@@ -516,24 +526,8 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                 # or de-allocate the slot.
                 next_scheduled_checkup_time = 0
                 if (seconds_since_last_bytes) > 300:
-                    print "Deallocating", slot
-                    # Write to updateDict about a newly freed slot.  On this
-                    # end, all we have to do is free up the objectid slot and
-                    # update the capture packets counter with all the packets
-                    # from this session.
-                    capture_session.packets += session.packets
-                    object_ids[slot] = None
-
-                    # We're still linking to a python struct to get raw bytes
-                    # into a python Pipe.
-                    session_slot_p[0] = slot  # Linked to py_current_slot!
-                    sessions_sync_pipe.send_bytes(py_current_slot)
-                    keeper_live_session_count.value -= 1
-
-                    ## Connection-Tracking Debug ##
-                    #if slot in tracked_slots:
-                    #    print second_to_write,": Deallocating", slot
-                    #    tracked_slots.remove(slot)
+                    # We don't set next_scheduled_checkup_time, and deallocate below
+                    pass
 
                 elif (seconds_since_last_bytes) > BYTES_DOC_SIZE:
                     # There's nothing to read, reschedule for 20 seconds from now
@@ -556,6 +550,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                 else:
                     # Find out where the next available byte is, and schedule a
                     # check-up for 20 seconds after that.
+                    next_scheduled_checkup_time = second_to_write + BYTES_DOC_SIZE
                     for offset in range(BYTES_DOC_SIZE):
                         bytes_subarray = session.traffic_bytes[(bytes_cursor + offset) % BYTES_RING_SIZE]
                         if bytes_subarray[0] > 0 or bytes_subarray[1] > 0:
@@ -571,6 +566,27 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                     ## Connection-Tracking Debug ##
                     #if slot in tracked_slots:
                     #    print second_to_write,": Rescheduling", slot, "for", next_scheduled_checkup_time, "(", (next_scheduled_checkup_time - second_to_write), "seconds)"
+
+                else:
+                    #print "Deallocating", slot
+                    # Write to updateDict about a newly freed slot.  On this
+                    # end, all we have to do is free up the objectid slot and
+                    # update the capture packets counter with all the packets
+                    # from this session.
+                    capture_session.packets += session.packets
+                    object_ids[slot] = None
+
+                    # We're still linking to a python struct to get raw bytes
+                    # into a python Pipe.
+                    session_slot_p[0] = slot  # Linked to py_current_slot!
+                    sessions_sync_pipe.send_bytes(py_current_slot)
+                    keeper_live_session_count.value -= 1
+
+                    ## Connection-Tracking Debug ##
+                    #if slot in tracked_slots:
+                    #    print second_to_write,": Deallocating", slot
+                    #    tracked_slots.remove(slot)
+
 
             # Write pending bulk operations to mongo
             try:
@@ -732,8 +748,11 @@ def main():
     ring_stats_drop.value = 0
 
     parsed_packet_pipe = multiprocessing.Pipe()
+
+    # TODO: Choose TCP or UDP based on options
     parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
 
+    # TODO: Choose TCP or UDP based on options
     sessions_buffer = multiprocessing.RawArray(PythonTCPSession, 1000000)
     sessions_sync_pipe = multiprocessing.Pipe()
     #allocated_session_slots = multiprocessing.Queue(1000000)
@@ -773,13 +792,13 @@ def main():
         ksc = keeper_session_count.value
         lsc = keeper_live_session_count.value
         #print 'rsr: ', rsr,
-        print rsd, 'drp, ',
+        print rsd, 'drp,',
         print ppc - prev_packet_count, 'pps',
         print '\t pkts:',ppc, '=>',
-        print '(', ppc - upc, ')',
+        print '(' + str( ppc - upc ) + ')',
         print '=>', upc,
-        print '\t sess: ', usc, '=>',
-        print '(', usc - ksc, ') ',
+        print '\t sess:', usc, '=>',
+        print '(' + str( usc - ksc ) + ')',
         print '=>', ksc,
         print '\t', lsc, 'live'
         sys.stdout.flush()

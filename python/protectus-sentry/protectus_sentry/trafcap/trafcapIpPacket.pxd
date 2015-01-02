@@ -59,6 +59,8 @@ cdef object generate_tcp_session_key_from_pkt(GenericPacketHeaders* pkt)
 
 cdef object generate_tcp_session_key_from_session(GenericSession* session)
 
+cdef int print_tcp_packet(GenericPacketHeaders* packet) except -1
+
 cdef int print_tcp_session(GenericSession* session, uint64_t time_cursor) except -1
 
 cdef TCPSession* alloc_tcp_capture_session()
