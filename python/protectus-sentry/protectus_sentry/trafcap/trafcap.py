@@ -266,7 +266,7 @@ def checkIfRoot():
 
 
 #pymongo bindings
-sys.path.append('/opt/sentry/trafcap/lib')
+#sys.path.append('/opt/sentry/trafcap/lib')
 
 #def mongoSetup():
 #    from pymongo import Connection
@@ -284,6 +284,19 @@ def mongoSetup(**kwargs):
 gi = GeoIP.open("/opt/sentry/geoip/GeoLiteCity.dat",GeoIP.GEOIP_STANDARD)
 def  geoIpLookup(ip_addr):
     g_addr = gi.record_by_addr(tupleToString(ip_addr))
+    if g_addr == None:
+        addr_cc = None 
+        addr_name = None 
+        addr_loc = None
+    else:
+        addr_cc = g_addr['country_code']
+        addr_name = g_addr['country_name']
+        addr_loc = [g_addr['longitude'], g_addr['latitude']]
+
+    return addr_cc, addr_name, addr_loc
+
+def  geoIpLookupInt(ip_addr):
+    g_addr = gi.record_by_addr(intToString(ip_addr))
     if g_addr == None:
         addr_cc = None 
         addr_name = None 

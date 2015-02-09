@@ -241,7 +241,7 @@ def parsePkts(parsed_packet_pipe, parsed_packet_count, python_ppshared,
 
 DEF GET_WAIT = 0.01
 cdef bint updateDict_running = True
-def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_sessions_shared, session_locks, session_alloc_pipe, updater_session_count, pc, options):
+def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_sessions_shared, session_locks, session_alloc_pipe, sessions_dealloc_pipe, updater_session_count, updater_dealloc_session_count, pc, options):
 
     # Signal Handling
     def updateDictCatchCntlC(signum, stack):
@@ -338,24 +338,25 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
             # Update existing session
             # Since sessions_shared is now generic, we need to do memory addresses ourselves.
             session = <GenericSession *>(sessions_address + (session_slot * session_struct_size))
-            lock = session_locks[session_slot % 1000]
+            lock = session_locks[session_slot % 100]  # orig %1000
             lock.acquire()
             update_tcp_session(session, packet)
             lock.release()
 
         # Get released slots from next phase
-        if session_alloc_pipe.poll():
-            session_alloc_pipe.recv_bytes_into(new_slot_number_pipeable)
+        if sessions_dealloc_pipe.poll():
+            sessions_dealloc_pipe.recv_bytes_into(new_slot_number_pipeable)
+            updater_dealloc_session_count.value += 1
             available_slots.append(new_slot_number_pipeable.value)
             # Generate a key so we can delete it from the dictionary
             del session_slot_map[generate_tcp_session_key_from_session(<GenericSession *>(sessions_address + (new_slot_number_p[0] * session_struct_size)))]
             #print "De-dictionary-ing session at slot", new_slot_number_p[0]
-                
+               
 
 
 
 cdef bint bookkeeper_running = True
-def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper_session_count, keeper_live_session_count, options):
+def bookkeeper(python_sessions_shared, session_locks, sessions_alloc_pipe, sessions_dealloc_pipe, keeper_session_count, keeper_dealloc_session_count, options):
 
     # Signal Handling
     def bookkeeperCatchCntlC(signum, stack):
@@ -366,7 +367,8 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
     signal.signal(signal.SIGINT, bookkeeperCatchCntlC)
 
     # Mongo Database connection
-    db = trafcap.mongoSetup()
+    #db = trafcap.mongoSetup()
+    db = trafcap.mongoSetup(w=0)
 
     cdef int i
 
@@ -423,7 +425,8 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
     cdef uint64_t last_second_written = int(time.time()) - 1
     cdef uint64_t second_to_write, second_to_write_from
 
-    cdef int mongo_writes = 0
+    cdef int mongo_session_writes = 0
+    cdef int mongo_capture_writes = 0
     cdef int session_count = 0
     
     ## Connection-Tracking Debugging ##
@@ -442,17 +445,17 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
     while bookkeeper_running:
         # Always check for new data.  If there is none, check the time
         # TODO: Better time/loop management
-        if not sessions_sync_pipe.poll(0.02):
+        if not sessions_alloc_pipe.poll(0.02):
             current_second = max(current_second, int(time.time()-2))
-            #time.sleep(0.02)
+            #print 'Updating keeper current_second: ', current_second
+        #    #time.sleep(0.02)
 
-        while sessions_sync_pipe.poll():
+        while sessions_alloc_pipe.poll():
             # Read data from the pipe into a ctype, which is pointed to by
             # cython.  No type cohersion or translation required.
             # SIDE EFFECT: population of current_session_slot
-            sessions_sync_pipe.recv_bytes_into(py_current_slot)
+            sessions_alloc_pipe.recv_bytes_into(py_current_slot)
             keeper_session_count.value += 1
-            keeper_live_session_count.value += 1
 
             # Since sessions_shared is now generic, we need to do memory addresses ourselves.
             session = <GenericSession *>(sessions_address + (session_slot_p[0] * session_struct_size))
@@ -460,18 +463,22 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
             # This is this session's first check-in.  We need to schedule the
             # first check-up.
 
-            # The schedule structure is BYTES_RING_SIZE (30) rows for 30 seconds.  The rows are
-            # numbered time mod 30 seconds.  
+            # The schedule structure is BYTES_RING_SIZE (30) rows; one row per second  
+            # The rows are # numbered time mod 30 seconds.  Add 20 to schedule for future
+            # Bytes time series doc has max BYTES_DOC_SIZE (20) data items
             session_start_second = <uint64_t>session.tb
             schedule_number = (session_start_second + BYTES_DOC_SIZE) % BYTES_RING_SIZE
             
             #print "Scheduling",session_slot_p[0],"in",schedule_number,",",schedule_sizes[schedule_number], "( tb is ", int(session.tb),")"
+            # schedule_number = row in the schedule
+            # schedule_sizes[schedule_number] = first empty slot in the row
             schedule[schedule_number][schedule_sizes[schedule_number]] = session_slot_p[0]
             schedule_sizes[schedule_number] += 1
 
             session_count += 1
 
-            # Break out if we've crossed into a new second.
+            # Break out if we've crossed into a new second.  Session being handled has
+            # already been scheduled
             if session_start_second > current_second:
                 current_second = session_start_second
                 break
@@ -502,14 +509,17 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
 
             # Iterate over all the slots scheduled to be dealt with this
             # second, and deal with them.
+            #print "Initializing sessionInfo_bulk_writer..."
             info_bulk_writer = db.tcp_sessionInfo.initialize_unordered_bulk_op()
+            #print "Initializing sessionBytes_bulk_writer..."
             bytes_bulk_writer = db.tcp_sessionBytes.initialize_unordered_bulk_op()
+            #print "Starting loop..."
             for i in range(schedule_sizes[schedule_number]):
                 #print "Reading",schedule_number,i,":",schedule[schedule_number][i]
                 slot = slots_to_write[i]
                 # Since sessions_shared is now generic, we need to do memory addresses ourselves.
                 session = <GenericSession *>(sessions_address + (slot * session_struct_size))
-                lock = session_locks[slot % 1000]
+                lock = session_locks[slot % 100]   # orig %1000
                 lock.acquire()
                 # Get the data we need as quickly as possible so we can
                 # release the lock.
@@ -540,7 +550,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                     #print_tcp_session(session_copy,0)
                     write_tcp_session(info_bulk_writer, bytes_bulk_writer, db.tcp_sessionInfo, object_ids, session_copy, slot, second_to_write_from, second_to_write, capture_session)
                     
-                    mongo_writes += 2
+                    mongo_session_writes += 2
                     next_scheduled_checkup_time = second_to_write + BYTES_DOC_SIZE
 
                     ## Connection-Tracking Debug ##
@@ -579,8 +589,8 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                     # We're still linking to a python struct to get raw bytes
                     # into a python Pipe.
                     session_slot_p[0] = slot  # Linked to py_current_slot!
-                    sessions_sync_pipe.send_bytes(py_current_slot)
-                    keeper_live_session_count.value -= 1
+                    sessions_dealloc_pipe.send_bytes(py_current_slot)
+                    keeper_dealloc_session_count.value += 1
 
                     ## Connection-Tracking Debug ##
                     #if slot in tracked_slots:
@@ -590,12 +600,14 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
 
             # Write pending bulk operations to mongo
             try:
+                #print "Doing sessionInfo_bulk_write..."
                 info_bulk_writer.execute()
             except InvalidOperation as e:
                 if e.message != "No operations to execute":
                     raise e
 
             try:
+                #print "Doing sessionBytes_bulk_write..."
                 bytes_bulk_writer.execute()
             except InvalidOperation as e:
                 if e.message != "No operations to execute":
@@ -610,30 +622,35 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_sync_pipe, keeper
                 #print_tcp_session(capture_session, capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2))
                 # Not so unlike writing a normal session, but with some
                 # shortcuts and dummy data.
+                #print "Initializing captureInfo_bulk_writer..."
                 info_bulk_writer = db.tcp_captureInfo.initialize_unordered_bulk_op()
+                #print "Initializing captureBytes_bulk_writer..."
                 bytes_bulk_writer = db.tcp_captureBytes.initialize_unordered_bulk_op()
 
                 # PFG
+                #print "Doing write_tcp_session..."
                 write_tcp_session(info_bulk_writer, bytes_bulk_writer, db.tcp_captureInfo, capture_object_ids, capture_session, 0, capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2), capture_scheduled_checkup_time - BYTES_DOC_SIZE, dummy_session)
 
-                mongo_writes += 2
+                mongo_capture_writes += 2
                 capture_scheduled_checkup_time = second_to_write + (BYTES_DOC_SIZE / 2)
 
                 # Write pending bulk operations to mongo
                 try:
+                    #print "Doing captureInfo_bulk_write..."
                     info_bulk_writer.execute()
                 except InvalidOperation as e:
                     if e.message != "No operations to execute":
                         raise e
 
                 try:
+                    #print "Doing captureBytes_bulk_write..."
                     bytes_bulk_writer.execute()
                 except InvalidOperation as e:
                     if e.message != "No operations to execute":
                         raise e
                 
 
-            #print mongo_writes, "db writes covering", session_count, "sessions"
+            #print mongo_capture_writes, "capture, ", mongo_session_writes, "session writes covering", session_count, "sessions"
 
             # Reset the now-finished schedule slot
             schedule_sizes[schedule_number] = 0
@@ -738,43 +755,54 @@ def main():
     updater_packet_count.value = 0
     updater_session_count = multiprocessing.Value(ctypes.c_uint64)
     updater_session_count.value = 0
+    updater_dealloc_session_count = multiprocessing.Value(ctypes.c_uint64)
+    updater_dealloc_session_count.value = 0
     keeper_session_count = multiprocessing.Value(ctypes.c_uint64)
     keeper_session_count.value = 0
-    keeper_live_session_count = multiprocessing.Value(ctypes.c_uint64)
-    keeper_live_session_count.value = 0
+    keeper_dealloc_session_count = multiprocessing.Value(ctypes.c_uint64)
+    keeper_dealloc_session_count.value = 0
+    #keeper_live_session_count = multiprocessing.Value(ctypes.c_uint64)
+    #keeper_live_session_count.value = 0
     ring_stats_recv = multiprocessing.Value(ctypes.c_uint64)
     ring_stats_recv.value = 0
     ring_stats_drop = multiprocessing.Value(ctypes.c_uint64)
     ring_stats_drop.value = 0
 
-    parsed_packet_pipe = multiprocessing.Pipe()
+    parsed_packet_pipe = multiprocessing.Pipe(False)
+    # Try to increase pipe buffer size
+    #import fcntl  
+    #fd = parsed_packet_pipe[1].fileno() 
+    #fl = fcntl.fcntl(fd, fcntl.F_GETFL) 
+    #print 'has_attr: ', hasattr(fcntl, 'F_SETPIPE_SZ')  ==> This is False
+    #fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK) 
 
     # TODO: Choose TCP or UDP based on options
     parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
 
     # TODO: Choose TCP or UDP based on options
     sessions_buffer = multiprocessing.RawArray(PythonTCPSession, 1000000)
-    sessions_sync_pipe = multiprocessing.Pipe()
-    #allocated_session_slots = multiprocessing.Queue(1000000)
-    #deallocated_session_slots = multiprocessing.Queue(1000000)
-    session_locks = tuple((multiprocessing.Lock() for i in xrange(1000)))
+    sessions_alloc_pipe = multiprocessing.Pipe(False)
+    sessions_dealloc_pipe = multiprocessing.Pipe(False)
+    #allocated_session_slot_q = multiprocessing.Queue(1000000)
+    #deallocated_session_slot_q = multiprocessing.Queue(1000000)
+    session_locks = tuple((multiprocessing.Lock() for i in xrange(10000)))
 
     #sniffer = multiprocessing.Process(target = sniffPkts, 
     #    args=(sniffed_packets,pc,))
     parser = multiprocessing.Process(target = parsePkts, 
-        args=(parsed_packet_pipe[0], parser_packet_count, 
+        args=(parsed_packet_pipe[1], parser_packet_count, 
               parsed_packet_buffer, 
               ring_stats_recv, ring_stats_drop,
               pc, options))
     updater = multiprocessing.Process(target = updateDict, 
-        args=(parsed_packet_pipe[1], updater_packet_count, 
+        args=(parsed_packet_pipe[0], updater_packet_count, 
               parsed_packet_buffer, sessions_buffer, session_locks, 
-              sessions_sync_pipe[0],  updater_session_count,
-              pc, options))
+              sessions_alloc_pipe[1],  sessions_dealloc_pipe[0], 
+              updater_session_count, updater_dealloc_session_count, pc, options))
     keeper = multiprocessing.Process(target = bookkeeper,
         args=(sessions_buffer, session_locks, 
-              sessions_sync_pipe[1], keeper_session_count, 
-              keeper_live_session_count, options))
+              sessions_alloc_pipe[0], sessions_dealloc_pipe[1], 
+              keeper_session_count, keeper_dealloc_session_count, options))
 
     #sniffer.start()
     parser.start()
@@ -782,28 +810,42 @@ def main():
     keeper.start()
 
     prev_packet_count = 0
+    prev_session_count = 0
+    loop_count = 0
     while main_running:
         time.sleep(1)
         #rsr = ring_stats_recv.value
         rsd = ring_stats_drop.value
-        ppc = parser_packet_count.value
-        upc = updater_packet_count.value
-        usc = updater_session_count.value
-        ksc = keeper_session_count.value
-        lsc = keeper_live_session_count.value
-        #print 'rsr: ', rsr,
-        print rsd, 'drp,',
-        print ppc - prev_packet_count, 'pps',
-        print '\t pkts:',ppc, '=>',
-        print '(' + str( ppc - upc ) + ')',
-        print '=>', upc,
-        print '\t sess:', usc, '=>',
-        print '(' + str( usc - ksc ) + ')',
-        print '=>', ksc,
-        print '\t', lsc, 'live'
-        sys.stdout.flush()
-        prev_packet_count = ppc
 
+        ppc = parser_packet_count.value
+        pps = ppc - prev_packet_count
+        upc = updater_packet_count.value
+        ppq = ppc - upc  # parser-to-updater q length
+        
+        usc = updater_session_count.value
+        sps = usc - prev_session_count
+        ksc = keeper_session_count.value
+        saq = usc - ksc  # allocate (updater-to-keeper) q length
+
+        udc = updater_dealloc_session_count.value
+        kdc = keeper_dealloc_session_count.value
+        sdq = kdc - udc # deallocate (keeper-to-updater) q length
+        klc = ksc - kdc # live session count
+
+        prev_packet_count = ppc
+        prev_session_count = usc
+
+        print '{0:9d} {1:6d} > {2:3d} > {3:10d} {4:7d} > {5:4d}  {6:4d} < {7:8d} {8:7d}'.format(rsd, pps, ppq, upc, sps, saq, sdq, ksc, klc)
+        #print '{0:9d} {1:6d} {2:10d} => {3:3d} => {4:10d} {5:7d} => {6:3d} => {7:7d} {8:7d}'.format(rsd, pps, ppc, ppq, upc, usc, usq, ksc, lsc)
+
+        if loop_count % 10 == 0:
+            #print '{0:>13} {1:^5} {2:<10} {3:^3} {4:^9} {5:^5} {6:^5} {7:3} {8:>5} {9:3} {10:>5}'.format('------parser:', parser.pid, '--------', '      ', '--updatr:', updater.pid, '--', '   ', '--keeper:',keeper.pid,'--')
+            print '{0:>10}{1:>5}{2:>21}{3:>5}{4:>5}{5:^10}{6:>11}{7:>5}{8:>3}'.format('---parser:', parser.pid, '--     -----updater:', updater.pid, '---- ',loop_count,' ---keeper:',keeper.pid,'---')
+            print '{0:>9} {1:>6}    {2:^3}  {3:>10} {4:>7}    {5:^4}   {6:^4} {7:>8} {8:>7}'.format('drop', 'pps', ' ', 'pkts', 'sps', ' ',' ', 'sess', 'live')
+            global main_running
+            #if pps == 0: main_running = False
+        loop_count += 1
+        sys.stdout.flush()
 
     # Handle shutdown -- send signals?
     #sniffer.join()

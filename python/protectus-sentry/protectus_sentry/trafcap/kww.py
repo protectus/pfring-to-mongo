@@ -25,7 +25,7 @@ start_bold = "\033[1m"
 end_bold = "\033[0;0m"
 
 def parseOptions():
-    usage = "usage: %prog [cbdezslinx]"
+    usage = "usage: %prog [cbdezsainx]"
     parser = OptionParser(usage)
     parser.add_option("-c", "--collection", dest="collection",
                       action="store_true", default=False,
@@ -45,7 +45,7 @@ def parseOptions():
     parser.add_option("-s", "--ssize", dest="ssize",
                       action="store_true", default=False,
                       help="sort by storage size")
-    parser.add_option("-l", "--lesiz", dest="lesiz",
+    parser.add_option("-a", "--aosiz", dest="aosiz",
                       action="store_true", default=False,
                       help="last extent size")
     parser.add_option("-i", "--isize", dest="isize",
@@ -69,7 +69,7 @@ def sizeof_readable(num):
     return "%3.1f%s" % (num, 'TB')
 
 def sizeof_readable_bytes(num):
-    for x in ['B','KB','MB','GB']:
+    for x in ['.B','KB','MB','GB']:
         if num < 1024.0:
             return "%3.0f%s" % (num, x)
             #return "%3.1f%s" % (num, x)
@@ -94,7 +94,7 @@ def main():
     c_size = 7
     c_size = 8
     c_storage_size = 9
-    c_last_extent_size = 10
+    c_avg_obj_size = 10
     c_total_index_size = 11
     c_pct = 12
     c_index = 13
@@ -193,15 +193,10 @@ def main():
 
         coll[c_size] = stats['size']
         coll[c_storage_size] = stats['storageSize']
-        coll[c_last_extent_size] = stats['lastExtentSize']
+        coll[c_avg_obj_size] = stats['avgObjSize']
         coll[c_total_index_size] = stats['totalIndexSize']
 
         coll[c_index] = stats['indexSizes']
-        try:
-            capped = stats['capped']
-            print coll, stats
-        except:
-            pass
 
         # Add 1 to demonminator to prevent divide by 0
         coll[c_pct] = float(coll[c_size]) / float(coll[c_storage_size]+1)*100
@@ -225,8 +220,8 @@ def main():
     elif options.ssize:
         sorted_collections = sorted(collections, key=itemgetter(c_storage_size))
         sorted_collections.reverse()
-    elif options.lesiz:
-        sorted_collections = sorted(collections, key=itemgetter(c_last_extent_size))
+    elif options.aosiz:
+        sorted_collections = sorted(collections, key=itemgetter(c_avg_obj_size))
         sorted_collections.reverse()
     elif options.isize:
         sorted_collections = sorted(collections, key=itemgetter(c_total_index_size))
@@ -237,14 +232,14 @@ def main():
     else:
         sorted_collections = collections
 
-
+    rows = 0
     if not options.index:
         a_list =  [ "Collection".center(19),
                     "Begin".center(11),
                     ' ',
                     "Days".rjust(3),
                     "End".center(11), '  ',
-                    "dsiZe", ' sSize', " Lesiz", " Isize", "   Ndoc"]
+                    "dsiZe", ' sSize', " Aosiz", " Isize", "   Ndoc"]
         header = "".join(a_list)
         print start_bold, header, end_bold
 
@@ -260,7 +255,7 @@ def main():
                     ' ',
                     sizeof_readable_bytes(coll[c_storage_size]).rjust(5),
                     ' ',
-                    sizeof_readable_bytes(coll[c_last_extent_size]).rjust(5),
+                    sizeof_readable_bytes(coll[c_avg_obj_size]).rjust(5),
                     ' ',
                     sizeof_readable_bytes(coll[c_total_index_size]).rjust(5),
                     '  ',
@@ -271,6 +266,7 @@ def main():
 
             txt_out = "".join(a_list)
             print txt_out
+            rows += 1
 
     else:
         a_list =  [ "Collection".center(18), '  ',
@@ -281,12 +277,12 @@ def main():
 
         for coll in sorted_collections:
             print coll[c_name].ljust(18),
-            row = 1
+            rows = 1
             for key in coll[c_index]:
-                if row > 1:
+                if rows > 1:
                     print " ".rjust(18),
                 print key.rjust(34),  sizeof_readable_bytes(coll[c_index][key]).rjust(6)
-                row +=1
+                rows +=1
 
             if len(coll[c_index]) == 0:
                 print ""
@@ -294,13 +290,13 @@ def main():
     if not options.index:
         total_size = 0
         total_storage_size = 0
-        total_last_extent_size = 0
+        total_avg_obj_size = 0
         total_total_index_size = 0
         total_docs = 0
         for coll in sorted_collections:
             total_size = total_size + coll[c_size]
             total_storage_size = total_storage_size + coll[c_storage_size]
-            total_last_extent_size = total_last_extent_size + coll[c_last_extent_size]
+            total_avg_obj_size = total_avg_obj_size + coll[c_avg_obj_size]
             total_total_index_size = total_total_index_size + coll[c_total_index_size]
             total_docs = total_docs + coll[c_num_docs]
 
@@ -322,10 +318,10 @@ def main():
                   ' ',
                   sizeof_readable_bytes(total_storage_size),
                   ' ',
-                  sizeof_readable_bytes(total_last_extent_size),
+                  sizeof_readable_bytes(total_avg_obj_size/rows),
                   ' ',
                   sizeof_readable_bytes(total_total_index_size),
-                  '  ',
+                  '   ',
                   sizeof_readable(total_docs)]
         txt_out = "".join(a_list)
         print txt_out

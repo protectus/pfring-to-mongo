@@ -500,6 +500,10 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
     session.base.packets = 1
 
     session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][0] = packet.bytes
+    session.cc1[0] = 0
+    session.cc1[1] = 0
+    session.cc2[0] = 0
+    session.cc2[1] = 0
 
     return 0
     
@@ -639,18 +643,29 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             "tb":session.base.tb,
             "te":session.base.te,
             "pk":int(session.base.packets)
-            # Countries are TODO
-            #"cc1":a_info[pc.i_cc1],
-            #"loc1":a_info[pc.i_loc1],
-            #"cc2":a_info[pc.i_cc2],
-            #"loc2":a_info[pc.i_loc2]
         }
+
+        # Need to change geoIP call to handle int addresses
+        cc1, name1, loc1 = trafcap.geoIpLookupInt(session.ip1)
+        cc2, name2, loc2 = trafcap.geoIpLookupInt(session.ip2)
+
+        if cc1: 
+            info_doc["cc1"] = cc1
+            session.cc1[0] = ord(cc1[0])
+            session.cc1[1] = ord(cc1[1])
+
+        if cc2: 
+            info_doc["cc2"] = cc2
+            session.cc2[0] = ord(cc2[0])
+            session.cc2[1] = ord(cc2[1])
+
         tdm = (<int>(session.base.te - session.base.tb)) / 60
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
         if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
 
         # Insert the new doc and record the objectid
-        # object_ids[slot] = info_collection.insert(info_doc)
+        if trafcap.options.mongo:
+            object_ids[slot] = info_collection.insert(info_doc)
         #print info_doc,"at",object_ids[slot]
 
     else:
@@ -666,12 +681,8 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             }
         }
 
-        #info_bulk_writer.find({"_id": object_ids[slot]}).update(info_update)
-        if session.ip1 == 0:
-            # PFG
-            #print info_update
-            pass
-
+        if trafcap.options.mongo:
+            info_bulk_writer.find({"_id": object_ids[slot]}).update(info_update)
 
     # We always need to write a bytes doc.
     bytes_to_write = []
@@ -685,8 +696,13 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             "b":bytes_to_write,
             "sb": sb,
             "sbm": peg_to_minute(sb)
-            # Country TODO
     }
+    if session.cc1[0] != 0:
+        bytes_doc["cc1"] = chr(session.cc1[0]) + chr(session.cc1[1])
+
+    if session.cc2[0] != 0:
+        bytes_doc["cc2"] = chr(session.cc2[0]) + chr(session.cc2[1])
+
     # PFG
     #if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
 
@@ -719,12 +735,8 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
     capture_session.base.te = max(capture_session.base.te, session.base.te)
 
     # add to writes
-    #bytes_bulk_writer.insert(bytes_doc)
-
-    if session.ip1 == 0:
-        # PFG
-        #print bytes_doc
-        pass
+    if trafcap.options.mongo:
+        bytes_bulk_writer.insert(bytes_doc)
 
     return 0
 
