@@ -16,14 +16,14 @@ import socket
 from impacket import ImpactDecoder, ImpactPacket
 import os, sys
 from struct import unpack  # For IP Address parsing
-from ctypes import Structure, c_uint16, c_uint32, c_uint64, c_int16, c_double, c_char
+from ctypes import Structure, c_uint16, c_uint32, c_uint64, c_int16, c_uint8, c_double, c_char
 
 # CYTHON
 from trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, TCPPacketHeaders, TCPSession
 from libc.stdint cimport uint64_t, uint32_t, uint16_t, int16_t
 from libc.string cimport memset
 from libc.stdlib cimport malloc
-
+from cpf_ring cimport *
 
 class IpPacket(object):
     """
@@ -251,10 +251,21 @@ class PythonTCPPacketHeaders(Structure):
         ("ip1", c_uint32),
         ("port1", c_uint16),
         ("ip2", c_uint32),
-        ("vlan_id", c_int16),
         ("port2", c_uint16),
+        ("vlan_id", c_int16),
         ("bytes", c_uint64),
         ("flags", c_uint16)
+    )
+
+class PythonUDPPacketHeaders(Structure):
+    _fields_ = (
+        ("base", PythonGenericPacketHeaders),
+        ("ip1", c_uint32),
+        ("port1", c_uint16),
+        ("ip2", c_uint32),
+        ("port2", c_uint16),
+        ("vlan_id", c_int16),
+        ("bytes", c_uint64),
     )
 
 
@@ -285,151 +296,47 @@ class PythonTCPSession(Structure):
         ("vlan_id", c_int16),
     )
 
+class PythonUDPSession(Structure):
+    _fields_ = (
+        ("base", PythonGenericSession),
+        ("ip1", c_uint32),
+        ("port1", c_uint16),
+        ("bytes1", c_uint64),
+        ("cc1", c_char * 2),
 
-cdef int parse_tcp_packet(GenericPacketHeaders* g_pkt_struct, pkt, doc) except -1:
-    cdef TCPPacketHeaders* pkt_struct = <TCPPacketHeaders*>g_pkt_struct
+        ("ip2", c_uint32),
+        ("port2", c_uint16),
+        ("bytes2", c_uint64),
+        ("cc2", c_char * 2),
 
-    # tcpdump v 4.1.1
-    #        0                     2                    4
-    # 1348367532.072244 IP 192.168.168.17.1696 > 204.210.192.2.25566:
-    #       6                                           14
-    #Flags [P.], seq 30:32, ack 4907, win 65021, length 2
-    # Remember that these are strings
-
-    # TCP DNS traffic
-    # 1360940004.915082 IP 192.168.168.20.49387 > 192.168.168.1.53: Flags [P.], seq 1:36, ack 1, win 256, length 3556043+ TXT? version.avg.com. (33)
-    # 1360940005.089718 IP 192.168.168.1.53 > 192.168.168.20.49387: Flags [P.], seq 2:785, ack 37, win 5840, length 78360289- [256q][|domain]
-
-    # Other TCP DNS traffic examples
-    #1363696331.309098 IP 10.10.80.108.53412 > 192.168.1.6.53: Flags [.], seq 1:1461, ack 1, win 256, length 146037477 [1au] TKEY? 1260-ms-7.1-d299.0595eadf-9091-11e2-368c-00216a5974e4. (1458)
-    #1363696331.316995 IP 10.10.80.108.53412 > 192.168.1.6.53: Flags [.], seq 1461:2921, ack 1, win 256, length 146035888 YXDomain-| [34976q],[|domain]
-
-    #1363696331.324992 IP 10.10.80.108.53412 > 192.168.1.6.53: Flags [P.], seq 2921:3142, ack 1, win 256, length 22161323 updateMA Resp13-| [25745q][|domain]
-    #1363696331.326078 IP 192.168.1.6.53 > 10.10.80.108.53412: Flags [P.], seq 1:455, ack 3142, win 65314, length 45437477- 1/0/1 ANY TKEY (452)
+        ("vlan_id", c_int16),
+    )
 
 
-    # ICMP traffic - not sure why the tshark filter allows this to be included with TCP traffic
-    # 1362723521.581183 IP 192.168.253.1 > 192.168.253.26: ICMP host 8.8.8.8 unreachable, length 92
+cdef int parse_tcp_packet(GenericPacketHeaders* g_pkt, pfring_pkthdr* hdr) except -1:
+    cdef TCPPacketHeaders* shared_pkt = <TCPPacketHeaders*>g_pkt
 
-    # Parsing for vlan id.  tcpdump version 4.3.0   libpcap version 1.3.0    Sentry 7.0-514
-    #
-    # Previous format:
-    # 1396467169.614347 IP 69.84.41.162.40005 > 10.100.10.244.47671: Flags [P.], seq 145:241 ....
-    #
-    # New format without vlan tag:
-    # 1396467098.199453 70:ca:9b:4b:f7:20 > 00:1b:78:59:e7:c2, 
-    #                   ethertype IPv4 (0x0800), length 162: 
-    #                   69.84.41.162.40008 > 192.168.5.198.42881: Flags [P.], seq 1441:1537 ....
-    #
-    # New format with vlan tag:
-    # 1396467098.199378 00:23:5e:f4:ee:ff > 00:00:5e:00:01:01, 
-    #                   ethertype 802.1Q (0x8100), length 166: vlan 1, p 1, 
-    #                   ethertype IPv4, 69.84.41.162.40008 > 192.168.5.198.42881: Flags [P.], seq 1441:1537 ....
-
-    # parse packet off the wire
-    pkt = pkt.split()
-    if pkt and not doc:
-        flag_list = [['_', '_', '_', '_', '_', '_', '_', '_'],
-                     ['_', '_', '_', '_', '_', '_', '_', '_']]
-
-        # IPv4
-        if pkt[6] == '(0x0800),':
-
-            if pkt[12] == 'ICMP':
-                return 1
-
-            bytes1 = int(pkt[8].strip(':'))
-            vlan_id = -1
-            #vlan_pri = None
-            a1_1,a1_2,a1_3,a1_4,port1 = pkt[9].split(".")
-            a2_1,a2_2,a2_3,a2_4,port2 = pkt[11].strip(":").split(".")
-            flag_string = pkt[13].strip(",").strip("[").strip("]")
-
-        # 802.1Q (vlan) or 802.1qa (shortest path bridging) 
-        #   802.1qa not handled at this time - need sample traffic!
-        elif pkt[6] == '(0x8100),':
-
-            if pkt[18] == 'ICMP':
-                return 1
-
-            bytes1 = int(pkt[8].strip(':'))
-            vlan_id = int(pkt[10].strip(','))
-            #vlan_pri = int(pkt[12].strip(','))
-            a1_1,a1_2,a1_3,a1_4,port1 = pkt[15].split(".")
-            a2_1,a2_2,a2_3,a2_4,port2 = pkt[17].strip(":").split(".")
-            flag_string = pkt[19].strip(",").strip("[").strip("]")
-
-        else:
-            # Record packet details for future handling
-            # IPv6 handled in Other traffic
-            raise Exception('Unexpected ethertype.')
-
-        # Handle these cases:
-        # 1398119164.258130 70:ca:9b:4b:f7:20 > 00:23:5e:f4:ee:ff, ethertype IPv4 (0x0800), length 154: 192.168.5.146.1458359471 > 10.59.62.53.2049: 96 getattr fh 0,41/0
-        # 1398119164.259488 00:23:5e:f4:ee:ff > 00:00:5e:00:01:01, ethertype 802.1Q (0x8100), length 90: vlan 1, p 1, ethertype IPv4, 10.59.62.53.2049 > 192.168.5.146.1458359471: reply ok 28 getattr ERROR: Stale NFS file handle
-        port1_int = int(port1)
-        port2_int = int(port2)
-        if port1_int > 65535 or port2_int > 65535:
-            return 1
-
-        #if pkt[5] == "ICMP":
-        #    return (),[]
-        # 
-        #a1_1,a1_2,a1_3,a1_4,port1 = pkt[2].split(".")
-        #a2_1,a2_2,a2_3,a2_4,port2 = pkt[4].strip(":").split(".")
-        # 
-        #flag_string = pkt[6].strip(",").strip("[").strip("]")
-
-        # Handle case of SYN-ACK flag by changing the flag from S to s
-        if (flag_string == "S."):
-            flag_string = "s"
-
-        #if (":" in pkt[8]):
-        #    # TCP DNS - see traffic samples above
-        #    seq_start,seq_end = pkt[8].strip(",").split(":")
-        #    bytes1 = int(seq_end) - int(seq_start)
-        #    if bytes1 < 0: bytes1 = bytes1 + 4294967296
-        #else:
-        #    len_index = pkt.index("length")
-        #    bytes1_match = pc.leading_num_re.match(pkt[len_index+1])
-        #    bytes1 = int(bytes1_match.group(1))
-    
-        # Handle case of multiple flags
-        for index, c in enumerate(flag_string):
-            flag_list[0][index] = c
-
-        # Represent IP addresses a tuples instead of strings
-        addr1 = (a1_1, a1_2, a1_3, a1_4)
-        addr2 = (a2_1, a2_2, a2_3, a2_4)
-    
-        addrs = [addr1, addr2]
-
-        ports = [port1_int, port2_int]
-        byts = [bytes1, 0]
-        epoch_time = pkt[0]
-        proto = "_"                            # for future use 
-
-    # Sort to get a consistent key for each TCP session
-    #data = sorted(zip(addrs, ports, byts, flag_list))
+    shared_pkt.ip1 = hdr.extended_hdr.parsed_pkt.ip_src.v4
+    shared_pkt.ip2 = hdr.extended_hdr.parsed_pkt.ip_dst.v4
+    shared_pkt.port1 = hdr.extended_hdr.parsed_pkt.l4_src_port
+    shared_pkt.port2 = hdr.extended_hdr.parsed_pkt.l4_dst_port
+    shared_pkt.base.timestamp = <double>hdr.ts.tv_sec + (<double>hdr.ts.tv_usec / 1000000.0)
+    shared_pkt.vlan_id = hdr.extended_hdr.parsed_pkt.vlan_id
+    shared_pkt.bytes = hdr.c_len
+    shared_pkt.flags = hdr.extended_hdr.parsed_pkt.tcp.flags
 
 
-    #[((1,2,3,4), 25254, 0, ['_', '_', '_', '_', '_', '_', '_', '_']),
-    # ((9,8,7,6), 22,  140, ['P', '_', '_', '_', '_', '_', '_', '_'])]
+cdef int parse_udp_packet(GenericPacketHeaders* g_pkt, pfring_pkthdr* hdr) except -1:
+    cdef UDPPacketHeaders* shared_pkt = <UDPPacketHeaders*>g_pkt
 
-    # Add packet data - unrelated to any IP
-    #data.append(epoch_time)
-    #data.append(proto)
-    #data.append(vlan_id)
-    #data.append(vlan_pri)
+    shared_pkt.ip1 = hdr.extended_hdr.parsed_pkt.ip_src.v4
+    shared_pkt.ip2 = hdr.extended_hdr.parsed_pkt.ip_dst.v4
+    shared_pkt.port1 = hdr.extended_hdr.parsed_pkt.l4_src_port
+    shared_pkt.port2 = hdr.extended_hdr.parsed_pkt.l4_dst_port
+    shared_pkt.base.timestamp = <double>hdr.ts.tv_sec + (<double>hdr.ts.tv_usec / 1000000.0)
+    shared_pkt.vlan_id = hdr.extended_hdr.parsed_pkt.vlan_id
+    shared_pkt.bytes = hdr.c_len
 
-    pkt_struct.ip1 = unpack('>L',socket.inet_aton('.'.join(addr1)))[0]
-    pkt_struct.ip2 = unpack('>L',socket.inet_aton('.'.join(addr2)))[0]
-    pkt_struct.port1 = port1_int
-    pkt_struct.port2 = port2_int
-    pkt_struct.base.timestamp = int(float(epoch_time))
-    pkt_struct.vlan_id = vlan_id
-    pkt_struct.bytes = bytes1
-    #pkt_struct.flags = TODO
 
 cdef int print_tcp_packet(GenericPacketHeaders* g_packet) except -1:
     cdef TCPPacketHeaders* packet = <TCPPacketHeaders*>g_packet
@@ -468,7 +375,7 @@ cdef int print_tcp_session(GenericSession* g_session, uint64_t time_marker) exce
         b = session.base.traffic_bytes[cursor]
         print str(b[0])+"\t"+str(b[1])+("<--" if cursor == time_marker % BYTES_RING_SIZE else "")
     
-cdef TCPSession* alloc_tcp_capture_session():
+cdef GenericSession* alloc_tcp_capture_session():
     cdef TCPSession* session = <TCPSession*>malloc(sizeof(TCPSession))
 
     # Zero out almost everything
@@ -478,7 +385,19 @@ cdef TCPSession* alloc_tcp_capture_session():
     session.base.te = time.time()
     session.vlan_id = -1
 
-    return session
+    return <GenericSession*>session
+
+cdef GenericSession* alloc_udp_capture_session():
+    cdef UDPSession* session = <UDPSession*>malloc(sizeof(UDPSession))
+
+    # Zero out almost everything
+    memset(session, 0, sizeof(UDPSession))
+
+    session.base.tb = time.time()
+    session.base.te = time.time()
+    session.vlan_id = -1
+
+    return <GenericSession*>session
 
 cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g_packet):
     cdef TCPSession *session = <TCPSession*>g_session
@@ -487,12 +406,37 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
     session.ip1 = packet.ip1
     session.port1 = packet.port1
     session.bytes1 = packet.bytes
-    session.flags1 = packet.flags
+    session.flags1 = packet.flags<<((packet.flags&16)/2)
 
     session.ip2 = packet.ip2
     session.port2 = packet.port2
     session.bytes2 = 0
     session.flags2 = 0
+
+    session.vlan_id = packet.vlan_id
+    session.base.tb = packet.base.timestamp
+    session.base.te = packet.base.timestamp
+    session.base.packets = 1
+
+    session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][0] = packet.bytes
+    session.cc1[0] = 0
+    session.cc1[1] = 0
+    session.cc2[0] = 0
+    session.cc2[1] = 0
+
+    return 0
+    
+cdef int generate_udp_session(GenericSession* g_session, GenericPacketHeaders* g_packet):
+    cdef UDPSession *session = <UDPSession*>g_session
+    cdef UDPPacketHeaders* packet = <UDPPacketHeaders*>g_packet
+
+    session.ip1 = packet.ip1
+    session.port1 = packet.port1
+    session.bytes1 = packet.bytes
+
+    session.ip2 = packet.ip2
+    session.port2 = packet.port2
+    session.bytes2 = 0
 
     session.vlan_id = packet.vlan_id
     session.base.tb = packet.base.timestamp
@@ -537,17 +481,58 @@ cdef int update_tcp_session(GenericSession* g_session, GenericPacketHeaders* g_p
         #session.ip1 = packet.ip1
         #session.port1 = packet.port1
         session.bytes1 += packet.bytes
-        session.flags1 |= packet.flags
+        session.flags1 |= packet.flags<<((packet.flags&16)/2)
         session.base.traffic_bytes[bytes_slot][0] += packet.bytes
 
     else:
         #session.ip2 = packet.ip2
         #session.port2 = packet.port2
         session.bytes2 += packet.bytes
-        session.flags2 |= packet.flags
+        session.flags2 |= packet.flags<<((packet.flags&16)/2)
         session.base.traffic_bytes[bytes_slot][1] += packet.bytes
 
     return 0
+
+cdef int update_udp_session(GenericSession* g_session, GenericPacketHeaders* g_packet):
+    cdef UDPSession* session = <UDPSession*>g_session
+    cdef UDPPacketHeaders* packet = <UDPPacketHeaders*>g_packet
+
+    # We need timestamp to be an int to navigate bytes
+    cdef uint64_t current_packet_second = <uint64_t>packet.base.timestamp
+    cdef uint64_t last_packet_second = <uint64_t>session.base.te
+
+    # Clean up old bytes slots, if needed.  The slots to be cleaned are
+    # everything between the last update and the current time, including
+    # the current time, but not including the last update.  
+    cdef int slot_second
+    if last_packet_second <= current_packet_second - BYTES_RING_SIZE:
+        # Clear everything
+        memset(session.base.traffic_bytes, 0, sizeof(session.base.traffic_bytes))
+    elif last_packet_second < current_packet_second:
+        # Only clear the slots that have occured between then and now.
+        for slot_second in range(last_packet_second + 1, current_packet_second + 1):
+            session.base.traffic_bytes[slot_second % BYTES_RING_SIZE][0] = 0
+            session.base.traffic_bytes[slot_second % BYTES_RING_SIZE][1] = 0
+
+    #session.vlan_id = vlan
+    #session.tb = 
+    session.base.te = packet.base.timestamp
+    session.base.packets += 1
+    cdef int bytes_slot = current_packet_second % BYTES_RING_SIZE
+    if (session.ip1 == packet.ip1):
+        #session.ip1 = packet.ip1
+        #session.port1 = packet.port1
+        session.bytes1 += packet.bytes
+        session.base.traffic_bytes[bytes_slot][0] += packet.bytes
+
+    else:
+        #session.ip2 = packet.ip2
+        #session.port2 = packet.port2
+        session.bytes2 += packet.bytes
+        session.base.traffic_bytes[bytes_slot][1] += packet.bytes
+
+    return 0
+
 
 
 cdef object generate_tcp_session_key_from_pkt(GenericPacketHeaders* g_pkt):
@@ -576,9 +561,64 @@ cdef object generate_tcp_session_key_from_pkt(GenericPacketHeaders* g_pkt):
     key += pkt.vlan_id
 
     return <object>key
+      
+
+cdef object generate_udp_session_key_from_pkt(GenericPacketHeaders* g_pkt):
+    cdef UDPPacketHeaders* pkt = <UDPPacketHeaders*>g_pkt
+    
+    key = 0
+    if pkt.ip1 > pkt.ip2:
+        key += pkt.ip1
+        key *= 2 ** 16
+        key += pkt.port1
+        key *= 2 ** 32
+        key += pkt.ip2
+        key *= 2 ** 16
+        key += pkt.port2
+        key *= 2 ** 16
+    else:
+        key += pkt.ip2
+        key *= 2 ** 16
+        key += pkt.port2
+        key *= 2 ** 32
+        key += pkt.ip1
+        key *= 2 ** 16
+        key += pkt.port1
+        key *= 2 ** 16
+        
+    key += pkt.vlan_id
+
+    return <object>key
         
 cdef object generate_tcp_session_key_from_session(GenericSession* g_session):
     cdef TCPSession* session = <TCPSession*>g_session
+    
+    key = 0
+    if session.ip1 > session.ip2:
+        key += session.ip1
+        key *= 2 ** 16
+        key += session.port1
+        key *= 2 ** 32
+        key += session.ip2
+        key *= 2 ** 16
+        key += session.port2
+        key *= 2 ** 16
+    else:
+        key += session.ip2
+        key *= 2 ** 16
+        key += session.port2
+        key *= 2 ** 32
+        key += session.ip1
+        key *= 2 ** 16
+        key += session.port1
+        key *= 2 ** 16
+        
+    key += session.vlan_id
+
+    return <object>key
+
+cdef object generate_udp_session_key_from_session(GenericSession* g_session):
+    cdef UDPSession* session = <UDPSession*>g_session
     
     key = 0
     if session.ip1 > session.ip2:
@@ -703,8 +743,140 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
     if session.cc2[0] != 0:
         bytes_doc["cc2"] = chr(session.cc2[0]) + chr(session.cc2[1])
 
-    # PFG
-    #if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
+    if session.vlan_id >= 0: bytes_doc['vl'] = session.vlan_id
+
+    cdef int second, i
+    cdef uint32_t* bytes_subarray
+    # Generate the bytes array.  Write all non-zero sub-arrays from the second
+    # to write up to the end of the data we have, inclusive.
+    for second in range(second_to_write_from, min(second_to_write_to, <uint64_t>session.base.te + 1)):
+        i = second % BYTES_RING_SIZE
+        bytes_subarray = session.base.traffic_bytes[i]
+        if bytes_subarray[0] > 0 or bytes_subarray[1] > 0:
+            # Update the session end time
+            se = second
+            # Append a new Bytes subarray
+            bytes_to_write.append([
+                int(second - second_to_write_from),
+                bytes_subarray[0],
+                bytes_subarray[1]
+            ])
+            # Update the capture session
+            capture_session.bytes1 += bytes_subarray[0]
+            capture_session.bytes2 += bytes_subarray[1]
+            capture_session.base.traffic_bytes[i][0] += bytes_subarray[0]
+            capture_session.base.traffic_bytes[i][1] += bytes_subarray[1]
+
+    bytes_doc["se"] = se
+    bytes_doc["sem"] = peg_to_minute(se)
+
+    # Update capture_session timestamp
+    capture_session.base.te = max(capture_session.base.te, session.base.te)
+
+    # add to writes
+    if trafcap.options.mongo:
+        bytes_bulk_writer.insert(bytes_doc)
+
+    return 0
+
+
+cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session) except -1:
+    cdef UDPSession* session = <UDPSession*>g_session
+    cdef UDPSession* capture_session = <UDPSession*>g_capture_session
+
+    cdef uint64_t sb = second_to_write_from
+    cdef uint64_t se
+    cdef int tdm
+
+    # General Plan for writes:
+    # At this point, we know there needs to be a write.  The question is
+    # whether or not we need to create and insert a new info doc or not.  If we
+    # need a new info_doc, we insert without using the bulk_writer, because we
+    # want to get back the object id.  Everything else is just added to the
+    # bulk_writer for later execution.
+
+    # Note: Sometimes we wrap numbers in python int() before we commit them to
+    # a dictionary.  This is to prevent Cython from making uint64 into python
+    # Longs by default.  (Since we're commiting to disk, we'll do our best to
+    # save bytes.
+
+    object_id = object_ids[slot]
+    if not object_id:
+        # We need to insert a new info doc
+        info_doc = {
+            "ip1":session.ip1,
+            "p1":session.port1,
+            "b1":int(session.bytes1),
+            "ip2":session.ip2,
+            "p2":session.port2,
+            "b2":int(session.bytes2),
+            "bt":int(session.bytes1+session.bytes2),
+            "tbm":peg_to_minute(<uint64_t>session.base.tb),
+            "tem":peg_to_minute(<uint64_t>session.base.te),
+            "tb":session.base.tb,
+            "te":session.base.te,
+            "pk":int(session.base.packets)
+        }
+
+        # Need to change geoIP call to handle int addresses
+        cc1, name1, loc1 = trafcap.geoIpLookupInt(session.ip1)
+        cc2, name2, loc2 = trafcap.geoIpLookupInt(session.ip2)
+
+        if cc1: 
+            info_doc["cc1"] = cc1
+            session.cc1[0] = ord(cc1[0])
+            session.cc1[1] = ord(cc1[1])
+
+        if cc2: 
+            info_doc["cc2"] = cc2
+            session.cc2[0] = ord(cc2[0])
+            session.cc2[1] = ord(cc2[1])
+
+        tdm = (<int>(session.base.te - session.base.tb)) / 60
+        if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
+        if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
+
+        # Insert the new doc and record the objectid
+        if trafcap.options.mongo:
+            object_ids[slot] = info_collection.insert(info_doc)
+        #print info_doc,"at",object_ids[slot]
+
+    else:
+        # If we're not inserting a new doc, we're updating an existing one.
+        info_update = {
+            "$set": {
+                "b1": int(session.bytes1),
+                "b2": int(session.bytes2),
+                "bt": int(session.bytes1+session.bytes2),
+                "pk": int(session.base.packets),
+                "te": session.base.te,
+                "tem": peg_to_minute(<uint64_t>session.base.te)
+            }
+        }
+
+        if trafcap.options.mongo:
+            info_bulk_writer.find({"_id": object_ids[slot]}).update(info_update)
+
+    # We always need to write a bytes doc.
+    bytes_to_write = []
+    bytes_doc = {
+            "ip1":session.ip1,
+            "p1":session.port1,
+            "b1":int(session.bytes1),
+            "ip2":session.ip2,
+            "p2":session.port2,
+            "b2":int(session.bytes2),
+            "b":bytes_to_write,
+            "sb": sb,
+            "sbm": peg_to_minute(sb)
+    }
+    if session.cc1[0] != 0:
+        bytes_doc["cc1"] = chr(session.cc1[0]) + chr(session.cc1[1])
+
+    if session.cc2[0] != 0:
+        bytes_doc["cc2"] = chr(session.cc2[0]) + chr(session.cc2[1])
+
+    if session.vlan_id >= 0: bytes_doc['vl'] = session.vlan_id
 
     cdef int second, i
     cdef uint32_t* bytes_subarray

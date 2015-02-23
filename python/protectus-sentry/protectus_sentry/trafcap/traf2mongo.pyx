@@ -12,7 +12,8 @@ import math
 import traceback
 import trafcap
 from trafcapIpPacket import *
-from trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, GenericPacketHeaders, TCPPacketHeaders, GenericSession, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_packet, print_tcp_session, generate_tcp_session_key_from_pkt, generate_tcp_session_key_from_session, write_tcp_session, alloc_tcp_capture_session
+#from trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, GenericPacketHeaders, TCPPacketHeaders, GenericSession, TCPSession, parse_tcp_packet, generate_tcp_session, update_tcp_session, print_tcp_packet, print_tcp_session, generate_tcp_session_key_from_pkt, generate_tcp_session_key_from_session, write_tcp_session, alloc_tcp_capture_session, generate_udp_session_key_from_pkt, parse_udp_packet
+from trafcapIpPacket cimport * 
 from trafcapEthernetPacket import *
 from trafcapContainer import *
 import multiprocessing
@@ -27,8 +28,6 @@ from libc.string cimport memcpy, memset
 from libc.stdlib cimport malloc
 import ctypes
 from cpf_ring cimport * 
-
-#proc = None
 
 trafcap.checkIfRoot()
 
@@ -61,92 +60,16 @@ def parseOptions():
  
 def exitNow(message):
     # Kill the childprocess sniffing packets
-    print "Exiting..."
-    if proc:
-        os.kill(proc.pid, signal.SIGTERM)
-    sys.exit(message)
-
-sniffPkts_running = True
-def sniffPkts(spq, pc):
-    # Allow exit without flush.
-    spq.cancel_join_thread()
-
-    def sniffPktsCatchCntlC(signum, stack):
-        print 'Caught CntlC in sniffPkts...'
-        global sniffPkts_running
-        sniffPkts_running = False
-
-    signal.signal(signal.SIGINT, sniffPktsCatchCntlC)
-
-    proc = pc.startSniffer()
-
-    # to make stdout non-blocking 
-    #import fcntl  
-    #fd = proc.stdout.fileno() 
-    #fl = fcntl.fcntl(fd, fcntl.F_GETFL) 
-    #fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK) 
-
-    while sniffPkts_running:
-        try:
-            #pkt = proc.stdout.readline()   # causes 100% CPU
-            for pkt in proc.stdout:  
-                spq.put(pkt)
-
-        except IOError:
-            # Exception occurs if signal handled during read
-            continue
-
-    # kill sniffer
-    if proc:
-        os.kill(proc.pid, signal.SIGTERM)
-
-# Globals moved out of main() so processPacket callback function can access them
-#cdef object parser_packet_count = multiprocessing.Value(ctypes.c_uint64)
-#parser_packet_count.value = 0
-#cdef object parsed_packet_pipe = multiprocessing.Pipe()
-#cdef int shared_packet_cursor_in = 0
-#cdef object python_parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
-#
-#cdef void processPacket(const pfring_pkthdr *h, const char *p, const char *user_bytes):
-#    cdef pfring_extended_pkthdr eh = h.extended_hdr
-#    cdef pkt_parsing_info pp = h.extended_hdr.parsed_pkt
-#    global parser_packet_count
-#    global parsed_packet_pipe
-#    global shared_packet_cursor_in
-#    global python_parsed_packet_buffer
-#
-#    #print "clen:", h.caplen, ", ", h.ts.tv_sec, ".", h.ts.tv_usec,
-#    #print ", smac:", hex(pp.smac[0])[2:], hex(pp.smac[1])[2:], hex(pp.smac[2])[2:],
-#    #print ", dmac:", hex(pp.dmac[0])[2:], hex(pp.dmac[1])[2:], hex(pp.dmac[2])[2:],
-#    #print ", et:", pp.eth_type, ", vl:", pp.vlan_id, ", ipv:", pp.ip_version
-#
-#    cdef long pointer = ctypes.addressof(python_parsed_packet_buffer)
-#    cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>pointer
-#    cdef TCPPacketHeaders* current_shared_pkt
-#
-#    current_shared_pkt = &ppshared[shared_packet_cursor_in]
-#
-#    current_shared_pkt.ip1 = pp.ip_src.v4
-#    current_shared_pkt.ip2 = pp.ip_dst.v4
-#    current_shared_pkt.port1 = pp.l4_src_port 
-#    current_shared_pkt.port2 = pp.l4_dst_port 
-#    current_shared_pkt.timestamp = eh.timestamp_ns 
-#    current_shared_pkt.vlan_id = pp.vlan_id 
-#    current_shared_pkt.bytes = h.len 
-#    #current_shared_pkt.flags = TODO
-#
-#    parser_packet_count.value += 1
-#    parsed_packet_pipe[0].send(shared_packet_cursor_in)  
-#    shared_packet_cursor_in = (shared_packet_cursor_in + 1) % 100000
-#
-#    # Sending to pipe inside of try/except caused compile error
-#    #ppp_in = parsed_packet_pipe[0]
-#    #try:
-#    #    ppp_in.send(shared_packet_cursor_in)  
-#    #    shared_packet_cursor_in = (shared_packet_cursor_in + 1) % 100000
-#    #except IOError:
-#    #    # Exception occurs if signal handled during put 
-#    #    continue
+    print "Exiting now...", message
+    global main_running
+    main_running = False
+    global parsePkts_running
+    parsePkts_running = False
+    global updateDict_running
+    updateDict_running = False
+    global bookkeeper_running
+    bookkeeper_running = False
+    os.kill(os.getpid(), signal.SIGTERM)
 
 # Hack to bypass error when importing macro from pfring.h
 DEF PF_RING_LONG_HEADER = 4
@@ -154,7 +77,7 @@ DEF NO_ZC_BUFFER_LEN = 256
 
 cdef bint parsePkts_running = True 
 def parsePkts(parsed_packet_pipe, parsed_packet_count, python_ppshared, 
-              recv_stats, drop_stats, pc, options):
+              recv_stats, drop_stats, proto_opts, options):
 
     # First, setup signal handling
     def parsePktsCatchCntlC(signum, stack):
@@ -164,10 +87,15 @@ def parsePkts(parsed_packet_pipe, parsed_packet_count, python_ppshared,
         #pfring_breakloop(pd)
 
     signal.signal(signal.SIGINT, parsePktsCatchCntlC)
+    signal.signal(signal.SIGTERM, parsePktsCatchCntlC)
     
     # Give Cython code low-level access to the shared memory array
-    cdef long pointer = ctypes.addressof(python_ppshared)
-    cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>pointer
+    cdef long ppshared_address = ctypes.addressof(python_ppshared)
+    cdef int packet_struct_size = ctypes.sizeof(python_ppshared) / len(python_ppshared)
+    #cdef TCPPacketHeaders* ppshared = <TCPPacketHeaders*>ppshared_address
+    cdef GenericPacketHeaders* ppshared = <GenericPacketHeaders*>ppshared_address
+    #cdef TCPPacketHeaders* current_shared_pkt
+    cdef GenericPacketHeaders* current_shared_pkt
 
     # Make the pipe data a raw buffer.  Enables cython later>
     python_shared_packet_cursor_in = ctypes.c_uint32()
@@ -175,7 +103,6 @@ def parsePkts(parsed_packet_pipe, parsed_packet_count, python_ppshared,
     cdef uint32_t* shared_packet_cursor_in_p = <uint32_t*>shared_packet_cursor_in_address
 
     #cdef int shared_packet_cursor_in = 0
-    cdef TCPPacketHeaders* current_shared_pkt
     #cdef int parse_return_code
 
     cdef char a_buffer[NO_ZC_BUFFER_LEN]
@@ -187,28 +114,36 @@ def parsePkts(parsed_packet_pipe, parsed_packet_count, python_ppshared,
 
     cdef pfring *pd
     cdef uint32_t flags = 0
-    cdef char* device = 'sniff0'
+    cdef char* device = trafcap.sniff_interface 
     cdef int snaplen = 128
     flags |= PF_RING_LONG_HEADER
     cdef int wait_for_packet = 1
     pd = pfring_open(device, snaplen, flags)
 
-    pfring_set_bpf_filter(pd, 'tcp')
+    pfring_set_bpf_filter(pd, proto_opts['bpf_filter'])
     pfring_enable_ring(pd)
     #pfring_loop(pd, processPacket, "", wait_for_packet) 
     cdef int last_pkt_time_sec = 0
 
-    while parsePkts_running:
+    if options.tcp:
+        parse_packet = parse_tcp_packet
+    elif options.udp:
+        parse_packet = parse_udp_packet
+    else:
+        # TODO - exitNow not working from subprocesses
+        exitNow('Invalid protocol.')
 
+    while parsePkts_running:
         pfring_recv(pd, &buffer_p, NO_ZC_BUFFER_LEN, &hdr, wait_for_packet)
 
-        if shared_packet_cursor_in_p[0] == 0:
+        #if shared_packet_cursor_in_p[0] == 0:
             #print "clen:", hdr.caplen, ", ", hdr.ts.tv_sec, ".", hdr.ts.tv_usec,
             #print ",tns:", eh.timestamp_ns,
             #print ",smac:", hex(pp.smac[0])[2:], hex(pp.smac[1])[2:], hex(pp.smac[2])[2:],
             #print ",dmac:", hex(pp.dmac[0])[2:], hex(pp.dmac[1])[2:], hex(pp.dmac[2])[2:],
             #print ",et:", pp.eth_type, ",vl:", pp.vlan_id, ",ipv:", pp.ip_version
-            pass
+            #print "if_index:", eh.if_index
+            #pass
 
         # Update dropped packet counter approx every second
         if hdr.ts.tv_sec - last_pkt_time_sec > 1:
@@ -216,24 +151,26 @@ def parsePkts(parsed_packet_pipe, parsed_packet_count, python_ppshared,
             #recv_stats.value = ringstats.recv
             drop_stats.value = ringstats.drop
             last_pkt_time_sec = hdr.ts.tv_sec
+    
+        # Since ppshared is now generic, we need to do memory addresses ourselves.
+        current_shared_pkt = <GenericPacketHeaders*>(ppshared_address + (shared_packet_cursor_in_p[0] * packet_struct_size))
+        # Here is the old way of finding the current_shared_packet
+        #current_shared_pkt = &ppshared[shared_packet_cursor_in_p[0]]
 
-    
-        current_shared_pkt = &ppshared[shared_packet_cursor_in_p[0]]
-    
-        current_shared_pkt.ip1 = pp.ip_src.v4
-        current_shared_pkt.ip2 = pp.ip_dst.v4
-        current_shared_pkt.port1 = pp.l4_src_port 
-        current_shared_pkt.port2 = pp.l4_dst_port 
-        #current_shared_pkt.timestamp = eh.timestamp_ns 
-        current_shared_pkt.base.timestamp = <double>hdr.ts.tv_sec + (<double>hdr.ts.tv_usec / 1000000.0)
-        current_shared_pkt.vlan_id = pp.vlan_id 
-        current_shared_pkt.bytes = hdr.c_len 
-        #current_shared_pkt.flags = TODO
+        parse_packet(current_shared_pkt, &hdr)
+
+        #current_shared_pkt.ip1 = pp.ip_src.v4
+        #current_shared_pkt.ip2 = pp.ip_dst.v4
+        #current_shared_pkt.port1 = pp.l4_src_port 
+        #current_shared_pkt.port2 = pp.l4_dst_port 
+        #current_shared_pkt.base.timestamp = <double>hdr.ts.tv_sec + (<double>hdr.ts.tv_usec / 1000000.0)
+        #current_shared_pkt.vlan_id = pp.vlan_id 
+        #current_shared_pkt.bytes = hdr.c_len 
+        #current_shared_pkt.flags = pp.tcp.flags 
     
         parsed_packet_count.value += 1
         parsed_packet_pipe.send_bytes(python_shared_packet_cursor_in)  
         shared_packet_cursor_in_p[0] = (shared_packet_cursor_in_p[0] + 1) % 100000
-
 
     time.sleep(1)   # sample code included this - not sure if necessary
     pfring_close(pd)
@@ -241,7 +178,7 @@ def parsePkts(parsed_packet_pipe, parsed_packet_count, python_ppshared,
 
 DEF GET_WAIT = 0.01
 cdef bint updateDict_running = True
-def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_sessions_shared, session_locks, session_alloc_pipe, sessions_dealloc_pipe, updater_session_count, updater_dealloc_session_count, pc, options):
+def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_sessions_shared, session_locks, session_alloc_pipe, sessions_dealloc_pipe, updater_session_count, updater_dealloc_session_count, options):
 
     # Signal Handling
     def updateDictCatchCntlC(signum, stack):
@@ -250,6 +187,7 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
         updateDict_running = False
 
     signal.signal(signal.SIGINT, updateDictCatchCntlC)
+    signal.signal(signal.SIGTERM, updateDictCatchCntlC)
 
     # Cythonize access to the shared packets
     #print "Shared Packet space based at:", str(ctypes.addressof(python_ppshared))
@@ -279,12 +217,24 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
     cdef long shared_packet_cursor_out_address = ctypes.addressof(python_shared_packet_cursor_out)
     cdef uint32_t* shared_packet_cursor_out_p = <uint32_t*>shared_packet_cursor_out_address
 
-    cdef GenericPacketHeaders* packet
-
     available_slots = deque(xrange(1000000))
     cdef dict session_slot_map = {}
     cdef int session_slot
     cdef GenericSession* session
+
+    if options.tcp:
+        generate_session_key_from_pkt = generate_tcp_session_key_from_pkt
+        generate_session = generate_tcp_session
+        update_session = update_tcp_session
+        generate_session_key_from_session = generate_tcp_session_key_from_session
+    elif options.udp:
+        generate_session_key_from_pkt = generate_udp_session_key_from_pkt
+        generate_session = generate_udp_session
+        update_session = update_udp_session
+        generate_session_key_from_session = generate_udp_session_key_from_session
+    else:
+        # TODO - exitNow not working from subprocesses
+        exitNow('Invalid protocol.')
 
     # The primary packet loop
     # General Strategy:
@@ -313,7 +263,7 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
         #print_tcp_packet(packet)
 
         # Get the session's key for lookup
-        session_key = generate_tcp_session_key_from_pkt(packet)
+        session_key = generate_session_key_from_pkt(packet)
 
         # Let the dictionary tell us where the session lives
         session_slot = session_slot_map.get(session_key,-1)
@@ -325,7 +275,7 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
             new_slot_number_p[0] = available_slots.popleft()
             # Since sessions_shared is now generic, we need to do memory addresses ourselves.
             session = <GenericSession *>(sessions_address + (new_slot_number_p[0] * session_struct_size))
-            generate_tcp_session(session, packet)
+            generate_session(session, packet)
 
             # Map the key to the new session
             session_slot_map[session_key] = new_slot_number_p[0]
@@ -340,7 +290,7 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
             session = <GenericSession *>(sessions_address + (session_slot * session_struct_size))
             lock = session_locks[session_slot % 100]  # orig %1000
             lock.acquire()
-            update_tcp_session(session, packet)
+            update_session(session, packet)
             lock.release()
 
         # Get released slots from next phase
@@ -349,14 +299,12 @@ def updateDict(parsed_packet_pipe, updater_pkt_count, python_ppshared, python_se
             updater_dealloc_session_count.value += 1
             available_slots.append(new_slot_number_pipeable.value)
             # Generate a key so we can delete it from the dictionary
-            del session_slot_map[generate_tcp_session_key_from_session(<GenericSession *>(sessions_address + (new_slot_number_p[0] * session_struct_size)))]
+            del session_slot_map[generate_session_key_from_session(<GenericSession *>(sessions_address + (new_slot_number_p[0] * session_struct_size)))]
             #print "De-dictionary-ing session at slot", new_slot_number_p[0]
                
 
-
-
 cdef bint bookkeeper_running = True
-def bookkeeper(python_sessions_shared, session_locks, sessions_alloc_pipe, sessions_dealloc_pipe, keeper_session_count, keeper_dealloc_session_count, options):
+def bookkeeper(python_sessions_shared, session_locks, sessions_alloc_pipe, sessions_dealloc_pipe, keeper_session_count, keeper_dealloc_session_count, proto_opts, options):
 
     # Signal Handling
     def bookkeeperCatchCntlC(signum, stack):
@@ -365,6 +313,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_alloc_pipe, sessi
         bookkeeper_running = False
 
     signal.signal(signal.SIGINT, bookkeeperCatchCntlC)
+    signal.signal(signal.SIGTERM, bookkeeperCatchCntlC)
 
     # Mongo Database connection
     #db = trafcap.mongoSetup()
@@ -372,13 +321,23 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_alloc_pipe, sessi
 
     cdef int i
 
+    if options.tcp:
+        alloc_capture_session = alloc_tcp_capture_session
+        write_session = write_tcp_session
+    elif options.udp:
+        alloc_capture_session = alloc_udp_capture_session
+        write_session = write_udp_session
+    else:
+        # TODO - exitNow not working from subprocesses
+        exitNow('Invalid protocol.')
+
     # Initialize a capture session.
-    cdef GenericSession* capture_session = <GenericSession*>alloc_tcp_capture_session()
+    cdef GenericSession* capture_session = <GenericSession*>alloc_capture_session()
 
     # We also initialize a dummy session to aid code reuse below.  Everything
     # that touches this variable is wasting time, but we only have to touch it
     # once every 20 seconds or so.
-    cdef GenericSession* dummy_session = <GenericSession*>alloc_tcp_capture_session()
+    cdef GenericSession* dummy_session = <GenericSession*>alloc_capture_session()
 
     # Bookkeeping data for capture
     cdef list capture_object_ids = [None] # Capture sessions are in a category of one
@@ -449,6 +408,11 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_alloc_pipe, sessi
             current_second = max(current_second, int(time.time()-2))
             #print 'Updating keeper current_second: ', current_second
         #    #time.sleep(0.02)
+        
+        session_info_coll = db[proto_opts['session_info_coll_name']]
+        session_bytes_coll = db[proto_opts['session_bytes_coll_name']]
+        capture_info_coll = db[proto_opts['capture_info_coll_name']]
+        capture_bytes_coll = db[proto_opts['capture_bytes_coll_name']]
 
         while sessions_alloc_pipe.poll():
             # Read data from the pipe into a ctype, which is pointed to by
@@ -510,9 +474,9 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_alloc_pipe, sessi
             # Iterate over all the slots scheduled to be dealt with this
             # second, and deal with them.
             #print "Initializing sessionInfo_bulk_writer..."
-            info_bulk_writer = db.tcp_sessionInfo.initialize_unordered_bulk_op()
+            info_bulk_writer = session_info_coll.initialize_unordered_bulk_op()
             #print "Initializing sessionBytes_bulk_writer..."
-            bytes_bulk_writer = db.tcp_sessionBytes.initialize_unordered_bulk_op()
+            bytes_bulk_writer = session_bytes_coll.initialize_unordered_bulk_op()
             #print "Starting loop..."
             for i in range(schedule_sizes[schedule_number]):
                 #print "Reading",schedule_number,i,":",schedule[schedule_number][i]
@@ -523,7 +487,8 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_alloc_pipe, sessi
                 lock.acquire()
                 # Get the data we need as quickly as possible so we can
                 # release the lock.
-                memcpy(session_copy, session, sizeof(TCPSession))
+                memcpy(session_copy, session, session_struct_size)
+                #memcpy(session_copy, session, sizeof(TCPSession)
                 lock.release()
 
                 #if slot in tracked_slots:
@@ -545,10 +510,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_alloc_pipe, sessi
 
                 elif session.traffic_bytes[bytes_cursor][0] > 0 or session.traffic_bytes[bytes_cursor][1] > 0:
                     # Write to database (or at least queue)
-                    # PFG
-                    #print seconds_since_last_bytes
-                    #print_tcp_session(session_copy,0)
-                    write_tcp_session(info_bulk_writer, bytes_bulk_writer, db.tcp_sessionInfo, object_ids, session_copy, slot, second_to_write_from, second_to_write, capture_session)
+                    write_session(info_bulk_writer, bytes_bulk_writer, session_info_coll, object_ids, session_copy, slot, second_to_write_from, second_to_write, capture_session)
                     
                     mongo_session_writes += 2
                     next_scheduled_checkup_time = second_to_write + BYTES_DOC_SIZE
@@ -618,18 +580,14 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_alloc_pipe, sessi
             # happens once a second, so we're not super concerned about
             # efficiency.
             if capture_scheduled_checkup_time <= second_to_write:
-                # PFG
-                #print_tcp_session(capture_session, capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2))
                 # Not so unlike writing a normal session, but with some
                 # shortcuts and dummy data.
                 #print "Initializing captureInfo_bulk_writer..."
-                info_bulk_writer = db.tcp_captureInfo.initialize_unordered_bulk_op()
+                info_bulk_writer = capture_info_coll.initialize_unordered_bulk_op()
                 #print "Initializing captureBytes_bulk_writer..."
-                bytes_bulk_writer = db.tcp_captureBytes.initialize_unordered_bulk_op()
+                bytes_bulk_writer = capture_bytes_coll.initialize_unordered_bulk_op()
 
-                # PFG
-                #print "Doing write_tcp_session..."
-                write_tcp_session(info_bulk_writer, bytes_bulk_writer, db.tcp_captureInfo, capture_object_ids, capture_session, 0, capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2), capture_scheduled_checkup_time - BYTES_DOC_SIZE, dummy_session)
+                write_session(info_bulk_writer, bytes_bulk_writer, capture_info_coll, capture_object_ids, capture_session, 0, capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2), capture_scheduled_checkup_time - BYTES_DOC_SIZE, dummy_session)
 
                 mongo_capture_writes += 2
                 capture_scheduled_checkup_time = second_to_write + (BYTES_DOC_SIZE / 2)
@@ -659,7 +617,7 @@ def bookkeeper(python_sessions_shared, session_locks, sessions_alloc_pipe, sessi
 
 
                 
-main_running = True
+cdef bint main_running = True
 def main():
     # The main function is responsible for setting up and kicking off the parse
     # function and the ingest function.  It tries to be responsible for all
@@ -679,55 +637,38 @@ def main():
     if option_check_counter != 1:
         sys.exit("Must use one of -t, -u, -i, or -o to specify a protocol.")
 
+    proto_opts = {}
+
     # Select protocol.  Note that packet_type variable must be set
     if options.tcp:
-        packet_type = "TcpPacket"
-        session_info_collection_name = "tcp_sessionInfo"
-        session_bytes_collection_name = "tcp_sessionBytes"
-        capture_info_collection_name = "tcp_captureInfo"
-        capture_bytes_collection_name = "tcp_captureBytes"
+        proto_opts['bpf_filter'] = 'ip and tcp'
+        proto_opts['packet_header_class_name'] = 'PythonTCPPacketHeaders'
+        proto_opts['session_class_name'] = 'PythonTCPSession'
+        proto_opts['session_info_coll_name'] = 'tcp_sessionInfo'
+        proto_opts['session_bytes_coll_name'] = 'tcp_sessionBytes'
+        proto_opts['capture_info_coll_name'] = 'tcp_captureInfo'
+        proto_opts['capture_bytes_coll_name'] = 'tcp_captureBytes'
+
     elif options.udp:
-        packet_type = "UdpPacket"
-        session_info_collection_name = "udp_sessionInfo"
-        session_bytes_collection_name = "udp_sessionBytes"
-        capture_info_collection_name = "udp_captureInfo"
-        capture_bytes_collection_name = "udp_captureBytes"
+        proto_opts['bpf_filter'] = 'ip and udp'
+        proto_opts['packet_header_class_name'] = 'PythonUDPPacketHeaders'
+        proto_opts['session_class_name'] = 'PythonUDPSession'
+        proto_opts['session_info_coll_name'] = 'udp_sessionInfo'
+        proto_opts['session_bytes_coll_name'] = 'udp_sessionBytes'
+        proto_opts['capture_info_coll_name'] = 'udp_captureInfo'
+        proto_opts['capture_bytes_coll_name'] = 'udp_captureBytes'
+
     elif options.icmp:
-        packet_type = "IcmpPacket"
-        session_info_collection_name = "icmp_sessionInfo"
-        session_bytes_collection_name = "icmp_sessionBytes"
-        capture_info_collection_name = "icmp_captureInfo"
-        capture_bytes_collection_name = "icmp_captureBytes"
+        sys.exit("-i not implemeted yet.")
     elif options.other:
-        packet_type = "OtherPacket"
-        session_info_collection_name = "oth_sessionInfo"
-        session_bytes_collection_name = "oth_sessionBytes"
-        capture_info_collection_name = "oth_captureInfo"
-        capture_bytes_collection_name = "oth_captureBytes"
+        sys.exit("-o not implemeted yet.")
     elif options.rtp:
-        packet_type = "RtpPacket"
-        session_info_collection_name = "rtp_sessionInfo"
-        session_bytes_collection_name = "rtp_sessionBytes"
-        capture_info_collection_name = "rtp_captureInfo"
-        capture_bytes_collection_name = "rtp_captureBytes"
+        sys.exit("-r not implemeted yet.")
     else:
-       exitNow('Invalid protocol') 
+       sys.exit('Invalid protocol') 
 
-    # A python class is defined for each protocol (TCP, UDP, ...) and  
-    # each class encapsulates packet-specific information
-    pc = eval(packet_type)
-
-    if options.other:
-        container = eval("TrafcapEthPktContainer")
-    else:
-        container = eval("TrafcapIpPktContainer")
-        
-    session = container(pc, session_info_collection_name, 
-                            session_bytes_collection_name, "session")
-     
-    capture = container(pc, capture_info_collection_name, 
-                            capture_bytes_collection_name, "capture")
-
+    packet_header_class = eval(proto_opts['packet_header_class_name'])
+    session_class = eval(proto_opts['session_class_name'])
 
     def catchSignal1(signum, stac):
         print 'Caught Signal1 in main....'
@@ -761,8 +702,6 @@ def main():
     keeper_session_count.value = 0
     keeper_dealloc_session_count = multiprocessing.Value(ctypes.c_uint64)
     keeper_dealloc_session_count.value = 0
-    #keeper_live_session_count = multiprocessing.Value(ctypes.c_uint64)
-    #keeper_live_session_count.value = 0
     ring_stats_recv = multiprocessing.Value(ctypes.c_uint64)
     ring_stats_recv.value = 0
     ring_stats_drop = multiprocessing.Value(ctypes.c_uint64)
@@ -776,35 +715,28 @@ def main():
     #print 'has_attr: ', hasattr(fcntl, 'F_SETPIPE_SZ')  ==> This is False
     #fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK) 
 
-    # TODO: Choose TCP or UDP based on options
-    parsed_packet_buffer = multiprocessing.RawArray(PythonTCPPacketHeaders, 100000)
-
-    # TODO: Choose TCP or UDP based on options
-    sessions_buffer = multiprocessing.RawArray(PythonTCPSession, 1000000)
+    parsed_packet_buffer = multiprocessing.RawArray(packet_header_class, 100000)
+    sessions_buffer = multiprocessing.RawArray(session_class, 1000000)
     sessions_alloc_pipe = multiprocessing.Pipe(False)
     sessions_dealloc_pipe = multiprocessing.Pipe(False)
     #allocated_session_slot_q = multiprocessing.Queue(1000000)
     #deallocated_session_slot_q = multiprocessing.Queue(1000000)
     session_locks = tuple((multiprocessing.Lock() for i in xrange(10000)))
 
-    #sniffer = multiprocessing.Process(target = sniffPkts, 
-    #    args=(sniffed_packets,pc,))
     parser = multiprocessing.Process(target = parsePkts, 
         args=(parsed_packet_pipe[1], parser_packet_count, 
               parsed_packet_buffer, 
-              ring_stats_recv, ring_stats_drop,
-              pc, options))
+              ring_stats_recv, ring_stats_drop, proto_opts, options))
     updater = multiprocessing.Process(target = updateDict, 
         args=(parsed_packet_pipe[0], updater_packet_count, 
               parsed_packet_buffer, sessions_buffer, session_locks, 
               sessions_alloc_pipe[1],  sessions_dealloc_pipe[0], 
-              updater_session_count, updater_dealloc_session_count, pc, options))
+              updater_session_count, updater_dealloc_session_count, options))
     keeper = multiprocessing.Process(target = bookkeeper,
         args=(sessions_buffer, session_locks, 
               sessions_alloc_pipe[0], sessions_dealloc_pipe[1], 
-              keeper_session_count, keeper_dealloc_session_count, options))
+              keeper_session_count, keeper_dealloc_session_count, proto_opts, options))
 
-    #sniffer.start()
     parser.start()
     updater.start()
     keeper.start()
@@ -836,10 +768,8 @@ def main():
         prev_session_count = usc
 
         print '{0:9d} {1:6d} > {2:3d} > {3:10d} {4:7d} > {5:4d}  {6:4d} < {7:8d} {8:7d}'.format(rsd, pps, ppq, upc, sps, saq, sdq, ksc, klc)
-        #print '{0:9d} {1:6d} {2:10d} => {3:3d} => {4:10d} {5:7d} => {6:3d} => {7:7d} {8:7d}'.format(rsd, pps, ppc, ppq, upc, usc, usq, ksc, lsc)
 
         if loop_count % 10 == 0:
-            #print '{0:>13} {1:^5} {2:<10} {3:^3} {4:^9} {5:^5} {6:^5} {7:3} {8:>5} {9:3} {10:>5}'.format('------parser:', parser.pid, '--------', '      ', '--updatr:', updater.pid, '--', '   ', '--keeper:',keeper.pid,'--')
             print '{0:>10}{1:>5}{2:>21}{3:>5}{4:>5}{5:^10}{6:>11}{7:>5}{8:>3}'.format('---parser:', parser.pid, '--     -----updater:', updater.pid, '---- ',loop_count,' ---keeper:',keeper.pid,'---')
             print '{0:>9} {1:>6}    {2:^3}  {3:>10} {4:>7}    {5:^4}   {6:^4} {7:>8} {8:>7}'.format('drop', 'pps', ' ', 'pkts', 'sps', ' ',' ', 'sess', 'live')
             global main_running
@@ -848,10 +778,13 @@ def main():
         sys.stdout.flush()
 
     # Handle shutdown -- send signals?
-    #sniffer.join()
-    parser.join()
-    updater.join()
-    keeper.join()
+    parser.join(1)
+    updater.join(1)
+    keeper.join(1)
+    
+    if parser.is_alive(): parser.terminate()
+    if updater.is_alive(): updater.terminate()
+    if keeper.is_alive(): keeper.terminate()
 
 
 if __name__ == "__main__":

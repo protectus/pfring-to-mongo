@@ -6,6 +6,11 @@ cdef extern from "linux/pf_ring.h":
     cdef union ip_addr:
         uint32_t v4
 
+    cdef struct tcp_struct:
+        uint8_t flags
+        uint32_t seq_num
+        uint32_t ack_num
+ 
     cdef struct pkt_parsing_info:
         uint8_t dmac[6]
         uint8_t smac[6]
@@ -18,6 +23,7 @@ cdef extern from "linux/pf_ring.h":
         ip_addr ip_dst
         uint16_t l4_src_port
         uint16_t l4_dst_port
+        tcp_struct tcp
 
     cdef struct tx_struct:
         int bounce_interface
