@@ -886,7 +886,7 @@ class IcmpPacket(IpPacket):
             # Check if this seq number matches a previous packet
             if seq != 0:
                 try:
-                    icmp_req_item = pc.icmp_req.pop((seq, addr2))
+                    icmp_req_item = pc.icmp_req.pop((seq, addr2, addr1))
                     icmp_request_type_and_code = icmp_req_item[0]
                     # Found request packet in dict, this pkt must be a response
                     type_and_code_for_key = tuple(icmp_request_type_and_code)
@@ -894,7 +894,7 @@ class IcmpPacket(IpPacket):
                 except KeyError:
                     # No request packet in the dict
                     # Add packet to the request dictionary 
-                    pc.icmp_req[(seq, addr1)] = [type_and_code[0], \
+                    pc.icmp_req[(seq, addr1, addr2)] = [type_and_code[0], \
                                                  epoch_time_int]
                  
                     # clean-out the icmp_req dictionary every minute 
