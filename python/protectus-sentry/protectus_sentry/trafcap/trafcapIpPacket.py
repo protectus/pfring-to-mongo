@@ -302,6 +302,12 @@ class TcpPacket(IpPacket):
             flag_list = [['_', '_', '_', '_', '_', '_', '_', '_'],
                          ['_', '_', '_', '_', '_', '_', '_', '_']]
 
+            # Handle this:
+            # 1424786137.387015 3c:4a:92:2c:c4:00 > 54:75:d0:3e:55:fb, ethertype IPv4 (0x0800), length 63: truncated-ip - 3 bytes missing! 10.200.128.10.3026 > 72.3.209.9.6631: Flags [S], seq 4053698250, win 5840, options [mss 1460,nop,nop,sackOK,nop,[|tcp]>
+            # This anamoly seen in bond0 traffic but not in net0 traffic.  Introduced by tap / bonding / cabling ?
+            if pkt[9] == 'truncated-ip':
+                del pkt[9:14] # deletes items 9 through 13 - does not delete item 14
+
             # IPv4
             if pkt[6] == '(0x0800),':
 
