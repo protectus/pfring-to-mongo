@@ -235,9 +235,14 @@ class DnsNmiPacket(NmiPacket):
                         raise Exception("Unable to parse DNS traffic - \
                                          did not find A, CNAME, RRSIG, or PTR")
 
+            #1425349005.662003 DNS 10.200.129.210 3c:4a:92:2c:c4:00 4.2.2.2      0x1a27 Standard query 0x1a27  A sb.l.google.com[Malformed Packet]
             if pkt[6:8] == ['Standard', 'query'] and pkt[9] == 'A':
                 src = pkt[2]
                 queried_name = pkt[10]
+                if queried_name.endswith('[Malformed'):
+                    queried_name = queried_name[:-10]
+                    # Eliminate trailing 'Packet]'
+                    throw_away = pkt.pop(10) 
                 dns_id = pkt[5]
                 pc.dns_req[(dns_id, src)] = [pkt_time, queried_name]
 
