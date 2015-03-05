@@ -270,7 +270,7 @@ sys.path.append('/opt/sentry/trafcap/lib')
 
 def mongoSetup():
     from pymongo import Connection
-    conn = Connection(mongo_server, mongo_port)
+    conn = Connection(mongo_server, mongo_port, safe=False)
     db = conn[traffic_db]
     return db
 
