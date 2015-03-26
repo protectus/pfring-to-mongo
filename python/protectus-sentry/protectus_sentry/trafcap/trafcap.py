@@ -78,7 +78,7 @@ def refreshConfigVars():
     global lrs_min_duration, rtp_portrange, http_save_url_qs
     global local_subnets, local_subnet, config
     global mongo_server, mongo_port, traffic_db, traffic_ttl
-    global inj_filter, allowed_cc 
+    global inj_filter, inj_timeout, cc_list_type, cc_list
     # Read settings from config file
     config = ConfigParser.SafeConfigParser()
     config.optionxform = str  # Read config keys case sensitively.
@@ -91,7 +91,9 @@ def refreshConfigVars():
     nmi_db_update_wait_time=config.getfloat('trafcap', 'nmi_db_update_wait_time')
     cap_filter = config.get('trafcap', 'cap_filter')
     inj_filter = config.get('trafcap', 'inj_filter')
-    allowed_cc = json.loads(config.get('trafcap', 'allowed_cc'))
+    inj_timeout = config.getint('trafcap', 'inj_timeout')
+    cc_list_type = config.get('trafcap', 'cc_list_type')
+    cc_list = json.loads(config.get('trafcap', 'cc_list'))
     sniff_interface = config.get('interface', 'sniff_interface')
     network_interface = config.get('interface', 'network_interface')
     lrs_min_duration = config.getint('trafcap', 'lrs_min_duration')

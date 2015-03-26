@@ -14,7 +14,7 @@ from bisect import bisect_left, insort
 # for packet injection
 import socket
 from impacket import ImpactDecoder, ImpactPacket
-
+import random
 
 class IpPacket(object):
     """
@@ -1605,7 +1605,8 @@ class TcpInjPacket(IpPacket):
     # Legend for TCP packet data list returned by the parse method:
     #        data[0]  (ip1)     ,     data[1]   (ip2)       , [2]  , [3]
     #[[(addr),port,bytes,[flag]], [(addr),port,bytes,[flag]],epoch ,proto]
-    p_addrs=0; p_ports=1; p_bytes=2; p_flags=3
+    #p_ip1=0; p_ip2=1
+    p_addr=0; p_port=1; p_bytes=2; p_flags=3
     p_etime=4
     p_proto=5
     p_seq=6
@@ -1641,7 +1642,7 @@ class TcpInjPacket(IpPacket):
             #bytes1 = int(pkt[-1].strip(':'))
             a1_1,a1_2,a1_3,a1_4,port1 = pkt[2].split(".")
             a2_1,a2_2,a2_3,a2_4,port2 = pkt[4].strip(":").split(".")
-            flag_string = pkt[6].strip(",").strip("[").strip("]")
+            flag1_string = pkt[6].strip(",").strip("[").strip("]")
             if pkt[7] == 'ack':
                 ack = int(pkt[8].strip(','))
                 seq1 = None
@@ -1673,38 +1674,44 @@ class TcpInjPacket(IpPacket):
             return (), [] 
 
         # Handle case of SYN-ACK flag by changing the flag from S to s
-        if (flag_string == "S."):
-            flag_string = "s"
+        if (flag1_string == "S."):
+            flag1_string = "s"
 
         # Represent IP addresses a tuples instead of strings
         addr1 = (int(a1_1), int(a1_2), int(a1_3), int(a1_4))
         addr2 = (int(a2_1), int(a2_2), int(a2_3), int(a2_4))
         
+        # Not needed since zip/sort is not done below
         addrs = [addr1, addr2]
-
         ports = [port1_int, port2_int]
-        byts = [bytes1, 0]
+        #byts = [bytes1, 0]
         epoch_time = float(pkt[0])
         proto = "_"                            # for future use 
 
         # Sort to get a consistent key for each TCP session
         #data = sorted(zip(addrs, ports, byts, flag_list))
-        #[((1,2,3,4), 25254, 0, ['_', '_', '_', '_', '_', '_', '_', '_']),
-        # ((9,8,7,6), 22,  140, ['P', '_', '_', '_', '_', '_', '_', '_'])]
-        data = [addrs, ports, byts, flag_string]
+        #[((1,2,3,4), 25254, 0, 's'),
+        # ((9,8,7,6), 22,  140, '')]
+
+        # do not sort - need to preserve IP order for inject decisions
+        data = [addrs, ports, bytes1, flag1_string, epoch_time, proto, seq1, ack]
 
         # Add packet data - unrelated to any IP
-        data.append(epoch_time)
-        data.append(proto)
-        data.append(seq1)
-        data.append(ack)
+        #data.append(epoch_time)
+        #data.append(proto)
+        #data.append(seq1)
+        #data.append(ack)
     
         #         0            1           2           3
         #        ip1     ,   port1   ,    ip2    ,   port2
         #key = (data[pc.p_ip1][pc.p_addr], data[pc.p_ip1][pc.p_port], 
-        #       data[pc.p_ip2][pc.p_addr], data[pc.p_ip2][pc.p_port],
+        #       data[pc.p_ip2][pc.p_addr], data[pc.p_ip2][pc.p_port])
         #       data[pc.p_vl])
-        key = (addr1, port1_int, addr2, port2_int)
+
+        # Unlike tcp ingest, data IP order may not match key IP order.
+        # Need to know src/dst IP for data inject.  Also need
+        # to have consistent key for each pkt in conversation.
+        key = tuple(sorted([(addr1, port1_int), (addr2, port2_int)]))
 
         return key, data
 
@@ -1735,10 +1742,10 @@ class TcpInjPacket(IpPacket):
         tcp.set_th_off(5)
  
         if 'S' in data[pc.p_flags]:
-            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addrs][0]))
-            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addrs][1]))
-            tcp.set_th_sport(data[pc.p_ports][0])
-            tcp.set_th_dport(data[pc.p_ports][1])
+            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][0]))
+            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addr][1]))
+            tcp.set_th_sport(data[pc.p_port][0])
+            tcp.set_th_dport(data[pc.p_port][1])
             #             ACK RST
             #           CWR | | FIN 
             #             | | | |
@@ -1752,18 +1759,18 @@ class TcpInjPacket(IpPacket):
             tcp.set_th_ack(0)         # 0 by default
             ip.contains(tcp)
             s.sendto(ip.get_packet(), 
-                     (trafcap.tupleToString(data[pc.p_addrs][1]), 
-                     data[pc.p_ports][1]))
+                     (trafcap.tupleToString(data[pc.p_addr][1]), 
+                     data[pc.p_port][1]))
         elif 'R' in data[pc.p_flags] or 'F' in data[pc.p_flags]:
             # This prevents a loop of an inj pkt triggering another inj pkt
             return
         else:
             if data[pc.p_seq]:   
-                ip.set_ip_src(trafcap.tupleToString(data[pc.p_addrs][0]))
-                ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addrs][1]))
-                tcp.set_th_sport(data[pc.p_ports][0])
-                tcp.set_th_dport(data[pc.p_ports][1])
-                tcp.set_th_seq(data[pc.p_seq]+data[pc.p_bytes][0]) 
+                ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][0]))
+                ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addr][1]))
+                tcp.set_th_sport(data[pc.p_port][0])
+                tcp.set_th_dport(data[pc.p_port][1])
+                tcp.set_th_seq(data[pc.p_seq]+data[pc.p_bytes]) 
                 if data[pc.p_ack]:
                     tcp.set_th_ack(data[pc.p_ack])
                     #             ACK RST
@@ -1779,8 +1786,8 @@ class TcpInjPacket(IpPacket):
                 tcp.set_th_flags(flags)
                 ip.contains(tcp)
                 s.sendto(ip.get_packet(), 
-                         (trafcap.tupleToString(data[pc.p_addrs][1]), 
-                         data[pc.p_ports][1]))
+                         (trafcap.tupleToString(data[pc.p_addr][1]), 
+                         data[pc.p_port][1]))
 
         #print 'B2G', data
  
@@ -1801,10 +1808,10 @@ class TcpInjPacket(IpPacket):
         tcp.set_th_off(5)
  
         if data[pc.p_flags] == 's':
-            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addrs][1]))
-            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addrs][0]))
-            tcp.set_th_sport(data[pc.p_ports][1])
-            tcp.set_th_dport(data[pc.p_ports][0])
+            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][1]))
+            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addr][0]))
+            tcp.set_th_sport(data[pc.p_port][1])
+            tcp.set_th_dport(data[pc.p_port][0])
             #             ACK RST
             #           CWR | | FIN 
             #             | | | |
@@ -1817,16 +1824,16 @@ class TcpInjPacket(IpPacket):
             tcp.set_th_ack(data[pc.p_seq]+1) 
             ip.contains(tcp)
             s.sendto(ip.get_packet(), 
-                     (trafcap.tupleToString(data[pc.p_addrs][0]), 
-                     data[pc.p_ports][0]))
+                     (trafcap.tupleToString(data[pc.p_addr][0]), 
+                     data[pc.p_port][0]))
         elif 'R' in data[pc.p_flags] or 'F' in data[pc.p_flags]:
             # This prevents a loop of an inj pkt triggering another inj pkt
             return
         else:
-            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addrs][1]))
-            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addrs][0]))
-            tcp.set_th_sport(data[pc.p_ports][1])
-            tcp.set_th_dport(data[pc.p_ports][0])
+            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][1]))
+            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addr][0]))
+            tcp.set_th_sport(data[pc.p_port][1])
+            tcp.set_th_dport(data[pc.p_port][0])
             #             ACK RST
             #           CWR | | FIN 
             #             | | | |
@@ -1838,24 +1845,24 @@ class TcpInjPacket(IpPacket):
             if data[pc.p_seq]:   
                 # defaults to zero
                 flags = int('00010101',2)
-                tcp.set_th_ack(data[pc.p_seq]+data[pc.p_bytes][0]) 
+                tcp.set_th_ack(data[pc.p_seq]+data[pc.p_bytes]) 
             tcp.set_th_flags(flags)
             ip.contains(tcp)
             s.sendto(ip.get_packet(), 
-                     (trafcap.tupleToString(data[pc.p_addrs][0]), 
-                     data[pc.p_ports][0]))
+                     (trafcap.tupleToString(data[pc.p_addr][0]), 
+                     data[pc.p_port][0]))
 
-        # Send packet to attacker
-        if data[pc.p_seq]:   
+        # Randomly send packet to attacker
+        if data[pc.p_seq] and bool(random.getrandbits(1)):   
             # Send RST packet to bad IP
             ip = ImpactPacket.IP()
             tcp = ImpactPacket.TCP()
             tcp.set_th_off(5)
      
-            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addrs][0]))
-            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addrs][1]))
-            tcp.set_th_sport(data[pc.p_ports][0])
-            tcp.set_th_dport(data[pc.p_ports][1])
+            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][0]))
+            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addr][1]))
+            tcp.set_th_sport(data[pc.p_port][0])
+            tcp.set_th_dport(data[pc.p_port][1])
             #             ACK RST
             #           CWR | | FIN 
             #             | | | |
@@ -1864,12 +1871,12 @@ class TcpInjPacket(IpPacket):
             #          ECE | | SYN
             #            URG PSH
             tcp.set_th_flags(flags)
-            tcp.set_th_seq(data[pc.p_seq]+data[pc.p_bytes][0]) 
+            tcp.set_th_seq(data[pc.p_seq]+data[pc.p_bytes]) 
             #tcp.set_th_ack(data[pc.p_seq]+1) 
             ip.contains(tcp)
             s.sendto(ip.get_packet(), 
-                     (trafcap.tupleToString(data[pc.p_addrs][0]), 
-                      data[pc.p_ports][0]))
+                     (trafcap.tupleToString(data[pc.p_addr][0]), 
+                      data[pc.p_port][0]))
 
     @classmethod
     def buildInfoDoc(pc, a_info):
