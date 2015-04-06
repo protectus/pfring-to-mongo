@@ -92,7 +92,7 @@ def refreshConfigVars():
     cap_filter = config.get('trafcap', 'cap_filter')
     inj_filter = config.get('trafcap', 'inj_filter')
     inj_timeout = config.getint('trafcap', 'inj_timeout')
-    cc_list_type = config.get('trafcap', 'cc_list_type')
+    cc_list_type = config.get('trafcap', 'cc_list_type').lower()
     cc_list = json.loads(config.get('trafcap', 'cc_list'))
     sniff_interface = config.get('interface', 'sniff_interface')
     network_interface = config.get('interface', 'network_interface')
