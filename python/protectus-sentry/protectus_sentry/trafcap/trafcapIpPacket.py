@@ -1711,7 +1711,8 @@ class TcpInjPacket(IpPacket):
         # Unlike tcp ingest, data IP order may not match key IP order.
         # Need to know src/dst IP for data inject.  Also need
         # to have consistent key for each pkt in conversation.
-        key = tuple(sorted([(addr1, port1_int), (addr2, port2_int)]))
+        # Key order may be swapped later when inject decisions are made.
+        key = ((addr1, port1_int), (addr2, port2_int))
 
         return key, data
 
@@ -1852,8 +1853,9 @@ class TcpInjPacket(IpPacket):
                      (trafcap.tupleToString(data[pc.p_addr][0]), 
                      data[pc.p_port][0]))
 
-        # Randomly send packet to attacker
-        if data[pc.p_seq] and bool(random.getrandbits(1)):   
+        # Randomly send packet to attacker.  4 bits selected randomly.  
+        # If all 4 are 0 (1/16 of the time), then a packet is sent.
+        if data[pc.p_seq] and not bool(random.getrandbits(3)):   
             # Send RST packet to bad IP
             ip = ImpactPacket.IP()
             tcp = ImpactPacket.TCP()
