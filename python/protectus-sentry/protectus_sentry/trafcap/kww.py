@@ -105,7 +105,10 @@ def main():
 
     collections = []
     for coll_name in coll_names:
+        # exclude small collections without timestamps
         if coll_name == 'config': continue
+        if 'injConfig' in coll_name : continue
+        if 'injIp' in coll_name : continue
         if coll_name == 'system.indexes': continue
 
         if "Bytes" in coll_name:
@@ -173,7 +176,7 @@ def main():
         # Find end time (most recent)
         cursor = db[collection_name].find( \
                     spec = {}, fields = {coll[c_end_name]:1},
-                    sort = [(coll[c_end_name],-1)], limit = 1)
+                    sort = [('_id',-1)], limit = 1)
 
         coll[c_end_time] = cursor[0][coll[c_end_name]]
 
@@ -325,7 +328,7 @@ def main():
                   sizeof_readable_bytes(total_last_extent_size),
                   ' ',
                   sizeof_readable_bytes(total_total_index_size),
-                  '  ',
+                  '   ',
                   sizeof_readable(total_docs)]
         txt_out = "".join(a_list)
         print txt_out
