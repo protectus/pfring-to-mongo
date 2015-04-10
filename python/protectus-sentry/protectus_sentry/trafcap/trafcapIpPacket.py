@@ -1884,17 +1884,17 @@ class TcpInjPacket(IpPacket):
     def buildInfoDoc(pc, a_info):
         tbm=trafcap.secondsToMinute(a_info[pc.i_tb])
         tem=trafcap.secondsToMinute(a_info[pc.i_te])
-        bi = a_info[pc.i_bi]
-        not_bi = abs(bi - 1)  # This IP did not cause the block
+        #bi = a_info[pc.i_bi]
+        #not_bi = abs(bi - 1)  # This IP did not cause the block
         if a_info[pc.i_cc] == None:
             cc, name, loc = trafcap.geoIpLookup(a_info[a_info[pc.i_bi]])
             a_info[pc.i_cc] = cc
             a_info[pc.i_loc] = loc 
             
-        info_doc = {"ip1":trafcap.tupleToInt(a_info[bi]),
-                    "p1":a_info[bi+2],
-                    "ip2":trafcap.tupleToInt(a_info[not_bi]),
-                    "p2":a_info[not_bi+2],
+        info_doc = {"ip1":trafcap.tupleToInt(a_info[pc.i_ip1]),
+                    "p1":a_info[pc.i_port1],
+                    "ip2":trafcap.tupleToInt(a_info[pc.i_ip2]),
+                    "p2":a_info[pc.i_port2],
                     "tbm":tbm,
                     "tem":tem,
                     "tb":a_info[pc.i_tb],
