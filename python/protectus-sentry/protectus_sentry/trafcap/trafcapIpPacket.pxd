@@ -81,6 +81,43 @@ cdef struct UDPSession:
 
     int16_t vlan_id
 
+cdef struct GenericBytesDoc:
+    uint64_t sb
+    uint64_t sbm
+    uint64_t se
+    uint64_t sem
+    uint32_t[BYTES_RING_SIZE][2] traffic_bytes
+
+cdef struct TCPBytesDoc:
+    GenericBytesDoc base
+
+    uint32_t ip1
+    uint16_t port1
+    uint64_t bytes1
+    char[2] cc1
+
+    uint32_t ip2
+    uint16_t port2
+    uint64_t bytes2
+    char[2] cc2
+
+    int16_t vlan_id
+
+cdef struct UDPBytesDoc:
+    GenericBytesDoc base
+
+    uint32_t ip1
+    uint16_t port1
+    uint64_t bytes1
+    char[2] cc1
+
+    uint32_t ip2
+    uint16_t port2
+    uint64_t bytes2
+    char[2] cc2
+
+    int16_t vlan_id
+
 
 ctypedef int (*parse_packet)(GenericPacketHeaders*, pfring_pkthdr*) except -1
 cdef int parse_tcp_packet(GenericPacketHeaders* pkt, pfring_pkthdr* hdr) except -1
@@ -110,7 +147,8 @@ ctypedef int (*update_session)(GenericSession*, GenericPacketHeaders*)
 cdef int update_tcp_session(GenericSession* session, GenericPacketHeaders* packet)
 cdef int update_udp_session(GenericSession* session, GenericPacketHeaders* packet)
 
-ctypedef int (*write_session)(object, object, object, list, GenericSession*, int, uint64_t, uint64_t, GenericSession*) except -1
-cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* capture_session) except -1
-cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* capture_session) except -1
+ctypedef object (*write_session)(object, object, object, list, GenericSession*, int, uint64_t, uint64_t, GenericSession*)
+cdef object write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* capture_session)
+cdef object write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* capture_session)
 
+cdef int share_bytes_doc(GenericBytesDoc* g_doc, object bytes_doc) except -1

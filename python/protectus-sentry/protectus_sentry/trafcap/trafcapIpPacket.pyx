@@ -312,6 +312,47 @@ class PythonUDPSession(Structure):
         ("vlan_id", c_int16),
     )
 
+class PythonGenericBytesDoc(Structure):
+    _fields_ = (
+        ("sb", c_double),
+        ("sbm", c_double),
+        ("se", c_double),
+        ("sem", c_double),
+        ("traffic_bytes", c_uint32 * 90 * 3)
+    )
+
+class PythonTCPBytesDoc(Structure):
+    _fields_ = (
+        ("base", PythonGenericBytesDoc),
+        ("ip1", c_uint32),
+        ("port1", c_uint16),
+        ("bytes1", c_uint64),
+        ("cc1", c_char * 2),
+
+        ("ip2", c_uint32),
+        ("port2", c_uint16),
+        ("bytes2", c_uint64),
+        ("cc2", c_char * 2),
+
+        ("vlan_id", c_int16),
+    )
+
+class PythonUDPBytesDoc(Structure):
+    _fields_ = (
+        ("base", PythonGenericBytesDoc),
+        ("ip1", c_uint32),
+        ("port1", c_uint16),
+        ("bytes1", c_uint64),
+        ("cc1", c_char * 2),
+
+        ("ip2", c_uint32),
+        ("port2", c_uint16),
+        ("bytes2", c_uint64),
+        ("cc2", c_char * 2),
+
+        ("vlan_id", c_int16),
+    )
+
 
 cdef int parse_tcp_packet(GenericPacketHeaders* g_pkt, pfring_pkthdr* hdr) except -1:
     cdef TCPPacketHeaders* shared_pkt = <TCPPacketHeaders*>g_pkt
@@ -645,7 +686,7 @@ cdef object generate_udp_session_key_from_session(GenericSession* g_session):
     return <object>key
 
 
-cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session) except -1:
+cdef object write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session):
     cdef TCPSession* session = <TCPSession*>g_session
     cdef TCPSession* capture_session = <TCPSession*>g_capture_session
 
@@ -705,8 +746,14 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
         # Insert the new doc and record the objectid
         if trafcap.options.mongo:
-            object_ids[slot] = info_collection.insert(info_doc)
-        #print info_doc,"at",object_ids[slot]
+            try:
+                object_ids[slot] = info_collection.insert(info_doc)
+            except Exception, e:
+                # Something went wrong 
+                if not trafcap.options.quiet:
+                    print e, info_doc, traceback.format_exc()
+                trafcap.logException(e, info_doc=info_doc)
+            #print info_doc,"at",object_ids[slot]
 
     else:
         # If we're not inserting a new doc, we're updating an existing one.
@@ -722,7 +769,13 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
         }
 
         if trafcap.options.mongo:
-            info_bulk_writer.find({"_id": object_ids[slot]}).update(info_update)
+            try:
+                info_bulk_writer.find({"_id": object_ids[slot]}).update(info_update)
+            except Exception, e:
+                # Something went wrong 
+                if not trafcap.options.quiet:
+                    print e, info_update,traceback.format_exc()
+                trafcap.logException(e, info_update=info_update)
 
     # We always need to write a bytes doc.
     bytes_to_write = []
@@ -775,12 +828,19 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
     # add to writes
     if trafcap.options.mongo:
-        bytes_bulk_writer.insert(bytes_doc)
+        try:
+            bytes_bulk_writer.insert(bytes_doc)
+        except Exception, e:
+            # Something went wrong 
+            if not trafcap.options.quiet:
+                print e, bytes_doc,traceback.format_exc()
+            trafcap.logException(e, bytes_doc=bytes_doc)
 
-    return 0
+    # Return bytes_doc for groups processing
+    return bytes_doc 
 
 
-cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session) except -1:
+cdef object write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session):
     cdef UDPSession* session = <UDPSession*>g_session
     cdef UDPSession* capture_session = <UDPSession*>g_capture_session
 
@@ -838,8 +898,14 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
         # Insert the new doc and record the objectid
         if trafcap.options.mongo:
-            object_ids[slot] = info_collection.insert(info_doc)
-        #print info_doc,"at",object_ids[slot]
+            try:
+                object_ids[slot] = info_collection.insert(info_doc)
+            except Exception, e:
+                # Something went wrong 
+                if not trafcap.options.quiet:
+                    print e, info_doc,traceback.format_exc()
+                trafcap.logException(e, info_doc=info_doc)
+            #print info_doc,"at",object_ids[slot]
 
     else:
         # If we're not inserting a new doc, we're updating an existing one.
@@ -855,7 +921,13 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
         }
 
         if trafcap.options.mongo:
-            info_bulk_writer.find({"_id": object_ids[slot]}).update(info_update)
+            try:
+                info_bulk_writer.find({"_id": object_ids[slot]}).update(info_update)
+            except Exception, e:
+                # Something went wrong 
+                if not trafcap.options.quiet:
+                    print e, info_update,traceback.format_exc()
+                trafcap.logException(e, info_update=info_update)
 
     # We always need to write a bytes doc.
     bytes_to_write = []
@@ -908,10 +980,41 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
     # add to writes
     if trafcap.options.mongo:
-        bytes_bulk_writer.insert(bytes_doc)
+        try:
+            bytes_bulk_writer.insert(bytes_doc)
+        except Exception, e:
+            # Something went wrong 
+            if not trafcap.options.quiet:
+                print e, bytes_doc,traceback.format_exc()
+            trafcap.logException(e, bytes_doc=bytes_doc)
 
-    return 0
+    # Return bytes_doc for groups processing
+    return bytes_doc 
 
+cdef int share_bytes_doc(GenericBytesDoc* g_doc, object bytes_doc) except -1:
+    cdef TCPBytesDoc* tcp_bytes_doc = <TCPBytesDoc*>g_doc
+
+    tcp_bytes_doc.ip1 = bytes_doc['ip1']
+    tcp_bytes_doc.ip2 = bytes_doc['ip2']
+    tcp_bytes_doc.port1 = bytes_doc['p1']
+    tcp_bytes_doc.port2 = bytes_doc['p2']
+    tcp_bytes_doc.bytes1 = bytes_doc['b1']
+    tcp_bytes_doc.bytes2 = bytes_doc['b2']
+    tcp_bytes_doc.base.sb = bytes_doc['sb']
+    tcp_bytes_doc.base.sbm = bytes_doc['sbm']
+    tcp_bytes_doc.base.se = bytes_doc['se']
+    tcp_bytes_doc.base.sem = bytes_doc['sem']
+    # CC field only created in mongo if needed - check for existance
+    if 'cc1' in bytes_doc:
+        tcp_bytes_doc.cc1[0] = ord(bytes_doc['cc1'][0])
+        tcp_bytes_doc.cc1[1] = ord(bytes_doc['cc1'][1])
+    if 'cc2' in bytes_doc:
+        tcp_bytes_doc.cc2[0] = ord(bytes_doc['cc2'][0])
+        tcp_bytes_doc.cc2[1] = ord(bytes_doc['cc2'][1])
+    # vlan_id field only created in mongo if needed - check for existance
+    if 'vl' in bytes_doc:
+        tcp_bytes_doc.vlan_id = bytes_doc['vl']
+    # base.traffic_bytes
 
 
 class TcpPacket(IpPacket):
