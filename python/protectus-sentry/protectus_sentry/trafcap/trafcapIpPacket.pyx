@@ -237,6 +237,19 @@ class IpPacket(object):
 cdef inline uint64_t peg_to_minute(uint64_t timestamp):
     return timestamp - (timestamp % 60)
 
+cdef inline uint64_t peg_to_15minute(uint64_t timestamp):
+    return timestamp - (timestamp % 900)
+
+cdef inline uint64_t peg_to_180minute(uint64_t timestamp):
+    return timestamp - (timestamp % 10800)
+
+cdef inline calc_group1_offset(uint64_t timestamp):
+    return ((timestamp-timestamp%10)/10)%90
+
+cdef inline calc_group2_offset(uint64_t timestamp):
+    return ((timestamp-timestamp%10)/120)%90
+
+
 # Heads up: These structs are defined twice so that both pure python and
 # lower-level cython can know about them.  Useful for shared memory stuff.
 class PythonGenericPacketHeaders(Structure):
@@ -312,20 +325,20 @@ class PythonUDPSession(Structure):
         ("vlan_id", c_int16),
     )
 
-class PythonGenericBytesDoc(Structure):
+class PythonGenericGroup(Structure):
     _fields_ = (
-        ("sb", c_double),
-        ("sbm", c_double),
-        ("se", c_double),
-        ("sem", c_double),
-        ("traffic_bytes", c_uint32 * 90 * 3)
+        ("tbm", c_double),
+        ("tem", c_double),
+        ("traffic_bytes", c_uint32 * 90 * 2),
+        ("ns", c_uint32),
+        ("ne", c_uint32),
+        ("csldw", c_char),
     )
 
-class PythonTCPBytesDoc(Structure):
+class PythonTCPGroup(Structure):
     _fields_ = (
-        ("base", PythonGenericBytesDoc),
+        ("base", PythonGenericGroup),
         ("ip1", c_uint32),
-        ("port1", c_uint16),
         ("bytes1", c_uint64),
         ("cc1", c_char * 2),
 
@@ -337,11 +350,10 @@ class PythonTCPBytesDoc(Structure):
         ("vlan_id", c_int16),
     )
 
-class PythonUDPBytesDoc(Structure):
+class PythonUDPGroup(Structure):
     _fields_ = (
-        ("base", PythonGenericBytesDoc),
+        ("base", PythonGenericGroup),
         ("ip1", c_uint32),
-        ("port1", c_uint16),
         ("bytes1", c_uint64),
         ("cc1", c_char * 2),
 
@@ -396,25 +408,42 @@ cdef int print_tcp_packet(GenericPacketHeaders* g_packet) except -1:
 cdef int print_tcp_session(GenericSession* g_session, uint64_t time_marker) except -1:
     cdef TCPSession* session = <TCPSession*>g_session
 
-    print "IP1: ", str(session.ip1)
-    print "port1: ", str( session.port1)
-    print "bytes1: ", str( session.bytes1)
+    print "IP1: ", str(session.ip1),
+    print "port1: ", str( session.port1),
+    print "bytes1: ", str( session.bytes1),
     print "flags1: ", str( session.flags1)
-    print ""
-    print "IP2: ", str( session.ip2)
-    print "port2: ", str( session.port2)
-    print "bytes2: ", str( session.bytes2)
+    print "IP2: ", str( session.ip2),
+    print "port2: ", str( session.port2),
+    print "bytes2: ", str( session.bytes2),
     print "flags2: ", str( session.flags2)
-    print ""
-    print "vlanid: ", str( session.vlan_id)
-    print "time begin: ", str( session.base.tb)
-    print "time end: ", str( session.base.te)
+    print "vlanid: ", str( session.vlan_id),
+    print "time begin: ", str( session.base.tb),
+    print "time end: ", str( session.base.te),
     print "num packets: ", str( session.base.packets)
-    print ""
     print "B1\tB2"
     for cursor in range(BYTES_RING_SIZE):
         b = session.base.traffic_bytes[cursor]
         print str(b[0])+"\t"+str(b[1])+("<--" if cursor == time_marker % BYTES_RING_SIZE else "")
+    
+cdef int print_tcp_group(GenericGroup* g_group, uint64_t time_marker) except -1:
+    cdef TCPGroup* group = <TCPGroup*>g_group
+
+    print "IP1: ", str(group.ip1),
+    print "bytes1: ", str( group.bytes1),
+    print "IP2: ", str( group.ip2),
+    print "port2: ", str( group.port2),
+    print "bytes2: ", str( group.bytes2),
+    print "vlanid: ", str( group.vlan_id),
+    print "time begin: ", str( group.base.tbm),
+    print "time end: ", str( group.base.tem),
+    print "ns: ", str( group.base.ns),
+    print "ne: ", str( group.base.ne)
+    print "B1\tB2"
+    for cursor in range(90):
+        b0 = group.base.traffic_bytes[cursor][0]
+        b1 = group.base.traffic_bytes[cursor][1]
+        if b0 != 0 and b1 != 0:
+            print str(cursor)+"\t"+str(b0)+"\t"+str(b1)+("<--" if cursor == time_marker % BYTES_RING_SIZE else "")
     
 cdef GenericSession* alloc_tcp_capture_session():
     cdef TCPSession* session = <TCPSession*>malloc(sizeof(TCPSession))
@@ -582,13 +611,13 @@ cdef object generate_tcp_session_key_from_pkt(GenericPacketHeaders* g_pkt):
     key = 0
     if pkt.ip1 > pkt.ip2:
         key += pkt.ip1
-        key *= 2 ** 16
+        key *= 2 ** 16    # shift to make room for port1
         key += pkt.port1
-        key *= 2 ** 32
+        key *= 2 ** 32    # shift to make room for ip2 
         key += pkt.ip2
-        key *= 2 ** 16
+        key *= 2 ** 16    # shift to make room for port2
         key += pkt.port2
-        key *= 2 ** 16
+        key *= 2 ** 16    # shift to make room for vlan_id
     else:
         key += pkt.ip2
         key *= 2 ** 16
@@ -631,6 +660,7 @@ cdef object generate_udp_session_key_from_pkt(GenericPacketHeaders* g_pkt):
 
     return <object>key
         
+
 cdef object generate_tcp_session_key_from_session(GenericSession* g_session):
     cdef TCPSession* session = <TCPSession*>g_session
     
@@ -685,8 +715,108 @@ cdef object generate_udp_session_key_from_session(GenericSession* g_session):
 
     return <object>key
 
+cdef object generate_tcp_group_key_from_session(GenericSession* g_session):
+    cdef TCPSession* session = <TCPSession*>g_session
+    
+    key = 0
+    if session.ip1 > session.ip2:
+        key += session.ip1
+        key *= 2 ** 32 
+        key += session.ip2
+        key *= 2 ** 16 
+        key += session.port2
+        key *= 2 ** 16
+    else:
+        key += session.ip2
+        key *= 2 ** 16 
+        key += session.port2
+        key *= 2 ** 32 
+        key += session.ip1
+        key *= 2 ** 16 
+        
+    key += session.vlan_id
+    key *= 2 ** 64 
+    key += peg_to_15minute(<uint64_t>session.base.tb)
 
-cdef object write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session):
+    return <object>key
+
+cdef object generate_udp_group_key_from_session(GenericSession* g_session):
+    cdef UDPSession* session = <UDPSession*>g_session
+    
+    key = 0
+    if session.ip1 > session.ip2:
+        key += session.ip1
+        key *= 2 ** 32 
+        key += session.ip2
+        key *= 2 ** 16 
+        key += session.port2
+        key *= 2 ** 16
+    else:
+        key += session.ip2
+        key *= 2 ** 16 
+        key += session.port2
+        key *= 2 ** 32 
+        key += session.ip1
+        key *= 2 ** 16 
+        
+    key += session.vlan_id
+    key *= 2 ** 64 
+    key += peg_to_15minute(<uint64_t>session.base.tb)
+
+    return <object>key
+
+cdef object generate_tcp_group_key_from_group(GenericGroup* g_group):
+    cdef TCPGroup* group = <TCPGroup*>g_group
+    
+    key = 0
+    if group.ip1 > group.ip2:
+        key += group.ip1
+        key *= 2 ** 32 
+        key += group.ip2
+        key *= 2 ** 16 
+        key += group.port2
+        key *= 2 ** 16
+    else:
+        key += group.ip2
+        key *= 2 ** 16 
+        key += group.port2
+        key *= 2 ** 32 
+        key += group.ip1
+        key *= 2 ** 16 
+        
+    key += group.vlan_id
+    key *= 2 ** 64 
+    key += group.base.tbm
+
+    return <object>key
+
+cdef object generate_udp_group_key_from_group(GenericGroup* g_group):
+    cdef UDPGroup* group = <UDPGroup*>g_group
+    
+    key = 0
+    if group.ip1 > group.ip2:
+        key += group.ip1
+        key *= 2 ** 32 
+        key += group.ip2
+        key *= 2 ** 16 
+        key += group.port2
+        key *= 2 ** 16
+    else:
+        key += group.ip2
+        key *= 2 ** 16 
+        key += group.port2
+        key *= 2 ** 32 
+        key += group.ip1
+        key *= 2 ** 16 
+        
+    key += group.vlan_id
+    key *= 2 ** 64 
+    key += group.base.tbm
+
+    return <object>key
+
+
+cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session) except -1:
     cdef TCPSession* session = <TCPSession*>g_session
     cdef TCPSession* capture_session = <TCPSession*>g_capture_session
 
@@ -836,11 +966,10 @@ cdef object write_tcp_session(object info_bulk_writer, object bytes_bulk_writer,
                 print e, bytes_doc,traceback.format_exc()
             trafcap.logException(e, bytes_doc=bytes_doc)
 
-    # Return bytes_doc for groups processing
-    return bytes_doc 
+    return 0 
 
 
-cdef object write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session):
+cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session) except -1:
     cdef UDPSession* session = <UDPSession*>g_session
     cdef UDPSession* capture_session = <UDPSession*>g_capture_session
 
@@ -988,34 +1117,293 @@ cdef object write_udp_session(object info_bulk_writer, object bytes_bulk_writer,
                 print e, bytes_doc,traceback.format_exc()
             trafcap.logException(e, bytes_doc=bytes_doc)
 
-    # Return bytes_doc for groups processing
-    return bytes_doc 
+    return 0 
 
-cdef int share_bytes_doc(GenericBytesDoc* g_doc, object bytes_doc) except -1:
-    cdef TCPBytesDoc* tcp_bytes_doc = <TCPBytesDoc*>g_doc
+cdef GenericGroup* alloc_tcp_capture_group():
+    cdef TCPGroup* group = <TCPGroup*>malloc(sizeof(TCPGroup))
 
-    tcp_bytes_doc.ip1 = bytes_doc['ip1']
-    tcp_bytes_doc.ip2 = bytes_doc['ip2']
-    tcp_bytes_doc.port1 = bytes_doc['p1']
-    tcp_bytes_doc.port2 = bytes_doc['p2']
-    tcp_bytes_doc.bytes1 = bytes_doc['b1']
-    tcp_bytes_doc.bytes2 = bytes_doc['b2']
-    tcp_bytes_doc.base.sb = bytes_doc['sb']
-    tcp_bytes_doc.base.sbm = bytes_doc['sbm']
-    tcp_bytes_doc.base.se = bytes_doc['se']
-    tcp_bytes_doc.base.sem = bytes_doc['sem']
-    # CC field only created in mongo if needed - check for existance
-    if 'cc1' in bytes_doc:
-        tcp_bytes_doc.cc1[0] = ord(bytes_doc['cc1'][0])
-        tcp_bytes_doc.cc1[1] = ord(bytes_doc['cc1'][1])
-    if 'cc2' in bytes_doc:
-        tcp_bytes_doc.cc2[0] = ord(bytes_doc['cc2'][0])
-        tcp_bytes_doc.cc2[1] = ord(bytes_doc['cc2'][1])
-    # vlan_id field only created in mongo if needed - check for existance
-    if 'vl' in bytes_doc:
-        tcp_bytes_doc.vlan_id = bytes_doc['vl']
-    # base.traffic_bytes
+    # Zero out almost everything
+    memset(group, 0, sizeof(TCPGroup))
 
+    group.base.tbm = peg_to_15minute(time.time())
+    group.base.tem = peg_to_minute(time.time())
+    group.vlan_id = -1
+
+    return <GenericGroup*>group
+
+cdef GenericGroup* alloc_udp_capture_group():
+    cdef UDPGroup* group = <UDPGroup*>malloc(sizeof(UDPGroup))
+
+    # Zero out almost everything
+    memset(group, 0, sizeof(UDPGroup))
+
+    group.base.tbm = peg_to_15minute(time.time())
+    group.base.tem = peg_to_minute(time.time())
+    group.vlan_id = -1
+
+    return <GenericGroup*>group
+
+cdef int write_tcp_group(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericGroup* g_group, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericGroup* g_capture_group) except -1:
+    # placeholder
+    return 0
+
+cdef int write_udp_group(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericGroup* g_group, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericGroup* g_capture_group) except -1:
+    # placeholder
+    return 0
+
+cdef int generate_tcp_group(GenericGroup* g_group, GenericSession* g_session):
+    cdef TCPGroup* group = <TCPGroup*>g_group
+    cdef TCPSession* session = <TCPSession*>g_session
+
+    group.base.tbm = peg_to_15minute(<uint64_t>session.base.tb)
+    group.base.tem = peg_to_minute(<uint64_t>session.base.te)
+    group.base.csldw = ord('y') 
+    
+    # We need timestamp to be an int to navigate bytes
+    cdef uint64_t current_session_second = <uint64_t>session.base.tb
+    cdef uint64_t last_session_second = <uint64_t>session.base.te
+    cdef uint64_t session_slot_second
+    cdef uint64_t group_slot_offset
+    cdef uint64_t previous_group_slot_offset = 0
+    cdef uint32_t* bytes_subarray
+
+    group.ip1 = session.ip1
+    group.cc1[0] = session.cc1[0] 
+    group.cc1[1] = session.cc1[1] 
+
+    group.ip2 = session.ip2
+    group.port2 = session.port2
+    group.cc1[0] = session.cc1[0] 
+    group.cc1[1] = session.cc1[1] 
+
+    group.vlan_id = session.vlan_id
+
+    # Handled in calling process
+    #group.base.ns = 1   # number of started sessions
+    #group.base.ne = 0   # number of existing sessions
+
+    # Translate session bytes array (1 item = 1 sec, up to 20 items) to:
+    #    groups1 bytes array (90 items, 1 sec/item for 15 min window) and
+    #    groups2 bytes array (90 items, 120 sec/item for 180 min window)
+    for session_slot_second in range(current_session_second, last_session_second+1):
+        # Calculate slot offsets in the byte arrays
+        group_slot_offset = calc_group1_offset(session_slot_second)
+        session_slot_offset = session_slot_second % BYTES_RING_SIZE
+        # find bytes in each direction for this session slot
+        bytes_subarray = session.base.traffic_bytes[session_slot_offset]
+        if group_slot_offset >= previous_group_slot_offset:    # session fits within this group 
+            # increment byte counters
+            group.base.traffic_bytes[group_slot_offset][0] += bytes_subarray[0] 
+            group.bytes1 += bytes_subarray[0] 
+            group.base.traffic_bytes[group_slot_offset][1] += bytes_subarray[1] 
+            group.bytes2 += bytes_subarray[1]
+        else:   # session flows into a new group
+            # Adjust session time so new group is created when session is reprocessed.  
+            # These are saved sessions so no need to obtain a lock.  This is the only 
+            # case when saved sessions are modified.
+            session.base.tb = session_slot_second
+            # set end time corresponding to last bytes in group
+            group.base.tem = peg_to_minute(session_slot_second - 1)
+            return -1
+
+        previous_group_slot_offset = group_slot_offset
+
+    # set end time corresponding to last bytes in group
+    group.base.tem = peg_to_minute(session_slot_second)
+    # session fit into one group
+    return 0
+    
+cdef int generate_udp_group(GenericGroup* g_group, GenericSession* g_session):
+    cdef UDPGroup* group = <UDPGroup*>g_group
+    cdef UDPSession* session = <UDPSession*>g_session
+
+    group.base.tbm = peg_to_15minute(<uint64_t>session.base.tb)
+    group.base.csldw = ord('y') 
+    
+    # We need timestamp to be an int to navigate bytes
+    cdef uint64_t current_session_second = <uint64_t>session.base.tb
+    cdef uint64_t last_session_second = <uint64_t>session.base.te
+    cdef uint64_t session_slot_second
+    cdef uint64_t group_slot_offset
+    cdef uint64_t previous_group_slot_offset = 0
+    cdef uint32_t* bytes_subarray
+
+    group.ip1 = session.ip1
+    group.cc1[0] = session.cc1[0] 
+    group.cc1[1] = session.cc1[1] 
+
+    group.ip2 = session.ip2
+    group.port2 = session.port2
+    group.cc1[0] = session.cc1[0] 
+    group.cc1[1] = session.cc1[1] 
+
+    group.vlan_id = session.vlan_id
+
+    # Handled in calling process
+    #group.base.ns = 1   # number of started sessions
+    #group.base.ne = 0   # number of existing sessions
+
+    # Translate session bytes array (1 item = 1 sec, up to 20 items) to:
+    #    groups1 bytes array (90 items, 1 sec/item for 15 min window) and
+    #    groups2 bytes array (90 items, 120 sec/item for 180 min window)
+    for session_slot_second in range(current_session_second, last_session_second+1):
+        # Calculate slot offsets in the byte arrays
+        group_slot_offset = calc_group1_offset(session_slot_second)
+        session_slot_offset = session_slot_second % BYTES_RING_SIZE
+        # find bytes in each direction for this session slot
+        bytes_subarray = session.base.traffic_bytes[session_slot_offset]
+        if group_slot_offset >= previous_group_slot_offset:    # session fits within this group 
+            # increment byte counters
+            group.base.traffic_bytes[group_slot_offset][0] += bytes_subarray[0] 
+            group.bytes1 += bytes_subarray[0]
+            group.base.traffic_bytes[group_slot_offset][1] += bytes_subarray[1]
+            group.bytes2 += bytes_subarray[1] 
+        else:   # session flows into a new group
+            # Adjust session time so new group is created when session is reprocessed.  
+            # These are saved sessions so no need to obtain a lock.  This is the only 
+            # case when saved sessions are modified.
+            session.base.tb = session_slot_second
+            # set end time corresponding to last bytes in group
+            group.base.tem = peg_to_minute(session_slot_second - 1)
+            return -1
+
+        previous_group_slot_offset = group_slot_offset
+
+    # set end time corresponding to last bytes in group
+    group.base.tem = peg_to_minute(session_slot_second)
+    # session fit into one group
+    return 0
+
+cdef int update_tcp_group(GenericGroup* g_group, GenericSession* g_session):
+    cdef TCPGroup* group = <TCPGroup*>g_group
+    cdef TCPSession* session = <TCPSession*>g_session
+    
+    group.base.tem = peg_to_minute(<uint64_t>session.base.te)
+    group.base.csldw = ord('y') 
+     
+    # We need timestamp to be an int to navigate bytes
+    cdef uint64_t current_session_second = <uint64_t>session.base.tb
+    cdef uint64_t last_session_second = <uint64_t>session.base.te
+    cdef uint64_t session_slot_second
+    cdef uint64_t group_slot_offset
+    cdef uint64_t previous_group_slot_offset = 0
+    cdef uint32_t* bytes_subarray
+
+    # Handled in calling process
+    #group.base.ns = 1   # number of started sessions
+    #group.base.ne = 0   # number of existing sessions
+    
+################### need to zero-out old group data here.???
+##################  similar to what is done in update_session function
+
+    # Translate session bytes array (1 item = 1 sec, up to 20 items) to:
+    #    groups1 bytes array (90 items, 1 sec/item for 15 min window) and
+    #    groups2 bytes array (90 items, 120 sec/item for 180 min window)
+    for session_slot_second in range(current_session_second, last_session_second+1):
+        # Calculate slot offsets in the byte arrays
+        group_slot_offset = calc_group1_offset(session_slot_second)
+        session_slot_offset = session_slot_second % BYTES_RING_SIZE
+        # find bytes in each direction for this session slot
+        bytes_subarray = session.base.traffic_bytes[session_slot_offset]
+        if group_slot_offset >= previous_group_slot_offset:    # session fits within this group 
+            # increment byte counters
+            group.base.traffic_bytes[group_slot_offset][0] += bytes_subarray[0] 
+            group.bytes1 += bytes_subarray[0]
+            group.base.traffic_bytes[group_slot_offset][1] += bytes_subarray[1] 
+            group.bytes2 += bytes_subarray[1] 
+        else:   # session flows into a new group
+            # Adjust session time so new group is created when session is reprocessed.  
+            # These are saved sessions so no need to obtain a lock.  This is the only 
+            # case when saved sessions are modified.
+            session.base.tb = session_slot_second
+            # set end time corresponding to last bytes in group
+            group.base.tem = peg_to_minute(session_slot_second - 1)
+            return -1
+
+        previous_group_slot_offset = group_slot_offset
+
+    # set end time corresponding to last bytes in group
+    group.base.tem = peg_to_minute(session_slot_second)
+    # session fit into one group
+    return 0
+    
+cdef int update_udp_group(GenericGroup* g_group, GenericSession* g_session):
+    cdef UDPGroup* group = <UDPGroup*>g_group
+    cdef UDPSession* session = <UDPSession*>g_session
+
+    group.base.tem = peg_to_minute(<uint64_t>session.base.te)
+    group.base.csldw = ord('y') 
+    
+    # We need timestamp to be an int to navigate bytes
+    cdef uint64_t current_session_second = <uint64_t>session.base.tb
+    cdef uint64_t last_session_second = <uint64_t>session.base.te
+    cdef uint64_t session_slot_second
+    cdef uint64_t group_slot_offset
+    cdef uint64_t previous_group_slot_offset = 0
+    cdef uint32_t* bytes_subarray
+
+    # Handled in calling process
+    #group.base.ns = 1   # number of started sessions
+    #group.base.ne = 0   # number of existing sessions
+
+    # Translate session bytes array (1 item = 1 sec, up to 20 items) to:
+    #    groups1 bytes array (90 items, 1 sec/item for 15 min window) and
+    #    groups2 bytes array (90 items, 120 sec/item for 180 min window)
+    for session_slot_second in range(current_session_second, last_session_second+1):
+        # Calculate slot offsets in the byte arrays
+        group_slot_offset = calc_group1_offset(session_slot_second)
+        session_slot_offset = session_slot_second % BYTES_RING_SIZE
+        # find bytes in each direction for this session slot
+        bytes_subarray = session.base.traffic_bytes[session_slot_offset]
+        if group_slot_offset >= previous_group_slot_offset:    # session fits within this group 
+            # increment byte counters
+            group.base.traffic_bytes[group_slot_offset][0] += bytes_subarray[0] 
+            group.bytes1 += bytes_subarray[0] 
+            group.base.traffic_bytes[group_slot_offset][1] += bytes_subarray[1] 
+            group.bytes2 += bytes_subarray[1] 
+        else:   # session flows into a new group
+            # Adjust session time so new group is created when session is reprocessed.  
+            # These are saved sessions so no need to obtain a lock.  This is the only 
+            # case when saved sessions are modified.
+            session.base.tb = session_slot_second
+            # set end time corresponding to last bytes in group
+            group.base.tem = peg_to_minute(session_slot_second - 1)
+            return -1
+
+        previous_group_slot_offset = group_slot_offset
+
+    # set end time corresponding to last bytes in group
+    group.base.tem = peg_to_minute(session_slot_second)
+    # session fit into one group
+    return 0
+
+#cdef int share_bytes_doc(GenericBytesDoc* g_doc, object bytes_doc) except -1:
+#    cdef TCPBytesDoc* tcp_bytes_doc = <TCPBytesDoc*>g_doc
+#
+#    tcp_bytes_doc.ip1 = bytes_doc['ip1']
+#    tcp_bytes_doc.ip2 = bytes_doc['ip2']
+#    tcp_bytes_doc.port1 = bytes_doc['p1']
+#    tcp_bytes_doc.port2 = bytes_doc['p2']
+#    tcp_bytes_doc.bytes1 = bytes_doc['b1']
+#    tcp_bytes_doc.bytes2 = bytes_doc['b2']
+#    tcp_bytes_doc.base.sb = bytes_doc['sb']
+#    tcp_bytes_doc.base.sbm = bytes_doc['sbm']
+#    tcp_bytes_doc.base.se = bytes_doc['se']
+#    tcp_bytes_doc.base.sem = bytes_doc['sem']
+#    # CC field only created in mongo if needed - check for existance
+#    if 'cc1' in bytes_doc:
+#        tcp_bytes_doc.cc1[0] = ord(bytes_doc['cc1'][0])
+#        tcp_bytes_doc.cc1[1] = ord(bytes_doc['cc1'][1])
+#    if 'cc2' in bytes_doc:
+#        tcp_bytes_doc.cc2[0] = ord(bytes_doc['cc2'][0])
+#        tcp_bytes_doc.cc2[1] = ord(bytes_doc['cc2'][1])
+#    # vlan_id field only created in mongo if needed - check for existance
+#    if 'vl' in bytes_doc:
+#        tcp_bytes_doc.vlan_id = bytes_doc['vl']
+#    # base.traffic_bytes
+#
+#    #print tcp_bytes_doc.cc1, len(tcp_bytes_doc.cc1), tcp_bytes_doc.cc2, len(tcp_bytes_doc.cc2)
+#    #print tcp_bytes_doc.cc1[0], tcp_bytes_doc.cc1[1], tcp_bytes_doc.cc2[0], tcp_bytes_doc.cc2[1]
 
 class TcpPacket(IpPacket):
     """
