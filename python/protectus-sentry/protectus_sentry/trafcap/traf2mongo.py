@@ -152,7 +152,7 @@ def main():
 
     # sessionInfo dictionary
     info_cursor = session.db[session.info_collection].find( \
-                             spec = {'tem':{'$gte':oldest_session_time}})
+                             {'tem':{'$gte':oldest_session_time}})
 
     for a_doc in info_cursor:
         key, data = pc.parse(None, a_doc)

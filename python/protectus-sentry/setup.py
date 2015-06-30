@@ -14,7 +14,7 @@ cythonize_glob = 'protectus_sentry/**/*.py'
 VERSION = '0.1'
 
 requires = [
-    'pymongo >= 2.6',
+    'pymongo >= 3.0',
     'GeoIP',
     'PyYAML',
     'passlib',

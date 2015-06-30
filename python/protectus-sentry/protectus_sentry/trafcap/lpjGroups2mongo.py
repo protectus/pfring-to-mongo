@@ -99,7 +99,7 @@ def main():
             sb_cursor = None
             while not bytes_collection_exists:
                 sb_cursor = session.db[session.data_collection].find( \
-                                       spec = {}, fields = {'sb':1}, 
+                                       {}, projection = {'sb':True}, 
                                        sort = [('_id',1)], limit = 1)
 
                 if sb_cursor.count() > 0:
@@ -115,7 +115,7 @@ def main():
                 print "Session Groups collection found..."
             # sessionGroups exists, return most recent tbm in sessionGroups
             sg_cursor = session.db[session.groups_collection].find( \
-                                   spec = {}, fields = {'tbm':1}, 
+                                   {}, projection = {'tbm':True}, 
                                    sort = [('tem',-1)], limit = 1)
             result = sg_cursor[0]['tbm']
         return result
@@ -165,8 +165,8 @@ def main():
     while True:
         # Sleep if mbp is still being written to the input collection 
         most_recent_doc = session1.db[session1.data_collection].find( \
-                                     spec = {}, 
-                                     fields = {'se':1},
+                                     {}, 
+                                     projection = {'se':True},
                                      #sort = [('$natural',-1)],
                                      sort = [('sem', pymongo.DESCENDING)],
                                      limit = 1)
@@ -189,7 +189,7 @@ def main():
         a_spec = {'sem':mbp}
         a_sort = [('sb',pymongo.ASCENDING)]
         sess_data = session1.db[session1.data_collection].find( \
-                                 spec = a_spec, sort = a_sort)
+                                 a_spec, sort = a_sort)
 
         if options.data:
             print "Found ", sess_data.count(),  \

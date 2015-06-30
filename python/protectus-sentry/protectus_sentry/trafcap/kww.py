@@ -151,7 +151,7 @@ def main():
         sys.stdout.flush()
 
         cursor = db[collection_name].find( \
-                    spec = {}, fields = {coll[c_begin_name]:1},
+                    {}, projection = {coll[c_begin_name]:True},
                     sort = [('_id',1)], limit = 1)
 
         # Check if the collection exists
@@ -175,7 +175,7 @@ def main():
 
         # Find end time (most recent)
         cursor = db[collection_name].find( \
-                    spec = {}, fields = {coll[c_end_name]:1},
+                    {}, projection = {coll[c_end_name]:True},
                     sort = [('_id',-1)], limit = 1)
 
         coll[c_end_time] = cursor[0][coll[c_end_name]]
@@ -200,11 +200,6 @@ def main():
         coll[c_total_index_size] = stats['totalIndexSize']
 
         coll[c_index] = stats['indexSizes']
-        try:
-            capped = stats['capped']
-            print coll, stats
-        except:
-            pass
 
         # Add 1 to demonminator to prevent divide by 0
         coll[c_pct] = float(coll[c_size]) / float(coll[c_storage_size]+1)*100

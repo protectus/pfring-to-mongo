@@ -158,7 +158,7 @@ def main():
             sb_cursor = None
             while not bytes_collection_exists:
                 sb_cursor = session.db[session.bytes_collection].find( \
-                                       spec = {}, fields = {'sb':1}, 
+                                       {}, projection = {'sb':True}, 
                                        sort = [('_id',1)], limit = 1)
 
                 if sb_cursor.count() > 0:
@@ -174,7 +174,7 @@ def main():
                 print "Session groups collection found..."
             # sessionGroups exists, return most recent tbm in sessionGroups
             sg_cursor = session.db[session.groups_collection].find( \
-                                   spec = {}, fields = {'tbm':1}, 
+                                   {}, projection = {'tbm':True}, 
                                    sort = [('tem',-1)], limit = 1)
             result = sg_cursor[0]['tbm']
         return result
@@ -220,8 +220,8 @@ def main():
     session_history = {}
 
     sess_bytes = session1.db[session1.bytes_collection].find( \
-                      spec = {'sbm':{'$lt':mbp},
-                              'sem':{'$gte':mbp - trafcap.session_expire_timeout}}) 
+                      {'sbm':{'$lt':mbp},
+                       'sem':{'$gte':mbp - trafcap.session_expire_timeout}}) 
                      # Sort not needed
                      #sort = [('sb',pymongo.ASCENDING)])
 
@@ -231,8 +231,8 @@ def main():
 
     # Remove docs from group collecitons that have tbm >= mbp
     # This prevents duplication of data
-    session1.db[session1.groups_collection].remove(spec_or_id={'tbm':{'$gte':mbp}}) 
-    session2.db[session2.groups_collection].remove(spec_or_id={'tbm':{'$gte':mbp}}) 
+    session1.db[session1.groups_collection].delete_many({'tbm':{'$gte':mbp}}) 
+    session2.db[session2.groups_collection].delete_many({'tbm':{'$gte':mbp}}) 
 
     #
     # Begin main loop
@@ -240,8 +240,8 @@ def main():
     while True:
         # Sleep if mbp is still being written to the input collection 
         most_recent_doc = session1.db[session1.bytes_collection].find( \
-                                     spec = {}, 
-                                     fields = {'se':1},
+                                     {}, 
+                                     projection = {'se':True},
                                      #sort = [('$natural',-1)],
                                      sort = [('sem', pymongo.DESCENDING)],
                                      limit = 1)
@@ -262,8 +262,7 @@ def main():
 
         a_spec = {'sbm':{'$lte':mbp+59,'$gt':mbp - max_doc_duration},'sem':{'$gte':mbp, '$lt':mbp + max_doc_duration}}
         a_sort = [('sb',pymongo.ASCENDING)]
-        sess_bytes = session1.db[session1.bytes_collection].find( \
-                                 spec = a_spec)
+        sess_bytes = session1.db[session1.bytes_collection].find(a_spec)
                                  # Sort not needed
                                  #spec = a_spec, sort = a_sort)
 

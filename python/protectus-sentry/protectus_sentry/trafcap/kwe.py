@@ -181,8 +181,7 @@ def main():
             sys.stdout.flush()
 
         if options.verbose or options.prompt:
-            cursor = db[collection_name].find(spec = \
-                                              {coll[c_end_name]:{'$lt':exp_time}})
+            cursor = db[collection_name].find({coll[c_end_name]:{'$lt':exp_time}})
             coll[c_num_docs] = cursor.count()
 
         if options.prompt:
@@ -203,8 +202,7 @@ def main():
             print cursor.count(), " docs from ", collection_name 
 
         if not options.dryrun:
-           db[collection_name].remove(spec_or_id = \
-                                      {coll[c_end_name]:{'$lt':exp_time}})
+           db[collection_name].delete_many({coll[c_end_name]:{'$lt':exp_time}})
 
     sys.exit()
 
