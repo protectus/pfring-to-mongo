@@ -18,7 +18,7 @@ start_bold = "\033[1m"
 end_bold = "\033[0;0m"
 
 def parseOptions():
-    usage = "usage: %prog -tuioln || -a  [-v] [-p || d] [-s seconds]"
+    usage = "usage: %prog -tuionlber || -a  [-v] [-p || d] [-s seconds]"
     parser = OptionParser(usage)
     parser.add_option("-t", "--tcp", dest="tcp",
                       action="store_true", default=False,
