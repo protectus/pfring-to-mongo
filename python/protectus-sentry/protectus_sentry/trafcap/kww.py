@@ -129,6 +129,9 @@ def main():
         elif "annotations" in coll_name:
             begin_name = 't'
             end_name = 't'
+        elif "_injIp" in coll_name:
+            begin_name = 'tb'
+            end_name = 'texp'
         else:
             begin_name = 'tbm'
             end_name = 'tem'
@@ -173,7 +176,7 @@ def main():
         # Find end time (most recent)
         cursor = db[collection_name].find( \
                     projection = {coll[c_end_name]:1},
-                    sort = [(coll[c_end_name],-1)], limit = 1)
+                    sort = [('_id',-1)], limit = 1)
 
         coll[c_end_time] = cursor[0][coll[c_end_name]]
 
