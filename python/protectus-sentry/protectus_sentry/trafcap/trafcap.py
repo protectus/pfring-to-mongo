@@ -435,8 +435,8 @@ def ensureIndexes(collection_tuple):
             try:
                 if index_info[spec_index_string]:
                     # check for optional index parameters (e.g. sparse)
-                    if len(spec_index) != \
-                       len(index_info[spec_index_string]) - 1:
+                    if len(spec_index[0]) != \
+                       len(index_info[spec_index_string]['key']):
                         redoIndex(db, c_name, c_indxs)
                         continue
 
