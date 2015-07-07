@@ -244,10 +244,20 @@ cdef inline uint64_t peg_to_180minute(uint64_t timestamp):
     return timestamp - (timestamp % 10800)
 
 cdef inline calc_group1_offset(uint64_t timestamp):
-    return ((timestamp-timestamp%10)/10)%90
+    #return ((timestamp-timestamp%10)/10)%90
+    return (timestamp/10)%90
 
 cdef inline calc_group2_offset(uint64_t timestamp):
-    return ((timestamp-timestamp%10)/120)%90
+    #return ((timestamp-timestamp%10)/120)%90
+    return (timestamp/120)%90
+
+# These used to find shared_memory capture_group slot from group_tbm.
+# Three reserved capture_group slots so slot number will be either 0, 1, or 2.  
+#cdef inline calc_capture_group1_slot(uint64_t timestamp):
+#    return (timestamp/900)%3
+
+#cdef inline calc_capture_group2_slot(uint64_t timestamp):
+#    return (timestamp/10800)%3
 
 
 # Heads up: These structs are defined twice so that both pure python and
@@ -1119,6 +1129,24 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
     return 0 
 
+cdef int init_tcp_capture_group(GenericGroup* g_group):
+    cdef TCPGroup* group = <TCPGroup*>g_group
+    group.base.tbm = peg_to_15minute(time.time())
+    group.base.tem = peg_to_minute(time.time())
+    group.base.csldw = 'n'
+    group.vlan_id = -1
+    return 0
+
+
+cdef int init_udp_capture_group(GenericGroup* g_group):
+    cdef UDPGroup* group = <UDPGroup*>g_group
+    group.base.tbm = peg_to_15minute(time.time())
+    group.base.tem = peg_to_minute(time.time())
+    group.base.csldw = 'n'
+    group.vlan_id = -1
+    return 0
+
+
 cdef GenericGroup* alloc_tcp_capture_group():
     cdef TCPGroup* group = <TCPGroup*>malloc(sizeof(TCPGroup))
 
@@ -1127,6 +1155,7 @@ cdef GenericGroup* alloc_tcp_capture_group():
 
     group.base.tbm = peg_to_15minute(time.time())
     group.base.tem = peg_to_minute(time.time())
+    group.base.csldw = 'n'
     group.vlan_id = -1
 
     return <GenericGroup*>group
@@ -1139,15 +1168,122 @@ cdef GenericGroup* alloc_udp_capture_group():
 
     group.base.tbm = peg_to_15minute(time.time())
     group.base.tem = peg_to_minute(time.time())
+    group.base.csldw = 'n'
     group.vlan_id = -1
 
     return <GenericGroup*>group
 
-cdef int write_tcp_group(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericGroup* g_group, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericGroup* g_capture_group) except -1:
-    # placeholder
-    return 0
+cdef int write_tcp_group(object group_bulk_writer, object group_collection, list object_ids, GenericGroup* g_group, int slot, GenericGroup* g_capture_group) except -1:
+    cdef TCPGroup* group = <TCPGroup*>g_group
+    cdef TCPGroup* capture_group = <TCPGroup*>g_capture_group
 
-cdef int write_udp_group(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericGroup* g_group, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericGroup* g_capture_group) except -1:
+    # General Plan for writes:
+    # At this point, we know there needs to be a write.  The question is
+    # whether or not we need to create and insert a new doc or not.  If we
+    # need a new doc, we insert without using the bulk_writer, because we
+    # want to get back the object id.  Everything else is just added to the
+    # bulk_writer for later execution.
+
+    # Note: Sometimes we wrap numbers in python int() before we commit them to
+    # a dictionary.  This is to prevent Cython from making uint64 into python
+    # Longs by default.  (Since we're commiting to disk, we'll do our best to
+    # save bytes.
+
+    # Start by creating the bytes array from all non-zero group byte entries.
+    # Group will always have 90 traffic_byte items - some may be zero.
+    cdef uint32_t* bytes_subarray
+    bytes_to_write = []
+
+    for offset in range(0, 90):
+        bytes_subarray = group.base.traffic_bytes[offset]
+        if bytes_subarray[0] > 0 or bytes_subarray[1] > 0:
+            # Append a new Bytes subarray, offset stored as seconds
+            bytes_to_write.append([ int(offset * 10), bytes_subarray[0],
+                                                      bytes_subarray[1] ])
+            # Update the capture session
+            capture_group.bytes1 = bytes_subarray[0]
+            capture_group.bytes2 = bytes_subarray[1]
+            capture_group.base.traffic_bytes[offset][0] = bytes_subarray[0]
+            capture_group.base.traffic_bytes[offset][1] = bytes_subarray[1]
+            capture_group.base.csldw = 'y'
+
+    object_id = object_ids[slot]
+    if not object_id:
+        # We need to insert a new group doc
+        group_doc = {
+            "ip1":group.ip1,
+            "b1":int(group.bytes1),
+            "ip2":group.ip2,
+            "p2":group.port2,
+            "b2":int(group.bytes2),
+            "tbm":<uint64_t>group.base.tbm,
+            "tem":<uint64_t>group.base.tem,
+            "ns":int(group.base.ns),
+            "ne":int(group.base.ne),
+            "b":bytes_to_write
+        }
+
+        # Group data should already have cc populated.  Check just in case.
+        if group.cc1[0] != 0:
+            group_doc["cc1"] = chr(group.cc1[0]) + chr(group.cc1[1])
+        else:
+            cc1, name1, loc1 = trafcap.geoIpLookupInt(group.ip1)
+            if cc1: 
+                group_doc["cc1"] = cc1
+                group.cc1[0] = ord(cc1[0])
+                group.cc1[1] = ord(cc1[1])
+
+        if group.cc2[0] != 0:
+            group_doc["cc2"] = chr(group.cc2[0]) + chr(group.cc2[1])
+        else:
+            cc2, name2, loc2 = trafcap.geoIpLookupInt(group.ip2)
+            if cc2: 
+                group_doc["cc2"] = cc2
+                group.cc2[0] = ord(cc2[0])
+                group.cc2[1] = ord(cc2[1])
+
+        if group.vlan_id >= 0: group_doc['vl'] = group.vlan_id
+
+        # Insert the new doc and record the objectid
+        if trafcap.options.mongo:
+            try:
+                object_ids[slot] = group_collection.insert(group_doc)
+            except Exception, e:
+                # Something went wrong 
+                if not trafcap.options.quiet:
+                    print e, group_doc, traceback.format_exc()
+                trafcap.logException(e, group_doc=group_doc)
+            #print info_doc,"at",object_ids[slot]
+
+    else:
+        # If we're not inserting a new doc, we're updating an existing one.
+        group_update = {
+            "$set": {
+                "b1": int(group.bytes1),
+                "b2": int(group.bytes2),
+                "ns": int(group.base.ns),
+                "ne": int(group.base.ne),
+                "b": bytes_to_write,
+                "tem": <uint64_t>group.base.tem
+            }
+        }
+
+        if trafcap.options.mongo:
+            try:
+                group_bulk_writer.find({"_id": object_ids[slot]}).update(group_update)
+            except Exception, e:
+                # Something went wrong 
+                if not trafcap.options.quiet:
+                    print e, group_update,traceback.format_exc()
+                trafcap.logException(e, group_update=group_update)
+
+    # Update capture_session timestamp
+    capture_group.base.tem = max(capture_group.base.tem, group.base.tem)
+
+    return 0 
+
+
+cdef int write_udp_group(object group_bulk_writer, object group_collection, list object_ids, GenericGroup* g_group, int slot, GenericGroup* g_capture_group) except -1:
     # placeholder
     return 0
 
@@ -1278,7 +1414,7 @@ cdef int update_tcp_group(GenericGroup* g_group, GenericSession* g_session):
     cdef TCPGroup* group = <TCPGroup*>g_group
     cdef TCPSession* session = <TCPSession*>g_session
     
-    group.base.tem = peg_to_minute(<uint64_t>session.base.te)
+    #group.base.tem = peg_to_minute(<uint64_t>session.base.te)
     group.base.csldw = ord('y') 
      
     # We need timestamp to be an int to navigate bytes

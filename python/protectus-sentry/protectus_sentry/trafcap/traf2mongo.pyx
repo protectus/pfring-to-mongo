@@ -455,9 +455,9 @@ def sessionBookkeeper(live_session_buffer, live_session_locks, live_session_allo
             # Check for data to be written to the database
             # We want to write the seconds up to but not including the current second.
             # We use if, not while, as a throttling mechanism.
-            if (last_second_written + 1) < current_second:
+            if (last_second_written + 1) < current_second:                   
                 second_to_write = last_second_written + 1
-                second_to_write_from = second_to_write - BYTES_DOC_SIZE
+                second_to_write_from = second_to_write - BYTES_DOC_SIZE        # 
                 # Bytes cursor is the point in the bytes array to start looking for data.
                 bytes_cursor = second_to_write_from % BYTES_RING_SIZE
     
@@ -509,7 +509,7 @@ def sessionBookkeeper(live_session_buffer, live_session_locks, live_session_allo
                         # There's nothing to read, reschedule for 20 seconds from now
                         next_scheduled_checkup_time = second_to_write + BYTES_DOC_SIZE
     
-                    elif session.traffic_bytes[bytes_cursor][0] > 0 or session.traffic_bytes[bytes_cursor][1] > 0:
+                    elif session_copy.traffic_bytes[bytes_cursor][0] > 0 or session_copy.traffic_bytes[bytes_cursor][1] > 0:
                         # Write to database (or at least queue)
                         (write_session_function[0])(info_bulk_writer, bytes_bulk_writer, session_info_coll, 
                                                     object_ids, session_copy, slot, second_to_write_from, 
@@ -726,6 +726,12 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
     tracked_group_slot = -1 
     tracked_slot_display_count = 0
 
+    # Pop three group slots for capture groups1.  These will be slots 0, 1, and 2.
+    # These are managed outside of the group_slot_map
+    #available_slots.popleft()
+    #available_slots.popleft()
+    #available_slots.popleft()
+
     # The primary packet loop
     # General Strategy:
     #   - Since we can't get C pointers right out of a python dictionary very
@@ -758,13 +764,18 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                 # One session maps to one group if session is contained within group's time window.
                 # One session maps to two groups if session crosses group's time window boundary.
         
-                # Determine if session is existing or just started.  Needed for proper session acctng
                 session_key = generate_session_key_from_session_function[0](saved_session)
-                session_history = session_history_dict.get(session_key, -1)
 
             # Get the group key and let the dictionary tell us which slot the group occupies.
+            # The saved_session is either  1)set above (new session) or 
+            #                              2)set previously (session flowed-over group boundary)
             group_key = generate_group_key_from_session_function[0](saved_session)
             group_slot = group_slot_map.get(group_key,-1)
+            session_history_key = (session_key * (2 ** 128)) + group_key
+
+            # Determine if session is existing or just started.  Needed for proper session acctng.
+            # Sessions are accounted for on a per-group basis.
+            session_history = session_history_dict.get(session_history_key, -1)
     
             # If no group existed already, we need to make one.
             if (group_slot == -1):
@@ -773,20 +784,21 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                 new_slot_number_p[0] = available_slots.popleft()
                 group = <GenericGroup*>(group_buffer_addr + (new_slot_number_p[0] * group_struct_size))
     
-                # Session may fit into one group or may flow into a second group
+                # Session may fit into one group(status=0) or may flow into a second group(status=-1)
                 session_status = generate_group_function[0](group, saved_session)
  
                 # Group just created and not yet being accessed elsewhere, no need to aquire lock
                 if session_history == -1:
                     # Session not in history. Count as started and add to history
                     group.ns += 1
-                    session_history_dict[session_key] = [<uint64_t>saved_session.te, True, False]
+                    session_history_dict[session_history_key] = [<uint64_t>saved_session.te, True, False]
                     group_updater_session_history_count.value += 1
                 else:
                     # Count existing session if not yet counted in this group.
                     if not session_history[sh_counted_g1]:
                         group.ne += 1
                         session_history[sh_counted_g1] = True
+                        session_history[sh_te] = <uint64_t>saved_session.te
 
                 # Map the key to the new group 
                 group_slot_map[group_key] = new_slot_number_p[0] 
@@ -813,13 +825,14 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                 if session_history == -1:
                     # Session not in history. Count as started and add to history
                     group.ns += 1
-                    session_history_dict[session_key] = [<uint64_t>saved_session.te, True, False]
+                    session_history_dict[session_history_key] = [<uint64_t>saved_session.te, True, False]
                     group_updater_session_history_count.value += 1
                 else:
                     # Count existing session if not yet counted in this group.
                     if not session_history[sh_counted_g1]:
                         group.ne += 1
                         session_history[sh_counted_g1] = True
+                        session_history[sh_te] = <uint64_t>saved_session.te
                 # for debug
                 #if group_slot == tracked_group_slot:
                 #    tcp_group = <TCPGroup *>group
@@ -914,7 +927,8 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
 
 cdef bint groupBookkeeper_running = True
 def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_pipe, 
-                    group_keeper_group_alloc_count, group_keeper_group_dealloc_count, proto_opts):
+                    group_keeper_group_alloc_count, group_keeper_group_dealloc_count, 
+                    capture_group_buffer, proto_opts):
 
     # Signal Handling
     def groupBookkeeperCatchCntlC(signum, stack):
@@ -928,10 +942,10 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
     # Mongo Database connection
     db = trafcap.mongoSetup(w=0)
 
-    session_groups_coll = db[proto_opts['session_groups_name']]
-    session_groups2_coll = db[proto_opts['session_groups2_name']]
-    capture_groups_coll = db[proto_opts['capture_groups_name']]
-    capture_groups2_coll = db[proto_opts['capture_groups2_name']]
+    session_group_coll = db[proto_opts['session_group_name']]
+    session_group2_coll = db[proto_opts['session_group2_name']]
+    capture_group_coll = db[proto_opts['capture_group_name']]
+    capture_group2_coll = db[proto_opts['capture_group2_name']]
 
     cdef int i
 
@@ -940,13 +954,19 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
     alloc_capture_group_address = <long>proto_opts['alloc_capture_group']
     alloc_capture_group_function = <alloc_capture_group*>alloc_capture_group_address
 
+    cdef init_capture_group* init_capture_group_function
+    cdef long init_capture_group_address
+    init_capture_group_address = <long>proto_opts['init_capture_group']
+    init_capture_group_function = <init_capture_group*>init_capture_group_address
+
     cdef write_group* write_group_function
     cdef long write_group_address
     write_group_address = <long>proto_opts['write_group']
     write_group_function = <write_group*>write_group_address
 
     # Initialize a capture group.
-    cdef GenericGroup* capture_group = <GenericGroup*>(alloc_capture_group_function[0])()
+    cdef GenericGroup* current_capture_group
+    cdef dict capture_group_dict = {}
 
     # We also initialize a dummy group to aid code reuse below.  Everything
     # that touches this variable is wasting time, but we only have to touch it
@@ -954,13 +974,24 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
     cdef GenericGroup* dummy_group = <GenericGroup*>(alloc_capture_group_function[0])()
 
     # Bookkeeping data for capture
-    cdef list capture_object_ids = [None] # Capture group is in a category of one
+    #cdef list capture_object_ids = [None] # Capture group is in a category of one
+    cdef list capture_object_ids = [None for x in range(5)]
     cdef uint64_t capture_scheduled_checkup_time = int(time.time())
+
+    available_capture_group_slots = deque(xrange(5))
+    cdef dict capture_group_slot_map = {}
+    cdef int capture_group_slot
+    cdef list capture_group_list
+    cdef uint64_t oldest_capture_group_tbm
 
     # Cythonize access to the shared buffers 
     cdef long group_buffer_addr = ctypes.addressof(group_buffer)
     #cdef GenericSession* sessions_buffer = <GenericSession*>live_session_buffer_addr
     cdef int group_struct_size = ctypes.sizeof(group_buffer) / len(group_buffer)
+
+    # Cythonize access to the capture buffer
+    cdef long capture_group_buffer_addr = ctypes.addressof(capture_group_buffer)
+    cdef int capture_group_struct_size = ctypes.sizeof(capture_group_buffer) / len(capture_group_buffer)
 
     # Create a corresponding bunch of slots for mongoids
     cdef list object_ids = [None for x in range(GROUP_BUFFER_SIZE)]
@@ -970,6 +1001,13 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
     py_current_group_slot = ctypes.c_uint32()
     cdef long group_slot_address = ctypes.addressof(py_current_group_slot)
     cdef uint32_t* group_slot_p = <uint32_t*>group_slot_address
+
+################needed?
+    # Cythonize the current slot number for capture_group_buffer
+    # These slots are allocated by groupUpdater and deallocated by groupBookkeeper
+    #py_current_capture_group_slot = ctypes.c_uint32()
+    #cdef long capture_group_slot_address = ctypes.addressof(py_current_capture_group_slot)
+    #cdef uint32_t* capture_group_slot_p = <uint32_t*>capture_group_slot_address
 
     # Cythonize the current slot number for saved_session_ring_buffer
     # These slots are incrementing and loop around back to zero when last slot is reached 
@@ -1004,7 +1042,7 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
     # Current second
     cdef uint64_t current_second = 0
     cdef uint64_t last_second_written = int(time.time()) - 1
-    cdef uint64_t second_to_write, second_to_write_from
+    cdef uint64_t second_to_write, second_to_write_15, second_to_write_from
 
     cdef int mongo_session_writes = 0
     cdef int mongo_capture_writes = 0
@@ -1012,6 +1050,7 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
     
     ## Connection-Tracking Debugging ##
     tracked_slots = set()
+    tracked_slot_tem = 0
 
     # The primary loop
     # There are several tasks to accomplish:
@@ -1054,7 +1093,7 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
                 group_end_second = <uint64_t>group.tem
                 # Spread out assigned slots randomly to prevent a few slots corresponding to the 
                 # start-up time from containing most groups.  Limited screen resolution in the UI 
-                # gives some wiggle-room to timing of group updates.  
+                # gives some wiggle-room for timing of group updates.  
                 schedule_row_number = random.randrange(0,GROUP_SCHEDULE_SIZE)
                 
                 #print "Scheduling",group_slot_p[0],"in",schedule_row_number,",",schedule_sizes[schedule_row_number], "( tem is ", int(group.tem),")"
@@ -1064,19 +1103,17 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
                 schedule_sizes[schedule_row_number] += 1
     
                 # Alternative mechanism to ensure time is updated periodically.  Session being handled has
-                # already been scheduled
-################################# need to improve this.  It doesn't hurt anything but 
-                # group_start_second is always on a minute boundary
+                # already been scheduled.  group_start_second is always on a minute boundary is use end second
                 if group_end_second > current_second:
                     current_second = group_end_second
                     break
 
                 ## Connection-Tracking Debug ##
-                #if len(tracked_slots) < 1:
-                #    tcp_group = <TCPGroup *>group
-                #    if tcp_group.port2 == 3389:
-                #        print "groupKeeper tracking slot", group_slot_p[0]
-                #        tracked_slots.add(group_slot_p[0])
+                if len(tracked_slots) < 1:
+                    tcp_group = <TCPGroup *>group
+                    if tcp_group.port2 == 3389:
+                        print "groupKeeper tracking slot", group_slot_p[0]
+                        tracked_slots.add(group_slot_p[0])
 
                 ## For debug
                 #if group_keeper_group_alloc_count.value % 1000 == 0:
@@ -1088,13 +1125,12 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
             # For debug
             #for slot in tracked_slots:
             #    group = <GenericGroup *>(group_buffer_addr + (<uint32_t>slot * group_struct_size))
-            #    if group.csldw == yes:
-            #        lock = group_locks[slot % GROUPS_PER_LOCK] 
-            #        lock.acquire()
+            #    lock = group_locks[slot % GROUPS_PER_LOCK] 
+            #    lock.acquire()
+            #    if group.tem > tracked_slot_tem:
             #        print_tcp_group(group, 0)
-            #        lock.release()
-            #        group.csldw = no
-
+            #        tracked_slot_tem = group.tem
+            #    lock.release()
     
             # Check for data to be written to the database.  A few possibile scenarios:
             # - group is new and has not yet been saved to db, write it now
@@ -1102,28 +1138,29 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
             # - group has been saved to the db but no more bytes have been added, no db write
             if (last_second_written + 1) < current_second:
                 second_to_write = last_second_written + 1
-                #second_to_write_from = second_to_write - GROUP_SCHEDULE_PERIOD
+                second_to_write_15 = peg_to_15minute(second_to_write)
+                second_to_write_from = second_to_write - GROUP_SCHEDULE_PERIOD
                 # Bytes cursor is the point in the bytes array to start looking for data.
-                #bytes_cursor = second_to_write_from % GROUP_SCHEDULE_SIZE 
+                bytes_cursor = second_to_write_from % 90 
     
                 schedule_row_number = second_to_write % GROUP_SCHEDULE_SIZE
                 slots_to_write = schedule[schedule_row_number]
     
                 #print "Processing",second_to_write,"( schedule #", int(schedule_row_number), ")"
     
-                # Bytes ring data already written to db is set to zero by update_session.
+                # Group bytes ring data already written to db is zeroed by update_group function.
                 # Bookkeeper maintains capture bytes so something similar must be done here.
                 # Upcoming session writes will write up to but not into second_to_write, 
-                # so we set to zero so bytes don't grow indefinately.  
-                capture_group.traffic_bytes[(second_to_write - 1) % GROUP_SCHEDULE_SIZE][0] = 0
-                capture_group.traffic_bytes[(second_to_write - 1) % GROUP_SCHEDULE_SIZE][1] = 0
+                # so we set bytes to zero so they don't grow indefinately.  
+                #
+                # No longer needed since capture_group is no longer needed but are created as needed
+                #current_capture_group.traffic_bytes[(second_to_write - 1) % GROUP_SCHEDULE_SIZE][0] = 0
+                #current_capture_group.traffic_bytes[(second_to_write - 1) % GROUP_SCHEDULE_SIZE][1] = 0
                  
                 # Iterate over all the slots scheduled to be dealt with this
                 # second, and deal with them.
                 #print "Initializing sessionInfo_bulk_writer..."
-                session_groups_bulk_writer = session_groups_coll.initialize_unordered_bulk_op()
-                #print "Initializing sessionBytes_bulk_writer..."
-                capture_groups_bulk_writer = capture_groups_coll.initialize_unordered_bulk_op()
+                session_group_bulk_writer = session_group_coll.initialize_unordered_bulk_op()
                 #print "Starting loop..."
                 for i in range(schedule_sizes[schedule_row_number]):
                     #print "Reading",schedule_row_number,i,":",schedule[schedule_row_number][i]
@@ -1134,53 +1171,73 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
                     lock.acquire()
                     # Get the data we need as quickly as possible so we can release the lock.
                     memcpy(group_copy, group, group_struct_size)
-                    #memcpy(session_copy, session, sizeof(TCPSession)
                     lock.release()
     
                     #if slot in tracked_slots:
-                        #print_tcp_session(session, second_to_write_from)
+                    #    print 'slot: ',slot, '---',
+                    #    print_tcp_group(group_copy, second_to_write_from)
                     #print second_to_write,":",i,": slot", slot, ", last data", current_second - <uint64_t>session_copy.te
     
-                    #seconds_since_last_bytes = <int64_t>(second_to_write - <uint64_t>group_copy.tem)
+                    # Add 59 seconds to consider last possible second in tem
+                    seconds_since_last_bytes = <int64_t>(second_to_write - <uint64_t>group_copy.tem)
     
-                    # Either reschedule the session for another check-in,
-                    # or de-allocate the slot.
+                    # Either reschedule the session for another check-in, or de-allocate the slot.
                     next_scheduled_checkup_time = 0
-                    #if (seconds_since_last_bytes) > 300:
-                    #    # We don't set next_scheduled_checkup_time, and deallocate below
-                    #    pass
-                    # 
-                    #elif (seconds_since_last_bytes) > BYTES_DOC_SIZE:
-                    #    # There's nothing to read, reschedule for 20 seconds from now
-                    #    next_scheduled_checkup_time = second_to_write + BYTES_DOC_SIZE
-                    # 
-                    
-                    # Write to db if the group has changed since the last db write
-                    if chr(group.csldw) == 'x':
-#                        # Write to database (or at least queue)
-#                        (write_group_function[0])(session_group_bulk_writer, capture_group_bulk_writer, 
-#                                                  session_info_coll, object_ids, session_copy, slot, 
-#                                                  second_to_write_from, second_to_write, capture_group)
-#                         
-#                        mongo_session_writes += 2
-                        next_scheduled_checkup_time = second_to_write + GROUP_SCHEDULE_PERIOD 
-#    
-#                        ## Connection-Tracking Debug ##
-#                        #if slot in tracked_slots:
-#                        #    print second_to_write,": Writing slot",slot
-#    
-                    else:
-                        # Reschedule if the group is not expired
-######################################hack to test deallocate
-                            if peg_to_15minute(current_second) <= group.tbm:
-                                # Schedule another look at the group in about a minute
-                                next_scheduled_checkup_time = second_to_write + GROUP_SCHEDULE_PERIOD 
-                                #for offset in range(BYTES_DOC_SIZE):
-                                #    bytes_subarray = session.traffic_bytes[(bytes_cursor + offset) % BYTES_RING_SIZE]
-                                #    if bytes_subarray[0] > 0 or bytes_subarray[1] > 0:
-                                #        next_scheduled_checkup_time = second_to_write + offset
-                                #        break
+                    if (seconds_since_last_bytes) > 60*15:
+                        # We don't set next_scheduled_checkup_time, and deallocate below
+                        pass
     
+                    elif (seconds_since_last_bytes) > GROUP_SCHEDULE_PERIOD:
+                        # There's nothing to read, reschedule seconds in the future
+                        next_scheduled_checkup_time = second_to_write + GROUP_SCHEDULE_PERIOD
+    
+                    #elif group_copy.traffic_bytes[bytes_cursor][0] > 0 or group_copy.traffic_bytes[bytes_cursor][1] > 0:
+                    else:
+                        # Oldest byte in the byte array had data so write it to the db
+
+                        # Multiple capture groups are needed.  Two groups in the same schedule row 
+                        # may have different tbm when close to group transition time.
+                        # Find or create the capture group corresponding to group being processed
+                        #                                                                       [slot, [obj_id]]
+                        capture_group_list = capture_group_slot_map.get(group_copy.tbm, [-1,[None]])
+                        capture_group_slot = capture_group_list[0]
+                        if capture_group_slot == -1:
+                            capture_group_slot = available_capture_group_slots.popleft()
+                            capture_group_slot_map[group_copy.tbm] = [capture_group_slot, [None]]
+                            
+                            current_capture_group = <GenericGroup *>(capture_group_buffer_addr + 
+                                                                    (capture_group_slot * group_struct_size))
+                            #init_capture_group_function[0](current_capture_group)
+
+                        else:
+                            current_capture_group = <GenericGroup *>(capture_group_buffer_addr + 
+                                                                    (capture_group_slot * group_struct_size))
+
+                        # Write to database (or at least queue)
+                        (write_group_function[0])(session_group_bulk_writer, session_group_coll, object_ids, 
+                                                  group_copy, slot, current_capture_group)
+                        next_scheduled_checkup_time = second_to_write + GROUP_SCHEDULE_PERIOD
+
+                        ## Connection-Tracking Debug ##
+                        #if slot in tracked_slots:
+                        #    print second_to_write,": Writing slot",slot
+    
+                    #else:
+                    #    # Find out where the next available byte is, and schedule a check-up for after that.
+                    #    next_scheduled_checkup_time = second_to_write + GROUP_SCHEDULE_PERIOD 
+                    #    for offset in range(GROUP_SCHEDULE_PERIOD):
+                    #        bytes_subarray = group_copy.traffic_bytes[(bytes_cursor + offset) % GROUP_SCHEDULE_SIZE]
+                    #        if bytes_subarray[0] > 0 or bytes_subarray[1] > 0:
+                    #            next_scheduled_checkup_time = second_to_write + offset
+                    #            break
+
+                    # For debug
+                    #if slot in tracked_slots:
+                    #    if group_copy.tem > tracked_slot_tem:
+                    #        print 'slot: ',slot, '---',
+                    #        print_tcp_group(group_copy, 0)
+                    #        tracked_slot_tem = group_copy.tem
+
                     # Reschedule if we selected a time to do so.
                     if next_scheduled_checkup_time > 0:
                         next_schedule_row_number = next_scheduled_checkup_time % GROUP_SCHEDULE_SIZE 
@@ -1192,13 +1249,12 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
                         #    print second_to_write,": Rescheduling", slot, "for", next_scheduled_checkup_time, "(", (next_scheduled_checkup_time - second_to_write), "seconds)"
     
                     else:
-
                         #print "Deallocating", slot
                         # Write to groupUpdater about a newly freed slot.  On this
                         # end, all we have to do is free up the objectid slot and
                         # update the capture packets counter with all the packets
                         # from this session.
-###############################  Group does not have a packet counter - should it ???
+                        #  Group does not have a packet counter
                         #capture_session.packets += session.packets
                         # object_ids assigned in the write_session function
                         object_ids[slot] = None
@@ -1217,17 +1273,18 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
                 # Write pending bulk operations to mongo
                 try:
                     #print "Doing sessionInfo_bulk_write..."
-                    info_bulk_writer.execute()
+                    session_group_bulk_writer.execute()
+                    pass
                 except InvalidOperation as e:
                     if e.message != "No operations to execute":
                         raise e
     
-                try:
-                    #print "Doing sessionBytes_bulk_write..."
-                    bytes_bulk_writer.execute()
-                except InvalidOperation as e:
-                    if e.message != "No operations to execute":
-                        raise e
+                #try:
+                #    #print "Doing sessionBytes_bulk_write..."
+                #    bytes_bulk_writer.execute()
+                #except InvalidOperation as e:
+                #    if e.message != "No operations to execute":
+                #        raise e
     
     
                 # Check to see if capture info/bytes should be written.  This only
@@ -1236,36 +1293,58 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
                 if capture_scheduled_checkup_time <= second_to_write:
                     # Not so unlike writing a normal session, but with some
                     # shortcuts and dummy data.
-                    #print "Initializing captureInfo_bulk_writer..."
-                    info_bulk_writer = capture_info_coll.initialize_unordered_bulk_op()
                     #print "Initializing captureBytes_bulk_writer..."
-                    bytes_bulk_writer = capture_bytes_coll.initialize_unordered_bulk_op()
-#    
-#                    (write_group_function[0])(info_bulk_writer, bytes_bulk_writer, capture_info_coll, 
-#                                              capture_object_ids, capture_session, 0, 
-#                                              capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2), 
-#                                              capture_scheduled_checkup_time - BYTES_DOC_SIZE, dummy_group)
-#    
-#                    mongo_capture_writes += 2
-#                    capture_scheduled_checkup_time = second_to_write + (BYTES_DOC_SIZE / 2)
-#    
-#                    # Write pending bulk operations to mongo
-#                    try:
-#                        #print "Doing captureInfo_bulk_write..."
-#                        info_bulk_writer.execute()
-#                    except InvalidOperation as e:
-#                        if e.message != "No operations to execute":
-#                            raise e
-#    
-#                    try:
-#                        #print "Doing captureBytes_bulk_write..."
-#                        bytes_bulk_writer.execute()
-#                    except InvalidOperation as e:
-#                        if e.message != "No operations to execute":
-#                            raise e
-#                    
-#    
-#                #print mongo_capture_writes, "capture, ", mongo_session_writes, "session writes covering", session_count, "sessions"
+                    capture_group_bulk_writer = capture_group_coll.initialize_unordered_bulk_op()
+    
+                    oldest_capture_group_tbm = second_to_write
+                    capture_group_slot = 0 
+
+                    # Go through capture groups to write any data present
+    #########################33 cythonize the key #########################################3
+                    for key in capture_group_slot_map:
+                        capture_group_list = capture_group_slot_map[key]
+                        capture_group_slot = capture_group_list[0]
+                        current_capture_group = <GenericGroup *>(capture_group_buffer_addr + 
+                                                         (capture_group_slot * group_struct_size))
+
+                        if chr(current_capture_group.csldw) == 'y':
+                            (write_group_function[0])(capture_group_bulk_writer, capture_group_coll, 
+                                                      capture_group_list[1], current_capture_group, 0, dummy_group)
+
+                        current_capture_group.csldw = ord('n')
+
+                        # Identify oldest capture group in case one needs to be cleaned-up
+                        if oldest_capture_group_tbm > key:
+                            oldest_capture_group_tbm = key 
+    
+                        mongo_capture_writes += 1
+
+                    capture_scheduled_checkup_time = second_to_write + (GROUP_SCHEDULE_SIZE / 2)
+    
+                    # Write pending bulk operations to mongo
+                    try:
+                        #capture_group_bulk_writer.execute()
+                        pass
+                    except InvalidOperation as e:
+                        if e.message != "No operations to execute":
+                            raise e
+
+                    
+                    # Clean-up old capture groups.  Only two are needed simultaneously
+                    if len(capture_group_slot_map) >= 3:
+                        print 'Cleaning-up old capture group...'
+                        capture_group_list = capture_group_slot_map.pop(oldest_capture_group_tbm)
+                        available_capture_group_slots.append(capture_group_list[0])
+    
+                    #try:
+                    #    #print "Doing captureBytes_bulk_write..."
+                    #    bytes_bulk_writer.execute()
+                    #except InvalidOperation as e:
+                    #    if e.message != "No operations to execute":
+                    #        raise e
+                    
+    
+                #print mongo_capture_writes, "capture, ", mongo_session_writes, "session writes covering"
     
                 # Reset the now-finished schedule slot
                 schedule_sizes[schedule_row_number] = 0
@@ -1317,12 +1396,13 @@ def main():
         proto_opts['session_bytes_coll_name'] = 'tcp_sessionBytes'
         proto_opts['capture_info_coll_name'] = 'tcp_captureInfo'
         proto_opts['capture_bytes_coll_name'] = 'tcp_captureBytes'
-        proto_opts['capture_groups_name'] = 'tcp_captureGroups'
-        proto_opts['capture_groups2_name'] = 'tcp_captureGroups2'
-        proto_opts['session_groups_name'] = 'tcp_sessionGroups'
-        proto_opts['session_groups2_name'] = 'tcp_sessionGroups2'
+        proto_opts['capture_group_name'] = 'tcp_captureGroups'
+        proto_opts['capture_group2_name'] = 'tcp_captureGroups2'
+        proto_opts['session_group_name'] = 'tcp_sessionGroups'
+        proto_opts['session_group2_name'] = 'tcp_sessionGroups2'
         proto_opts['write_group'] = <long>&write_tcp_group
         proto_opts['alloc_capture_group'] = <long>&alloc_tcp_capture_group
+        proto_opts['init_capture_group'] = <long>&init_tcp_capture_group
         proto_opts['generate_group'] = <long>&generate_tcp_group
         proto_opts['generate_group_key_from_session'] = <long>&generate_tcp_group_key_from_session
         proto_opts['generate_group_key_from_group'] = <long>&generate_tcp_group_key_from_group
@@ -1344,12 +1424,13 @@ def main():
         proto_opts['session_bytes_coll_name'] = 'udp_sessionBytes'
         proto_opts['capture_info_coll_name'] = 'udp_captureInfo'
         proto_opts['capture_bytes_coll_name'] = 'udp_captureBytes'
-        proto_opts['capture_groups_name'] = 'udp_captureGroups'
-        proto_opts['capture_groups2_name'] = 'udp_captureGroups2'
-        proto_opts['session_groups_name'] = 'udp_sessionGroups'
-        proto_opts['session_groups2_name'] = 'udp_sessionGroups2'
+        proto_opts['capture_group_name'] = 'udp_captureGroups'
+        proto_opts['capture_group2_name'] = 'udp_captureGroups2'
+        proto_opts['session_group_name'] = 'udp_sessionGroups'
+        proto_opts['session_group2_name'] = 'udp_sessionGroups2'
         proto_opts['write_group'] = <long>&write_udp_group
         proto_opts['alloc_capture_group'] = <long>&alloc_udp_capture_group
+        proto_opts['init_capture_group'] = <long>&init_udp_capture_group
         proto_opts['generate_group'] = <long>&generate_udp_group
         proto_opts['generate_group_key_from_session'] = <long>&generate_udp_group_key_from_session
         proto_opts['generate_group_key_from_group'] = <long>&generate_udp_group_key_from_group
@@ -1440,6 +1521,7 @@ def main():
     group_keeper_group_alloc_count.value = 0
     group_keeper_group_dealloc_count = multiprocessing.Value(ctypes.c_uint64)
     group_keeper_group_dealloc_count.value = 0
+    capture_group_buffer = multiprocessing.RawArray(group_class, 5)
 
     packet_parser = multiprocessing.Process(target = packetParser, 
         args=(packet_cursor_pipe[1], parser_packet_count, 
@@ -1449,12 +1531,14 @@ def main():
         args=(packet_cursor_pipe[0], session_updater_packet_count, 
               packet_ring_buffer, live_session_buffer, live_session_locks, 
               live_session_alloc_pipe[1],  live_session_dealloc_pipe[0], 
-              session_updater_live_session_alloc_count, session_updater_live_session_dealloc_count, proto_opts))
+              session_updater_live_session_alloc_count, session_updater_live_session_dealloc_count, 
+              proto_opts))
     session_keeper = multiprocessing.Process(target = sessionBookkeeper,
         args=(live_session_buffer, live_session_locks, 
               live_session_alloc_pipe[0], live_session_dealloc_pipe[1], 
               session_keeper_live_session_alloc_count, session_keeper_live_session_dealloc_count, 
-              saved_session_cursor_pipe[1], saved_session_ring_buffer, session_keeper_saved_session_count, proto_opts))
+              saved_session_cursor_pipe[1], saved_session_ring_buffer, 
+              session_keeper_saved_session_count, proto_opts))
     group_updater = multiprocessing.Process(target = groupUpdater,
         args=(saved_session_cursor_pipe[0], group_updater_saved_session_count, 
               saved_session_ring_buffer, group_buffer, group_locks, 
@@ -1463,7 +1547,8 @@ def main():
               group_updater_session_history_count, proto_opts))
     group_keeper = multiprocessing.Process(target = groupBookkeeper,
         args=(group_buffer, group_locks, group_alloc_pipe[0], group_dealloc_pipe[1], 
-              group_keeper_group_alloc_count, group_keeper_group_dealloc_count, proto_opts))
+              group_keeper_group_alloc_count, group_keeper_group_dealloc_count, 
+              capture_group_buffer, proto_opts))
 
     packet_parser.start()
     session_updater.start()
@@ -1521,7 +1606,7 @@ def main():
         #    if pps == 0: main_running = False
 
         if loop_count % 10 == 0:
-            if loop_count % 20 == 0:
+            if loop_count % 20 != 0:
                 print '{0:>10}{1:>5}{2:>14}{3:>5}{4:>14}{5:>5}{6:>11}{7:>5}{8:>11}{9:>5}'.format(
                 '---parser:', packet_parser.pid, 
                 '---    -updtr:', session_updater.pid, 

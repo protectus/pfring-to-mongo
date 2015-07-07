@@ -172,9 +172,13 @@ ctypedef GenericGroup* (*alloc_capture_group)()
 cdef GenericGroup* alloc_tcp_capture_group()
 cdef GenericGroup* alloc_udp_capture_group()
 
-ctypedef int (*write_group)(object, object, object, list, GenericGroup*, int, uint64_t, uint64_t, GenericGroup*) except -1
-cdef int write_tcp_group(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericGroup* group, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericGroup* capture_group) except -1
-cdef int write_udp_group(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericGroup* group, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericGroup* capture_group) except -1
+ctypedef int (*init_capture_group)(GenericGroup*)
+cdef int init_tcp_capture_group(GenericGroup*)
+cdef int init_udp_capture_group(GenericGroup*)
+
+ctypedef int (*write_group)(object, object, list, GenericGroup*, int, GenericGroup*) except -1
+cdef int write_tcp_group(object group_bulk_writer, object group_collection, list object_ids, GenericGroup* group, int slot, GenericGroup* capture_group) except -1
+cdef int write_udp_group(object group_bulk_writer, object group_collection, list object_ids, GenericGroup* group, int slot, GenericGroup* capture_group) except -1
 
 ctypedef int (*generate_group)(GenericGroup*, GenericSession*)
 cdef int generate_tcp_group(GenericGroup* group, GenericSession* session)
