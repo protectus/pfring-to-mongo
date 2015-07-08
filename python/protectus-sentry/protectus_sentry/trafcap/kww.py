@@ -129,6 +129,9 @@ def main():
         elif "annotations" in coll_name:
             begin_name = 't'
             end_name = 't'
+        elif "_injIp" in coll_name:
+            begin_name = 'tb'
+            end_name = 'texp'
         else:
             begin_name = 'tbm'
             end_name = 'tem'
@@ -148,7 +151,7 @@ def main():
         sys.stdout.flush()
 
         cursor = db[collection_name].find( \
-                    spec = {}, fields = {coll[c_begin_name]:1},
+                    projection = {coll[c_begin_name]:1},
                     sort = [('_id',1)], limit = 1)
 
         # Check if the collection exists
@@ -172,8 +175,8 @@ def main():
 
         # Find end time (most recent)
         cursor = db[collection_name].find( \
-                    spec = {}, fields = {coll[c_end_name]:1},
-                    sort = [(coll[c_end_name],-1)], limit = 1)
+                    projection = {coll[c_end_name]:1},
+                    sort = [('_id',-1)], limit = 1)
 
         coll[c_end_time] = cursor[0][coll[c_end_name]]
 
@@ -330,3 +333,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

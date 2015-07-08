@@ -24,6 +24,7 @@ from libc.stdint cimport uint64_t, uint32_t, uint16_t, int16_t
 from libc.string cimport memset
 from libc.stdlib cimport malloc
 from cpf_ring cimport *
+import random
 
 class IpPacket(object):
     """
@@ -1573,6 +1574,9 @@ class TcpPacket(IpPacket):
     i_id=14        # mongo object id
     i_vl=15        # vlan id
 
+    # This function written to retain some functionality from the
+    # original parse() function once pf_ring is being used.
+    # Leave for now but not used - maybe delete in future.
     @classmethod
     def parse_doc(pc, doc):
 
@@ -1588,6 +1592,152 @@ class TcpPacket(IpPacket):
         except KeyError:
             vlan_id = None
         #vlan_pri = None
+
+    @classmethod
+    def parse(pc, pkt, doc):
+
+        # tcpdump v 4.1.1
+        #        0                     2                    4
+        # 1348367532.072244 IP 192.168.168.17.1696 > 204.210.192.2.25566:
+        #       6                                           14
+        #Flags [P.], seq 30:32, ack 4907, win 65021, length 2
+        # Remember that these are strings
+
+        # TCP DNS traffic
+        # 1360940004.915082 IP 192.168.168.20.49387 > 192.168.168.1.53: Flags [P.], seq 1:36, ack 1, win 256, length 3556043+ TXT? version.avg.com. (33)
+        # 1360940005.089718 IP 192.168.168.1.53 > 192.168.168.20.49387: Flags [P.], seq 2:785, ack 37, win 5840, length 78360289- [256q][|domain]
+
+        # Other TCP DNS traffic examples
+        #1363696331.309098 IP 10.10.80.108.53412 > 192.168.1.6.53: Flags [.], seq 1:1461, ack 1, win 256, length 146037477 [1au] TKEY? 1260-ms-7.1-d299.0595eadf-9091-11e2-368c-00216a5974e4. (1458)
+        #1363696331.316995 IP 10.10.80.108.53412 > 192.168.1.6.53: Flags [.], seq 1461:2921, ack 1, win 256, length 146035888 YXDomain-| [34976q],[|domain]
+
+        #1363696331.324992 IP 10.10.80.108.53412 > 192.168.1.6.53: Flags [P.], seq 2921:3142, ack 1, win 256, length 22161323 updateMA Resp13-| [25745q][|domain]
+        #1363696331.326078 IP 192.168.1.6.53 > 10.10.80.108.53412: Flags [P.], seq 1:455, ack 3142, win 65314, length 45437477- 1/0/1 ANY TKEY (452)
+
+
+        # ICMP traffic - not sure why the tshark filter allows this to be included with TCP traffic
+        # 1362723521.581183 IP 192.168.253.1 > 192.168.253.26: ICMP host 8.8.8.8 unreachable, length 92
+
+        # Parsing for vlan id.  tcpdump version 4.3.0   libpcap version 1.3.0    Sentry 7.0-514
+        #
+        # Previous format:
+        # 1396467169.614347 IP 69.84.41.162.40005 > 10.100.10.244.47671: Flags [P.], seq 145:241 ....
+        #
+        # New format without vlan tag:
+        # 1396467098.199453 70:ca:9b:4b:f7:20 > 00:1b:78:59:e7:c2, 
+        #                   ethertype IPv4 (0x0800), length 162: 
+        #                   69.84.41.162.40008 > 192.168.5.198.42881: Flags [P.], seq 1441:1537 ....
+        #
+        # New format with vlan tag:
+        # 1396467098.199378 00:23:5e:f4:ee:ff > 00:00:5e:00:01:01, 
+        #                   ethertype 802.1Q (0x8100), length 166: vlan 1, p 1, 
+        #                   ethertype IPv4, 69.84.41.162.40008 > 192.168.5.198.42881: Flags [P.], seq 1441:1537 ....
+
+        # parse packet off the wire
+        if pkt and not doc:
+            flag_list = [['_', '_', '_', '_', '_', '_', '_', '_'],
+                         ['_', '_', '_', '_', '_', '_', '_', '_']]
+
+            # Handle this:
+            # 1424786137.387015 3c:4a:92:2c:c4:00 > 54:75:d0:3e:55:fb, ethertype IPv4 (0x0800), length 63: truncated-ip - 3 bytes missing! 10.200.128.10.3026 > 72.3.209.9.6631: Flags [S], seq 4053698250, win 5840, options [mss 1460,nop,nop,sackOK,nop,[|tcp]>
+            # This anamoly seen in bond0 traffic but not in net0 traffic.  Introduced by tap / bonding / cabling ?
+            if pkt[9] == 'truncated-ip':
+                del pkt[9:14] # deletes items 9 through 13 - does not delete item 14
+
+            # IPv4
+            if pkt[6] == '(0x0800),':
+
+                if pkt[12] == 'ICMP':
+                    return (),[]
+
+                bytes1 = int(pkt[8].strip(':'))
+                vlan_id = None
+                #vlan_pri = None
+                a1_1,a1_2,a1_3,a1_4,port1 = pkt[9].split(".")
+                a2_1,a2_2,a2_3,a2_4,port2 = pkt[11].strip(":").split(".")
+                flag_string = pkt[13].strip(",").strip("[").strip("]")
+
+            # 802.1Q (vlan) or 802.1qa (shortest path bridging) 
+            #   802.1qa not handled at this time - need sample traffic!
+            elif pkt[6] == '(0x8100),':
+
+                if pkt[18] == 'ICMP':
+                    return (),[]
+
+                bytes1 = int(pkt[8].strip(':'))
+                vlan_id = int(pkt[10].strip(','))
+                #vlan_pri = int(pkt[12].strip(','))
+                a1_1,a1_2,a1_3,a1_4,port1 = pkt[15].split(".")
+                a2_1,a2_2,a2_3,a2_4,port2 = pkt[17].strip(":").split(".")
+                flag_string = pkt[19].strip(",").strip("[").strip("]")
+
+            else:
+                # Record packet details for future handling
+                # IPv6 handled in Other traffic
+                raise Exception('Unexpected ethertype.')
+
+            # Handle these cases:
+            # 1398119164.258130 70:ca:9b:4b:f7:20 > 00:23:5e:f4:ee:ff, ethertype IPv4 (0x0800), length 154: 192.168.5.146.1458359471 > 10.59.62.53.2049: 96 getattr fh 0,41/0
+            # 1398119164.259488 00:23:5e:f4:ee:ff > 00:00:5e:00:01:01, ethertype 802.1Q (0x8100), length 90: vlan 1, p 1, ethertype IPv4, 10.59.62.53.2049 > 192.168.5.146.1458359471: reply ok 28 getattr ERROR: Stale NFS file handle
+            port1_int = int(port1)
+            port2_int = int(port2)
+            if port1_int > 65535 or port2_int > 65535:
+                return (), [] 
+
+            #if pkt[5] == "ICMP":
+            #    return (),[]
+            # 
+            #a1_1,a1_2,a1_3,a1_4,port1 = pkt[2].split(".")
+            #a2_1,a2_2,a2_3,a2_4,port2 = pkt[4].strip(":").split(".")
+            # 
+            #flag_string = pkt[6].strip(",").strip("[").strip("]")
+
+            # Handle case of SYN-ACK flag by changing the flag from S to s
+            if (flag_string == "S."):
+                flag_string = "s"
+
+            #if (":" in pkt[8]):
+            #    # TCP DNS - see traffic samples above
+            #    seq_start,seq_end = pkt[8].strip(",").split(":")
+            #    bytes1 = int(seq_end) - int(seq_start)
+            #    if bytes1 < 0: bytes1 = bytes1 + 4294967296
+            #else:
+            #    len_index = pkt.index("length")
+            #    bytes1_match = pc.leading_num_re.match(pkt[len_index+1])
+            #    bytes1 = int(bytes1_match.group(1))
+        
+            # Handle case of multiple flags
+            for index, c in enumerate(flag_string):
+                flag_list[0][index] = c
+    
+            # Represent IP addresses a tuples instead of strings
+            addr1 = (int(a1_1), int(a1_2), int(a1_3), int(a1_4))
+            addr2 = (int(a2_1), int(a2_2), int(a2_3), int(a2_4))
+        
+            addrs = [addr1, addr2]
+
+            ports = [port1_int, port2_int]
+            byts = [bytes1, 0]
+            epoch_time = pkt[0]
+            proto = "_"                            # for future use 
+
+        # parse doc from db 
+        elif doc and not pkt:
+            addrs = [trafcap.intToTuple(doc['ip1']),
+                     trafcap.intToTuple(doc['ip2'])]
+            ports = [doc['p1'], doc['p2']]
+            byts = [doc['b1'], doc['b2']]
+            flag_list = [doc['f1'], doc['f2']]
+            epoch_time = doc['tb']
+            proto = doc['pr']
+            try:
+                vlan_id = doc['vl'] 
+            except KeyError:
+                vlan_id = None
+            #vlan_pri = None
+                
+        else:
+            return (), [] 
         
         # Sort to get a consistent key for each TCP session
         data = sorted(zip(addrs, ports, byts, flag_list))
@@ -2081,7 +2231,7 @@ class IcmpPacket(IpPacket):
             # Check if this seq number matches a previous packet
             if seq != 0:
                 try:
-                    icmp_req_item = pc.icmp_req.pop((seq, addr2))
+                    icmp_req_item = pc.icmp_req.pop((seq, addr2, addr1))
                     icmp_request_type_and_code = icmp_req_item[0]
                     # Found request packet in dict, this pkt must be a response
                     type_and_code_for_key = tuple(icmp_request_type_and_code)
@@ -2089,7 +2239,7 @@ class IcmpPacket(IpPacket):
                 except KeyError:
                     # No request packet in the dict
                     # Add packet to the request dictionary 
-                    pc.icmp_req[(seq, addr1)] = [type_and_code[0], \
+                    pc.icmp_req[(seq, addr1, addr2)] = [type_and_code[0], \
                                                  epoch_time_int]
                  
                     # clean-out the icmp_req dictionary every minute 
@@ -2796,7 +2946,8 @@ class TcpInjPacket(IpPacket):
     # Legend for TCP packet data list returned by the parse method:
     #        data[0]  (ip1)     ,     data[1]   (ip2)       , [2]  , [3]
     #[[(addr),port,bytes,[flag]], [(addr),port,bytes,[flag]],epoch ,proto]
-    p_addrs=0; p_ports=1; p_bytes=2; p_flags=3
+    #p_ip1=0; p_ip2=1
+    p_addr=0; p_port=1; p_bytes=2; p_flags=3
     p_etime=4
     p_proto=5
     p_seq=6
@@ -2832,7 +2983,7 @@ class TcpInjPacket(IpPacket):
             #bytes1 = int(pkt[-1].strip(':'))
             a1_1,a1_2,a1_3,a1_4,port1 = pkt[2].split(".")
             a2_1,a2_2,a2_3,a2_4,port2 = pkt[4].strip(":").split(".")
-            flag_string = pkt[6].strip(",").strip("[").strip("]")
+            flag1_string = pkt[6].strip(",").strip("[").strip("]")
             if pkt[7] == 'ack':
                 ack = int(pkt[8].strip(','))
                 seq1 = None
@@ -2864,38 +3015,45 @@ class TcpInjPacket(IpPacket):
             return (), [] 
 
         # Handle case of SYN-ACK flag by changing the flag from S to s
-        if (flag_string == "S."):
-            flag_string = "s"
+        if (flag1_string == "S."):
+            flag1_string = "s"
 
         # Represent IP addresses a tuples instead of strings
         addr1 = (int(a1_1), int(a1_2), int(a1_3), int(a1_4))
         addr2 = (int(a2_1), int(a2_2), int(a2_3), int(a2_4))
         
+        # Not needed since zip/sort is not done below
         addrs = [addr1, addr2]
-
         ports = [port1_int, port2_int]
-        byts = [bytes1, 0]
+        #byts = [bytes1, 0]
         epoch_time = float(pkt[0])
         proto = "_"                            # for future use 
 
         # Sort to get a consistent key for each TCP session
         #data = sorted(zip(addrs, ports, byts, flag_list))
-        #[((1,2,3,4), 25254, 0, ['_', '_', '_', '_', '_', '_', '_', '_']),
-        # ((9,8,7,6), 22,  140, ['P', '_', '_', '_', '_', '_', '_', '_'])]
-        data = [addrs, ports, byts, flag_string]
+        #[((1,2,3,4), 25254, 0, 's'),
+        # ((9,8,7,6), 22,  140, '')]
+
+        # do not sort - need to preserve IP order for inject decisions
+        data = [addrs, ports, bytes1, flag1_string, epoch_time, proto, seq1, ack]
 
         # Add packet data - unrelated to any IP
-        data.append(epoch_time)
-        data.append(proto)
-        data.append(seq1)
-        data.append(ack)
+        #data.append(epoch_time)
+        #data.append(proto)
+        #data.append(seq1)
+        #data.append(ack)
     
         #         0            1           2           3
         #        ip1     ,   port1   ,    ip2    ,   port2
         #key = (data[pc.p_ip1][pc.p_addr], data[pc.p_ip1][pc.p_port], 
-        #       data[pc.p_ip2][pc.p_addr], data[pc.p_ip2][pc.p_port],
+        #       data[pc.p_ip2][pc.p_addr], data[pc.p_ip2][pc.p_port])
         #       data[pc.p_vl])
-        key = (addr1, port1_int, addr2, port2_int)
+
+        # Unlike tcp ingest, data IP order may not match key IP order.
+        # Need to know src/dst IP for data inject.  Also need
+        # to have consistent key for each pkt in conversation.
+        # Key order may be swapped later when inject decisions are made.
+        key = ((addr1, port1_int), (addr2, port2_int))
 
         return key, data
 
@@ -2927,10 +3085,10 @@ class TcpInjPacket(IpPacket):
         tcp.set_th_off(5)
  
         if 'S' in data[pc.p_flags]:
-            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addrs][0]))
-            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addrs][1]))
-            tcp.set_th_sport(data[pc.p_ports][0])
-            tcp.set_th_dport(data[pc.p_ports][1])
+            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][0]))
+            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addr][1]))
+            tcp.set_th_sport(data[pc.p_port][0])
+            tcp.set_th_dport(data[pc.p_port][1])
             #             ACK RST
             #           CWR | | FIN 
             #             | | | |
@@ -2944,18 +3102,18 @@ class TcpInjPacket(IpPacket):
             tcp.set_th_ack(0)         # 0 by default
             ip.contains(tcp)
             s.sendto(ip.get_packet(), 
-                     (trafcap.tupleToString(data[pc.p_addrs][1]), 
-                     data[pc.p_ports][1]))
+                     (trafcap.tupleToString(data[pc.p_addr][1]), 
+                     data[pc.p_port][1]))
         elif 'R' in data[pc.p_flags] or 'F' in data[pc.p_flags]:
             # This prevents a loop of an inj pkt triggering another inj pkt
             return
         else:
             if data[pc.p_seq]:   
-                ip.set_ip_src(trafcap.tupleToString(data[pc.p_addrs][0]))
-                ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addrs][1]))
-                tcp.set_th_sport(data[pc.p_ports][0])
-                tcp.set_th_dport(data[pc.p_ports][1])
-                tcp.set_th_seq(data[pc.p_seq]+data[pc.p_bytes][0]) 
+                ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][0]))
+                ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addr][1]))
+                tcp.set_th_sport(data[pc.p_port][0])
+                tcp.set_th_dport(data[pc.p_port][1])
+                tcp.set_th_seq(data[pc.p_seq]+data[pc.p_bytes]) 
                 if data[pc.p_ack]:
                     tcp.set_th_ack(data[pc.p_ack])
                     #             ACK RST
@@ -2971,8 +3129,8 @@ class TcpInjPacket(IpPacket):
                 tcp.set_th_flags(flags)
                 ip.contains(tcp)
                 s.sendto(ip.get_packet(), 
-                         (trafcap.tupleToString(data[pc.p_addrs][1]), 
-                         data[pc.p_ports][1]))
+                         (trafcap.tupleToString(data[pc.p_addr][1]), 
+                         data[pc.p_port][1]))
 
         #print 'B2G', data
  
@@ -2993,10 +3151,10 @@ class TcpInjPacket(IpPacket):
         tcp.set_th_off(5)
  
         if data[pc.p_flags] == 's':
-            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addrs][1]))
-            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addrs][0]))
-            tcp.set_th_sport(data[pc.p_ports][1])
-            tcp.set_th_dport(data[pc.p_ports][0])
+            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][1]))
+            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addr][0]))
+            tcp.set_th_sport(data[pc.p_port][1])
+            tcp.set_th_dport(data[pc.p_port][0])
             #             ACK RST
             #           CWR | | FIN 
             #             | | | |
@@ -3009,16 +3167,16 @@ class TcpInjPacket(IpPacket):
             tcp.set_th_ack(data[pc.p_seq]+1) 
             ip.contains(tcp)
             s.sendto(ip.get_packet(), 
-                     (trafcap.tupleToString(data[pc.p_addrs][0]), 
-                     data[pc.p_ports][0]))
+                     (trafcap.tupleToString(data[pc.p_addr][0]), 
+                     data[pc.p_port][0]))
         elif 'R' in data[pc.p_flags] or 'F' in data[pc.p_flags]:
             # This prevents a loop of an inj pkt triggering another inj pkt
             return
         else:
-            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addrs][1]))
-            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addrs][0]))
-            tcp.set_th_sport(data[pc.p_ports][1])
-            tcp.set_th_dport(data[pc.p_ports][0])
+            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][1]))
+            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addr][0]))
+            tcp.set_th_sport(data[pc.p_port][1])
+            tcp.set_th_dport(data[pc.p_port][0])
             #             ACK RST
             #           CWR | | FIN 
             #             | | | |
@@ -3030,24 +3188,25 @@ class TcpInjPacket(IpPacket):
             if data[pc.p_seq]:   
                 # defaults to zero
                 flags = int('00010101',2)
-                tcp.set_th_ack(data[pc.p_seq]+data[pc.p_bytes][0]) 
+                tcp.set_th_ack(data[pc.p_seq]+data[pc.p_bytes]) 
             tcp.set_th_flags(flags)
             ip.contains(tcp)
             s.sendto(ip.get_packet(), 
-                     (trafcap.tupleToString(data[pc.p_addrs][0]), 
-                     data[pc.p_ports][0]))
+                     (trafcap.tupleToString(data[pc.p_addr][0]), 
+                     data[pc.p_port][0]))
 
-        # Send packet to attacker
-        if data[pc.p_seq]:   
+        # Randomly send packet to attacker.  4 bits selected randomly.  
+        # If all 4 are 0 (1/16 of the time), then a packet is sent.
+        if data[pc.p_seq] and not bool(random.getrandbits(3)):   
             # Send RST packet to bad IP
             ip = ImpactPacket.IP()
             tcp = ImpactPacket.TCP()
             tcp.set_th_off(5)
      
-            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addrs][0]))
-            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addrs][1]))
-            tcp.set_th_sport(data[pc.p_ports][0])
-            tcp.set_th_dport(data[pc.p_ports][1])
+            ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][0]))
+            ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addr][1]))
+            tcp.set_th_sport(data[pc.p_port][0])
+            tcp.set_th_dport(data[pc.p_port][1])
             #             ACK RST
             #           CWR | | FIN 
             #             | | | |
@@ -3056,17 +3215,19 @@ class TcpInjPacket(IpPacket):
             #          ECE | | SYN
             #            URG PSH
             tcp.set_th_flags(flags)
-            tcp.set_th_seq(data[pc.p_seq]+data[pc.p_bytes][0]) 
+            tcp.set_th_seq(data[pc.p_seq]+data[pc.p_bytes]) 
             #tcp.set_th_ack(data[pc.p_seq]+1) 
             ip.contains(tcp)
             s.sendto(ip.get_packet(), 
-                     (trafcap.tupleToString(data[pc.p_addrs][0]), 
-                      data[pc.p_ports][0]))
+                     (trafcap.tupleToString(data[pc.p_addr][0]), 
+                      data[pc.p_port][0]))
 
     @classmethod
     def buildInfoDoc(pc, a_info):
         tbm=trafcap.secondsToMinute(a_info[pc.i_tb])
         tem=trafcap.secondsToMinute(a_info[pc.i_te])
+        #bi = a_info[pc.i_bi]
+        #not_bi = abs(bi - 1)  # This IP did not cause the block
         if a_info[pc.i_cc] == None:
             cc, name, loc = trafcap.geoIpLookup(a_info[a_info[pc.i_bi]])
             a_info[pc.i_cc] = cc

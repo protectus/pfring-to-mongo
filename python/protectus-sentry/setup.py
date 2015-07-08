@@ -15,7 +15,7 @@ pyx_glob = 'protectus_sentry/**/*.pyx'
 VERSION = '0.1'
 
 requires = [
-    'pymongo >= 2.7',
+    'pymongo >= 3.0',
     'GeoIP',
     'PyYAML',
     'passlib',

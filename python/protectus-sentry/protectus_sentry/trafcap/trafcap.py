@@ -78,7 +78,7 @@ def refreshConfigVars():
     global lrs_min_duration, rtp_portrange, http_save_url_qs
     global local_subnets, local_subnet, config
     global mongo_server, mongo_port, traffic_db, traffic_ttl
-    global inj_filter, allowed_cc 
+    global inj_filter, inj_timeout, cc_list_type, cc_list
     # Read settings from config file
     config = ConfigParser.SafeConfigParser()
     config.optionxform = str  # Read config keys case sensitively.
@@ -91,7 +91,9 @@ def refreshConfigVars():
     nmi_db_update_wait_time=config.getfloat('trafcap', 'nmi_db_update_wait_time')
     cap_filter = config.get('trafcap', 'cap_filter')
     inj_filter = config.get('trafcap', 'inj_filter')
-    allowed_cc = json.loads(config.get('trafcap', 'allowed_cc'))
+    inj_timeout = config.getint('trafcap', 'inj_timeout')
+    cc_list_type = config.get('trafcap', 'cc_list_type').lower()
+    cc_list = json.loads(config.get('trafcap', 'cc_list'))
     sniff_interface = config.get('interface', 'sniff_interface')
     network_interface = config.get('interface', 'network_interface')
     lrs_min_duration = config.getint('trafcap', 'lrs_min_duration')
@@ -268,12 +270,6 @@ def checkIfRoot():
 #pymongo bindings
 #sys.path.append('/opt/sentry/trafcap/lib')
 
-#def mongoSetup():
-#    from pymongo import Connection
-#    conn = Connection(mongo_server, mongo_port)
-#    db = conn[traffic_db]
-#    return db
-
 def mongoSetup(**kwargs):
     from pymongo import MongoClient
     conn = MongoClient(host=mongo_server,
@@ -446,8 +442,8 @@ def ensureIndexes(collection_tuple):
             try:
                 if index_info[spec_index_string]:
                     # check for optional index parameters (e.g. sparse)
-                    if len(spec_index) != \
-                       len(index_info[spec_index_string]) - 1:
+                    if len(spec_index[0]) != \
+                       len(index_info[spec_index_string]['key']):
                         redoIndex(db, c_name, c_indxs)
                         continue
 

@@ -18,7 +18,7 @@ start_bold = "\033[1m"
 end_bold = "\033[0;0m"
 
 def parseOptions():
-    usage = "usage: %prog -tuioln || -a  [-v] [-p || d] [-s seconds]"
+    usage = "usage: %prog -tuionlber || -a  [-v] [-p || d] [-s seconds]"
     parser = OptionParser(usage)
     parser.add_option("-t", "--tcp", dest="tcp",
                       action="store_true", default=False,
@@ -38,6 +38,9 @@ def parseOptions():
     parser.add_option("-l", "--lpj", dest="lpj",
                       action="store_true", default=False,
                       help="expire lpj data")
+    parser.add_option("-b", "--block", dest="block",
+                      action="store_true", default=False,
+                      help="block or inject event data")
     parser.add_option("-e", "--event", dest="event",
                       action="store_true", default=False,
                       help="expire event data")
@@ -66,10 +69,12 @@ def main():
     options = parseOptions()     # Could combine this line with next line
     trafcap.options = options
     if ((not (options.tcp or options.udp or options.icmp or options.oth or
-            options.lpj or options.nmi or options.event or options.rtp)) \
+            options.lpj or options.nmi or options.event or options.rtp or
+            options.block)) \
             and not options.alldata) or \
        ((options.tcp or options.udp or options.icmp or options.oth or
-            options.lpj or options.nmi or options.event or options.rtp) \
+            options.lpj or options.nmi or options.event or options.rtp or
+            options.block) \
             and options.alldata):
         sys.exit("Must select at least one data type [tuioln] or all data [a] ...")
 
@@ -85,6 +90,7 @@ def main():
         options.lpj = True
         options.event = True
         options.rtp = True
+        options.block = True
 
     if options.dryrun:
         options.verbose = True
@@ -111,15 +117,23 @@ def main():
     for coll_name in coll_names:
         if coll_name == 'config': continue
         if coll_name == 'system.indexes': continue
+        if coll_name == 'user_annotations': continue
+        # Active Defense collections
+        if 'injConfig' in coll_name: continue  
+        if 'injIp' in coll_name: continue  # maintained by inject code 
         
-        if 'tcp' in coll_name and not options.tcp: continue
+        if 'tcp' in coll_name and not options.tcp:
+            if 'inj' in coll_name: pass
+            else: continue
         if 'udp' in coll_name and not options.udp: continue
         if 'icmp' in coll_name and not options.icmp: continue
         if 'oth' in coll_name and not options.oth: continue
         if 'nmi' in coll_name and not options.nmi: continue
         if 'lpj' in coll_name and not options.lpj: continue
         if 'ids' in coll_name and not options.event: continue
+        if 'http' in coll_name and not options.event: continue
         if 'rtp' in coll_name and not options.rtp: continue
+        if 'inj' in coll_name and not options.block: continue
 
         if "Bytes" in coll_name:
             begin_name = 'sbm'
@@ -181,8 +195,7 @@ def main():
             sys.stdout.flush()
 
         if options.verbose or options.prompt:
-            cursor = db[collection_name].find(spec = \
-                                              {coll[c_end_name]:{'$lt':exp_time}})
+            cursor = db[collection_name].find({coll[c_end_name]:{'$lt':exp_time}})
             coll[c_num_docs] = cursor.count()
 
         if options.prompt:
@@ -203,8 +216,7 @@ def main():
             print cursor.count(), " docs from ", collection_name 
 
         if not options.dryrun:
-           db[collection_name].remove(spec_or_id = \
-                                      {coll[c_end_name]:{'$lt':exp_time}})
+           db[collection_name].delete_many({coll[c_end_name]:{'$lt':exp_time}})
 
     sys.exit()
 

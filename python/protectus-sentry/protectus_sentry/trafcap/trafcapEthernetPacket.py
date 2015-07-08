@@ -249,6 +249,10 @@ class OtherPacket(EthernetPacket):
                 msg = pkt[5]
                 for i in range(6, len(pkt), 1):
                     msg = msg + " " + pkt[i]
+                    # Ensure msg length does not exceed Mongo's Index Key Limit
+                    if len(msg) > 512: 
+                        msg = msg[:512] + '...'
+                        break
     
                 data = [(pkt[1], int(pkt[2])), (pkt[3], 0), pkt[0], pkt[4], msg]
     
@@ -262,6 +266,10 @@ class OtherPacket(EthernetPacket):
                 msg = pkt[6]
                 for i in range(7, len(pkt), 1):
                     msg = msg + " " + pkt[i]
+                    # Ensure msg length does not exceed Mongo's Index Key Limit
+                    if len(msg) > 512:
+                        msg = msg[:512] + '...'
+                        break
     
                 vlan_id = int(pkt[1])
                 data = [(pkt[2], int(pkt[3])), (pkt[4], 0), pkt[0], pkt[5], msg]
