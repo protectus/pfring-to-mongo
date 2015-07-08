@@ -195,11 +195,18 @@ def main():
             sys.stdout.flush()
 
         if options.verbose or options.prompt:
-            cursor = db[collection_name].find({coll[c_end_name]:{'$lt':exp_time}})
-            coll[c_num_docs] = cursor.count()
+            # First index in lpj collections is c_id, not time, so handle lpj differently
+            if 'lpj_' in collection_name:
+                c_id_list = db[collection_name].distinct('c_id')
+                for c_id_item in c_id_list:
+                    cursor = db[collection_name].find({'c_id':c_id_item, coll[c_end_name]:{'$lt':exp_time}})
+                    coll[c_num_docs] += cursor.count()
+            else:
+                cursor = db[collection_name].find({coll[c_end_name]:{'$lt':exp_time}})
+                coll[c_num_docs] = cursor.count()
 
         if options.prompt:
-            question = "Remove " + str(cursor.count()) + \
+            question = "Remove " + str(coll[c_num_docs]) + \
                   " docs from " + collection_name + " ?   [Y/n]"
             answer = " "
             while answer not in yes and answer not in no:
@@ -213,10 +220,16 @@ def main():
                 print "   Could remove ",
             else:
                 print "   Removing ",
-            print cursor.count(), " docs from ", collection_name 
+            print coll[c_num_docs], " docs from ", collection_name 
 
         if not options.dryrun:
-           db[collection_name].delete_many({coll[c_end_name]:{'$lt':exp_time}})
+            # First index in lpj collections is c_id, not time, so handle lpj differently
+            if 'lpj_' in collection_name:
+                c_id_list = db[collection_name].distinct('c_id')
+                for c_id_item in c_id_list:
+                    db[collection_name].delete_many({'c_id':c_id_item, coll[c_end_name]:{'$lt':exp_time}})
+            else:
+                db[collection_name].delete_many({coll[c_end_name]:{'$lt':exp_time}})
 
     sys.exit()
 
