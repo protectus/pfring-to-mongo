@@ -1,5 +1,5 @@
-#!/usr/bin/python
-#
+# trafcapProcess.pyx - multiprocess definitions used by traf2mongo
+# 
 # Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
 #
 import sys, time, os, signal
@@ -74,10 +74,10 @@ def packetParser(packet_cursor_pipe, parsed_packet_count, packet_ring_buffer,
     flags |= PF_RING_LONG_HEADER
     cdef int wait_for_packet = 1
     pd = pfring_open(device, snaplen, flags)
-
+ 
     pfring_set_bpf_filter(pd, proto_opts['bpf_filter'])
     pfring_enable_ring(pd)
-    #pfring_loop(pd, processPacket, "", wait_for_packet) 
+
     cdef int last_pkt_time_sec = 0
 
     cdef parse_packet* parse_packet_function
@@ -1034,7 +1034,7 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
                 # SIDE EFFECT: population of current_group_slot
                 group_alloc_pipe.recv_bytes_into(py_current_group_slot)
                 group_keeper_group_alloc_count.value += 1
-    
+
                 # Since session_buffer is now generic, we need to do memory addresses ourselves.
                 group = <GenericGroup *>(group_buffer_addr + (group_slot_p[0] * group_struct_size))
                 
@@ -1150,6 +1150,9 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
     
                     #elif group_copy.traffic_bytes[bytes_cursor][0] > 0 or group_copy.traffic_bytes[bytes_cursor][1] > 0:
                     else:
+                        # Hack to disable group writes to mongo - PFG
+                        continue
+
                         # Oldest byte in the byte array had data so write it to the db
 
                         # Multiple capture groups are needed.  Two groups in the same schedule row 
@@ -1227,6 +1230,9 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
                         #    print second_to_write,": Deallocating", slot
                         #    tracked_slots.remove(slot)
                  
+                # Hack to disable group writes to mongo - PFG
+                continue
+
                 # Write pending bulk operations to mongo
                 try:
                     #print "Doing sessionInfo_bulk_write..."

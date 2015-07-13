@@ -30,10 +30,12 @@ from Cython.Distutils import build_ext
 from Cython.Build import cythonize
 
 extensions = [
-    Extension("traf2mongo", ["protectus_sentry/**/traf2mongo.pyx"],
+    Extension("trafcapProcess", ["protectus_sentry/**/trafcapProcess.pyx"],
        libraries = ["pfring", "pcap", "numa"],
-       library_dirs = ["/usr/local/lib", "/home/sentry/PF_RING-6.0.2/userland/libpcap"])
+       library_dirs = ["/usr/local/lib"])
 ]
+
+#       library_dirs = ["/usr/local/lib", "/home/sentry/PF_RING/userland/lib"])
 print isinstance(extensions[0], Extension)
 setup_settings = {
     'cmdclass': {'build_ext':build_ext},

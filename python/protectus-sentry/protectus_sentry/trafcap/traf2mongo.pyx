@@ -30,7 +30,6 @@ from libc.stdlib cimport malloc
 import ctypes
 from cpf_ring cimport * 
 from trafcapIpPacket cimport * 
-from trafcapProcess cimport * 
 
 proc = None
 
@@ -422,7 +421,7 @@ def main():
             capture_info_collection_name = "rtp_captureInfo"
             capture_bytes_collection_name = "rtp_captureBytes"
         else:
-           exitNow('Invalid protocol') 
+           exitNowUni('Invalid protocol') 
 
         # A python class is defined for each protocol (TCP, UDP, ...) and  
         # each class encapsulates packet-specific information
@@ -463,7 +462,7 @@ def main():
                 print num_sessions, " active session_byte entries displayed."
 
         def catchCntlC(signum, stack):
-            exitNow('')
+            exitNowUni('')
 
         signal.signal(signal.SIGUSR1, catchSignal1)
         signal.signal(signal.SIGUSR2, catchSignal2)
@@ -645,7 +644,7 @@ def main():
                           len(session.bytes_dict), "\r",
                 sys.stdout.flush()
 
-        exitNow('')
+        exitNowUni('')
         
 if __name__ == "__main__":
     main()
