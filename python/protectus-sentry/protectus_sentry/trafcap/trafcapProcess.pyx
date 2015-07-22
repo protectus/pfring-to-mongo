@@ -470,8 +470,8 @@ def sessionBookkeeper(live_session_buffer, live_session_locks, live_session_allo
                         # Write to database (or at least queue)
                         (write_session_function[0])(info_bulk_writer, bytes_bulk_writer, session_info_coll, 
                                                     object_ids, session_copy, slot, second_to_write_from, 
-                                                    second_to_write, capture_session)
-                         
+                                                    second_to_write, capture_session, session, live_session_locks)
+
                         mongo_session_writes += 2
                         next_scheduled_checkup_time = second_to_write + BYTES_DOC_SIZE
     
@@ -570,7 +570,8 @@ def sessionBookkeeper(live_session_buffer, live_session_locks, live_session_allo
                     (write_session_function[0])(info_bulk_writer, bytes_bulk_writer, capture_info_coll, 
                                                 capture_object_ids, capture_session, 0, 
                                                 capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2), 
-                                                capture_scheduled_checkup_time - BYTES_DOC_SIZE, dummy_session)
+                                                capture_scheduled_checkup_time - BYTES_DOC_SIZE, dummy_session,
+                                                session, live_session_locks)
     
                     mongo_capture_writes += 2
                     capture_scheduled_checkup_time = second_to_write + (BYTES_DOC_SIZE / 2)

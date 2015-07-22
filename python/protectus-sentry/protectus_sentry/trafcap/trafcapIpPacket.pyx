@@ -827,9 +827,10 @@ cdef object generate_udp_group_key_from_group(GenericGroup* g_group):
     return <object>key
 
 
-cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session) except -1:
+cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session, GenericSession* o_session, object live_session_locks) except -1:
     cdef TCPSession* session = <TCPSession*>g_session
     cdef TCPSession* capture_session = <TCPSession*>g_capture_session
+    cdef TCPSession* original_session = <TCPSession*>o_session
 
     cdef uint64_t sb = second_to_write_from
     cdef uint64_t se
@@ -867,19 +868,30 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             "pk":int(session.base.packets)
         }
 
-        # Need to change geoIP call to handle int addresses
+        # Get cc for new info_doc and update session (which is actually a session_copy)
         cc1, name1, loc1 = trafcap.geoIpLookupInt(session.ip1)
         cc2, name2, loc2 = trafcap.geoIpLookupInt(session.ip2)
+        
+        # May need to update cc1 &/or cc2 in original session.
+        if cc1 or cc2:
+            lock = live_session_locks[slot % SESSIONS_PER_LOCK]
+            lock.acquire()
 
-        if cc1: 
-            info_doc["cc1"] = cc1
-            session.cc1[0] = ord(cc1[0])
-            session.cc1[1] = ord(cc1[1])
+            if cc1: 
+                info_doc["cc1"] = cc1
+                # Populate session_copy for use when creating bytes_doc 
+                # Populate original session for use during future writes
+                session.cc1[0] = original_session.cc1[0] = ord(cc1[0])
+                session.cc1[1] = original_session.cc1[1] = ord(cc1[1])
 
-        if cc2: 
-            info_doc["cc2"] = cc2
-            session.cc2[0] = ord(cc2[0])
-            session.cc2[1] = ord(cc2[1])
+            if cc2: 
+                info_doc["cc2"] = cc2
+                # Populate session_copy for use when creating bytes_doc 
+                # Populate original session for use during future writes
+                session.cc2[0] = original_session.cc2[0] = ord(cc2[0])
+                session.cc2[1] = original_session.cc2[1] = ord(cc2[1])
+
+            lock.release()
 
         tdm = (<int>(session.base.te - session.base.tb)) / 60
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
@@ -931,6 +943,7 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             "sb": sb,
             "sbm": peg_to_minute(sb)
     }
+    # Populate bytes_doc country code from session_copy
     if session.cc1[0] != 0:
         bytes_doc["cc1"] = chr(session.cc1[0]) + chr(session.cc1[1])
 
@@ -980,7 +993,7 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
     return 0 
 
 
-cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session) except -1:
+cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session, GenericSession* o_session, object live_session_locks) except -1:
     cdef UDPSession* session = <UDPSession*>g_session
     cdef UDPSession* capture_session = <UDPSession*>g_capture_session
 
