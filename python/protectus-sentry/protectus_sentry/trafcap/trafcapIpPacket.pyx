@@ -172,9 +172,15 @@ class IpPacket(object):
                   a_bytes['ip2'], a_bytes['p2'], 0,
                   doc_win_start, trafcap.secondsToMinute(a_bytes['se']),
                   0, 0,
-                  tmp_array, 0, a_bytes['pr'],
-                  a_bytes['cc1'], a_bytes['loc1'], 
-                  a_bytes['cc2'], a_bytes['loc2'], None, a_bytes['vl']]
+                  tmp_array, 0, 
+                  a_bytes.get('pr', None),
+                  a_bytes.get('cc1', None),
+                  a_bytes.get('loc1', None),
+                  a_bytes.get('cc2', None),
+                  a_bytes.get('loc2', None),
+                  None, 
+                  a_bytes.get('vl', None)]
+
         return a_group
 
     @classmethod
