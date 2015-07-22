@@ -23,24 +23,23 @@ requires = [
 ]
 
 setup_settings = {}
-#if sys.argv[1] in ['bdist_egg', 'install']:
+if sys.argv[1] in ['bdist_egg', 'install']:
 
-# This used to be conditional on a full install, but I want to see if 'develop' works.
-from Cython.Distutils import build_ext
-from Cython.Build import cythonize
+    from Cython.Distutils import build_ext
+    from Cython.Build import cythonize
 
-extensions = [
-    Extension("trafcapProcess", ["protectus_sentry/**/trafcapProcess.pyx"],
-       libraries = ["pfring", "pcap", "numa"],
-       library_dirs = ["/usr/local/lib"])
-]
+    extensions = [
+        Extension("trafcapProcess", ["protectus_sentry/**/trafcapProcess.pyx"],
+        libraries = ["pfring", "pcap", "numa"],
+        library_dirs = ["/usr/local/lib"])
+    ]
 
-#       library_dirs = ["/usr/local/lib", "/home/sentry/PF_RING/userland/lib"])
-print isinstance(extensions[0], Extension)
-setup_settings = {
-    'cmdclass': {'build_ext':build_ext},
-    'ext_modules': cythonize(extensions) + cythonize(cythonize_glob) + cythonize(pyx_glob)
-}
+    #       library_dirs = ["/usr/local/lib", "/home/sentry/PF_RING/userland/lib"])
+    print isinstance(extensions[0], Extension)
+    setup_settings = {
+        'cmdclass': {'build_ext':build_ext},
+        'ext_modules': cythonize(extensions) + cythonize(cythonize_glob) + cythonize(pyx_glob)
+    }
 
 setup(name='protectus-sentry',
       version=VERSION,
