@@ -231,8 +231,8 @@ def main():
 
     # Remove docs from group collecitons that have tbm >= mbp
     # This prevents duplication of data
-    session1.db[session1.groups_collection].delete_many({'tbm':{'$gte':mbp}}) 
-    session2.db[session2.groups_collection].delete_many({'tbm':{'$gte':mbp}}) 
+    session1.db[session1.groups_collection].delete_many({'tem':{'$gte':mbp},'tbm':{'$gte':mbp}}) 
+    session2.db[session2.groups_collection].delete_many({'tem':{'$gte':mbp},'tbm':{'$gte':mbp}}) 
 
     #
     # Begin main loop
