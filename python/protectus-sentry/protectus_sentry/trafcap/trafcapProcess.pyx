@@ -729,7 +729,8 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
             #                              2)set previously (session flowed-over group boundary)
             group_key = generate_group_key_from_session_function[0](saved_session)
             group_slot = group_slot_map.get(group_key,-1)
-            session_history_key = (session_key * (2 ** 128)) + group_key
+            # Create unique key...shift the session_key to make room for group_key.  
+            session_history_key = (session_key * (2 ** 160)) + group_key
 
             # Determine if session is existing or just started.  Needed for proper session acctng.
             # Sessions are accounted for on a per-group basis.
@@ -858,7 +859,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     session_history_dict.pop(a_session_key)
                     group_updater_session_history_count.value -= 1
             except IndexError:
-                # The queue is empty
+                # No keys to pop
                 pass
 
             # Check for expired sessions.  sessionUpdater expires sessions 
@@ -875,7 +876,11 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                                                                         trafcap.session_expire_timeout - 60:
                             #keys_to_pop.append[a_session_key]    # Cython compile error - not parsable as a type
                                                                   # when keys_to_pop is a list
-                            keys_to_pop.append(a_session_key)     # Make keys_to_pop use a deque instead
+
+                            # Sessions which started the loop with session_status = -1 (overlap group boundary) 
+                            # have already been expired so don't append them a second time.
+                            if not a_session_key in keys_to_pop:
+                                keys_to_pop.append(a_session_key)     # Make keys_to_pop use a deque instead
 
                 #print 'sessHist: ', len(session_history_dict), ', queued to remove:', len(keys_to_pop)
                 
