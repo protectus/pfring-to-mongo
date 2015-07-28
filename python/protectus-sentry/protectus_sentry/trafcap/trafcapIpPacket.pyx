@@ -1913,7 +1913,7 @@ class UdpPacket(IpPacket):
     @classmethod
     def parse(pc, pkt, doc):
         if pkt and not doc:
-            pkt = pkt.split()
+            #pkt = pkt.split()
             pkt_len = len(pkt)
             if pkt_len == 5:
                 # UDP packet without ports:
