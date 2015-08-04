@@ -1155,10 +1155,8 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
                         next_scheduled_checkup_time = second_to_write + GROUP_SCHEDULE_PERIOD
     
                     #elif group_copy.traffic_bytes[bytes_cursor][0] > 0 or group_copy.traffic_bytes[bytes_cursor][1] > 0:
-                    else:
-                        # Hack to disable group writes to mongo - PFG
-                        continue
 
+                    else:
                         # Oldest byte in the byte array had data so write it to the db
 
                         # Multiple capture groups are needed.  Two groups in the same schedule row 
@@ -1188,7 +1186,6 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
                         #if slot in tracked_slots:
                         #    print second_to_write,": Writing slot",slot
     
-                    #else:
                     #    # Find out where the next available byte is, and schedule a check-up for after that.
                     #    next_scheduled_checkup_time = second_to_write + GROUP_SCHEDULE_PERIOD 
                     #    for offset in range(GROUP_SCHEDULE_PERIOD):
@@ -1236,13 +1233,11 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
                         #    print second_to_write,": Deallocating", slot
                         #    tracked_slots.remove(slot)
                  
-                # Hack to disable group writes to mongo - PFG
-                continue
-
                 # Write pending bulk operations to mongo
                 try:
                     #print "Doing sessionInfo_bulk_write..."
-                    session_group_bulk_writer.execute()
+                    ############# temporarily disable writes ####################
+                    #session_group_bulk_writer.execute()
                     pass
                 except InvalidOperation as e:
                     if e.message != "No operations to execute":
@@ -1292,6 +1287,7 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
     
                     # Write pending bulk operations to mongo
                     try:
+                        ############# temporarily disable writes ####################
                         #capture_group_bulk_writer.execute()
                         pass
                     except InvalidOperation as e:
