@@ -6,7 +6,10 @@ from fnmatch import fnmatch
 
 from setuptools import setup, find_packages
 
-cythonize_glob = 'trafmongo/**/*ommands.py'
+cythonize_glob1 = 'trafmongo/**/parse.py'
+cythonize_glob2 = 'trafmongo/**/resources.py'
+cythonize_glob3 = 'trafmongo/**/tests.py'
+cythonize_glob4 = 'trafmongo/**/ujson_renderer.py'
 
 # "VERSION" is a keyword that the build system will look for.  Feel free to
 # change, but know that the build system is running sed, looking for
@@ -29,7 +32,8 @@ if sys.argv[1] in ['bdist_egg', 'install']:
 
     setup_settings = {
         'cmdclass': {'build_ext':build_ext},
-        'ext_modules': cythonize(cythonize_glob)
+        'ext_modules': cythonize(cythonize_glob1) + cythonize(cythonize_glob2) +\
+                       cythonize(cythonize_glob3) + cythonize(cythonize_glob4)
     }
 elif sys.argv[1] == "develop":
     requires.append("pyramid-debugtoolbar==1.0.7")
