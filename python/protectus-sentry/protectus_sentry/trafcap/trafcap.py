@@ -275,6 +275,13 @@ def mongoSetup(**kwargs):
     conn = MongoClient(host=mongo_server,
                        port=mongo_port,**kwargs)
     db = conn[traffic_db]
+
+    # DB is not actually created until something is written.  Ensure db exixts,
+    # even if it is empty, to prevent downstream errors in certain situations.
+    coll_names = db.collection_names()
+    if len(coll_names) == 0:
+        db['config'].insert_one({'x': 1})
+        db['config'].delete_one({'x': 1})
     return db
 
 gi = GeoIP.open("/opt/sentry/geoip/GeoLiteCity.dat",GeoIP.GEOIP_STANDARD)
@@ -415,6 +422,8 @@ def ensureIndexes(collection_tuple):
     index_info = None
     print 'Checking indexes...'
 
+    coll_names = db.collection_names()
+
     for c_info in collection_tuple:
         c_name = c_info[0]
         c_indxs = c_info[1]
@@ -422,8 +431,15 @@ def ensureIndexes(collection_tuple):
         # Verify number of indexes
         spec_index_count = len(c_indxs)
 
+        # Check if collection exist.  Writing data creates it
+        if not c_name in coll_names:
+            db[c_name].insert_one({'x': 1})
+            db[c_name].delete_one({'x': 1})
+            # Collection will now contain an _id index
+
         # index_info is a dictionary provided by mongo, includes _id index
         index_info = db[c_name].index_information()
+
         actual_index_count = len(index_info) - 1  # do not count _id index
 
         if spec_index_count != actual_index_count:
