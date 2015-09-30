@@ -968,7 +968,8 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
     cdef uint32_t* bytes_subarray
 
     # Set se default in case range in for statement below is empty
-    se = <uint64_t>session.base.te
+    #se = <uint64_t>session.base.te
+    se = second_to_write_from
 
     # Generate the bytes array.  Write all non-zero sub-arrays from the second
     # to write up to the end of the data we have, inclusive.
