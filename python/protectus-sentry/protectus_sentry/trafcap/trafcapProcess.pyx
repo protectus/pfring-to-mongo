@@ -567,11 +567,13 @@ def sessionBookkeeper(live_session_buffer, live_session_locks, live_session_allo
                     #print "Initializing captureBytes_bulk_writer..."
                     bytes_bulk_writer = capture_bytes_coll.initialize_unordered_bulk_op()
     
+                    # Passing last param of live_session_locks == None indicates capture session, no need to
+                    # update CC or vlanId
                     (write_session_function[0])(info_bulk_writer, bytes_bulk_writer, capture_info_coll, 
                                                 capture_object_ids, capture_session, 0, 
                                                 capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2), 
                                                 capture_scheduled_checkup_time - BYTES_DOC_SIZE, dummy_session,
-                                                session, live_session_locks)
+                                                session, None)
     
                     mongo_capture_writes += 2
                     capture_scheduled_checkup_time = second_to_write + (BYTES_DOC_SIZE / 2)
