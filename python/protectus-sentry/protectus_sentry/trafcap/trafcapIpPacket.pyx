@@ -1635,7 +1635,7 @@ class TcpPacket(IpPacket):
         byts = [doc['b1'], doc['b2']]
         flag_list = [doc['f1'], doc['f2']]
         epoch_time = doc['tb']
-        proto = doc['pr']
+        proto = doc.get('pr', None)
         try:
             vlan_id = doc['vl'] 
         except KeyError:
@@ -1778,7 +1778,7 @@ class TcpPacket(IpPacket):
             byts = [doc['b1'], doc['b2']]
             flag_list = [doc['f1'], doc['f2']]
             epoch_time = doc['tb']
-            proto = doc['pr']
+            proto = doc.get('pr', None)
             try:
                 vlan_id = doc['vl'] 
             except KeyError:
@@ -1873,16 +1873,22 @@ class TcpPacket(IpPacket):
     def findClient(pc, data, new_info):
         # Determine client ip & store that index (0 or 1) in session_info
         # Check for syn flag - this is the best indicator
-        if 'S' in new_info[pc.i_ip1][pc.i_flags]:
-            new_info[pc.i_ci] = 0
-        elif 'S' in new_info[pc.i_ip2][pc.i_flags]:
-            new_info[pc.i_ci] = 1
-        elif new_info[pc.i_ip2][pc.i_port] > new_info[pc.i_ip1][pc.i_port]:
-            # If no syn flag, assume client has largest port number
-            new_info[pc.i_ci] = 1
-        else:
-            # Ports are equal, select ip1
-            new_info[pc.i_ci] = 0
+
+        # Flag field changed with pf_ring ingest.  
+
+        #if 'S' in new_info[pc.i_ip1][pc.i_flags]:
+        #    new_info[pc.i_ci] = 0
+        #elif 'S' in new_info[pc.i_ip2][pc.i_flags]:
+        #    new_info[pc.i_ci] = 1
+        #elif new_info[pc.i_ip2][pc.i_port] > new_info[pc.i_ip1][pc.i_port]:
+        #    # If no syn flag, assume client has largest port number
+        #    new_info[pc.i_ci] = 1
+        #else:
+        #    # Ports are equal, select ip1
+        #    new_info[pc.i_ci] = 0
+
+        # First packet observed is the client 
+        new_info[pc.i_ci] = 0
 
     @classmethod
     def buildInfoDictItem(pc, key, data):
@@ -2001,7 +2007,7 @@ class UdpPacket(IpPacket):
             ports = [doc['p1'], doc['p2']]
             byts = [doc['b1'], doc['b2']]
             epoch_time = doc['tb']
-            proto = doc['pr']
+            proto = doc.get('pr', None)
             try:
                 vlan_id = doc['vl']
             except KeyError:
@@ -2492,7 +2498,7 @@ class IcmpPacket(IpPacket):
                   a_bytes['ip2'], 0,
                   doc_win_start, trafcap.secondsToMinute(a_bytes['se']),
                   0, 0,
-                  tmp_array, 0, a_bytes['pr'],
+                  tmp_array, 0, a_bytes.get('pr', None),
                   a_bytes['cc1'], a_bytes['loc1'], 
                   a_bytes['cc2'], a_bytes['loc2'], None, a_bytes['vl']]
         return a_group
@@ -2681,7 +2687,7 @@ class RtpPacket(IpPacket):
             ports = [doc['p1'], doc['p2']]
             byts = [doc['b1'], doc['b2']]
             epoch_time = doc['tb']
-            proto = doc['pr']
+            proto = doc.get('pr', None)
             ssrc = doc['ssrc']
             sequence = 0            # Need to add!
             sample_time = 0         #  Need to add!
