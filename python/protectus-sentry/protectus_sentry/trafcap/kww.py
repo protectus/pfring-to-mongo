@@ -107,6 +107,7 @@ def main():
     for coll_name in coll_names:
         if coll_name == 'config': continue
         if coll_name == 'system.indexes': continue
+        if "_injConfig" in coll_name: continue
 
         if "Bytes" in coll_name:
             begin_name = 'sbm'
