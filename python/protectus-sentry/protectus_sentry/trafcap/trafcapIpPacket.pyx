@@ -997,8 +997,9 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
     # Update capture_session timestamp
     capture_session.base.te = max(capture_session.base.te, session.base.te)
 
-    # add to writes
-    if trafcap.options.mongo:
+    # add to writes if the bytes array is not empty
+    # Performance improvement todo - don't build bytes_doc if no bytes_to_write
+    if trafcap.options.mongo and bytes_to_write:
         try:
             bytes_bulk_writer.insert(bytes_doc)
         except Exception, e:
@@ -1296,14 +1297,17 @@ cdef int write_tcp_group(object group_bulk_writer, object group_collection, list
 
         # Insert the new doc and record the objectid
         if trafcap.options.mongo:
-            try:
-                object_ids[slot] = group_collection.insert(group_doc)
-            except Exception, e:
-                # Something went wrong 
-                if not trafcap.options.quiet:
-                    print e, group_doc, traceback.format_exc()
-                trafcap.logException(e, group_doc=group_doc)
-            #print info_doc,"at",object_ids[slot]
+            # Temporarily disable
+            # Note - tbm is zero - need to fix
+            #try:
+            #    object_ids[slot] = group_collection.insert(group_doc)
+            #except Exception, e:
+            #    # Something went wrong 
+            #    if not trafcap.options.quiet:
+            #        print e, group_doc, traceback.format_exc()
+            #    trafcap.logException(e, group_doc=group_doc)
+            ##print info_doc,"at",object_ids[slot]
+            pass
 
     else:
         # If we're not inserting a new doc, we're updating an existing one.
@@ -1319,13 +1323,16 @@ cdef int write_tcp_group(object group_bulk_writer, object group_collection, list
         }
 
         if trafcap.options.mongo:
-            try:
-                group_bulk_writer.find({"_id": object_ids[slot]}).update(group_update)
-            except Exception, e:
-                # Something went wrong 
-                if not trafcap.options.quiet:
-                    print e, group_update,traceback.format_exc()
-                trafcap.logException(e, group_update=group_update)
+            # Temporarily disable
+            # Note - tbm is zero - need to fix
+            #try:
+            #    group_bulk_writer.find({"_id": object_ids[slot]}).update(group_update)
+            #except Exception, e:
+            #    # Something went wrong 
+            #    if not trafcap.options.quiet:
+            #        print e, group_update,traceback.format_exc()
+            #    trafcap.logException(e, group_update=group_update)
+            pass
 
     # Update capture_session timestamp
     capture_group.base.tem = max(capture_group.base.tem, group.base.tem)

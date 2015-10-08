@@ -291,7 +291,7 @@ def sessionBookkeeper(live_session_buffer, live_session_locks, live_session_allo
 
     # Bookkeeping data for capture
     cdef list capture_object_ids = [None] # Capture sessions are in a category of one
-    cdef uint64_t capture_scheduled_checkup_time = int(time.time())
+    cdef uint64_t capture_scheduled_checkup_time = int(trafcap.secondsTo10Seconds(int(time.time())) + (BYTES_DOC_SIZE/2))
 
     # Cythonize access to the shared buffers 
     cdef long live_session_buffer_addr = ctypes.addressof(live_session_buffer)
@@ -941,7 +941,7 @@ def groupBookkeeper(group_buffer, group_locks, group_alloc_pipe, group_dealloc_p
     # Bookkeeping data for capture
     #cdef list capture_object_ids = [None] # Capture group is in a category of one
     cdef list capture_object_ids = [None for x in range(5)]
-    cdef uint64_t capture_scheduled_checkup_time = int(time.time())
+    cdef uint64_t capture_scheduled_checkup_time = int(trafcap.secondsTo10Seconds(int(time.time())) + (BYTES_DOC_SIZE/2))
 
     available_capture_group_slots = deque(xrange(5))
     cdef dict capture_group_slot_map = {}
