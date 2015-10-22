@@ -75,7 +75,7 @@ def packetParser(packet_cursor_pipe, parsed_packet_count, packet_ring_buffer,
     cdef int wait_for_packet = 1
     pd = pfring_open(device, snaplen, flags)
  
-    pfring_set_bpf_filter(pd, proto_opts['bpf_filter'])
+    pfring_set_bpf_filter(pd, proto_opts['bpf_filter'] + ' ' + trafcap.cap_filter)
     pfring_enable_ring(pd)
 
     cdef int last_pkt_time_sec = 0
