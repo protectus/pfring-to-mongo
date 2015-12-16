@@ -490,15 +490,41 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
     cdef TCPSession *session = <TCPSession*>g_session
     cdef TCPPacketHeaders* packet = <TCPPacketHeaders*>g_packet
 
-    session.ip1 = packet.ip1
-    session.port1 = packet.port1
-    session.bytes1 = packet.bytes
-    session.flags1 = packet.flags<<((packet.flags&16)/2)
+    # SYN flag detected
+    if packet.flags == 2:
+        session.ip1 = packet.ip1
+        session.port1 = packet.port1
+        session.flags1 = packet.flags<<((packet.flags&16)/2)
+        session.bytes1 = packet.bytes
 
-    session.ip2 = packet.ip2
-    session.port2 = packet.port2
-    session.bytes2 = 0
-    session.flags2 = 0
+        session.ip2 = packet.ip2
+        session.port2 = packet.port2
+        session.bytes2 = 0
+        session.flags2 = 0
+
+    # SYN-ACK flags detected - not sure what happened to SYN packet
+    elif (packet.flags == 18) or (packet.port2 > packet.port1): 
+        session.ip1 = packet.ip2
+        session.port1 = packet.port2
+        session.bytes1 = 0
+        session.flags1 = 0
+
+        session.ip2 = packet.ip1
+        session.port2 = packet.port1
+        session.flags2 = packet.flags<<((packet.flags&16)/2)
+        session.bytes2 = packet.bytes
+
+    # No SYN bit and (port1 >= port2)
+    else:
+        session.ip1 = packet.ip1
+        session.port1 = packet.port1
+        session.flags1 = packet.flags<<((packet.flags&16)/2)
+        session.bytes1 = packet.bytes
+
+        session.ip2 = packet.ip2
+        session.port2 = packet.port2
+        session.bytes2 = 0
+        session.flags2 = 0
 
     session.vlan_id = packet.vlan_id
     session.base.tb = packet.base.timestamp
@@ -517,13 +543,23 @@ cdef int generate_udp_session(GenericSession* g_session, GenericPacketHeaders* g
     cdef UDPSession *session = <UDPSession*>g_session
     cdef UDPPacketHeaders* packet = <UDPPacketHeaders*>g_packet
 
-    session.ip1 = packet.ip1
-    session.port1 = packet.port1
-    session.bytes1 = packet.bytes
+    if (packet.port2 > packet.port2):
+        session.ip1 = packet.ip1
+        session.port1 = packet.port1
+        session.bytes1 = packet.bytes
 
-    session.ip2 = packet.ip2
-    session.port2 = packet.port2
-    session.bytes2 = 0
+        session.ip2 = packet.ip2
+        session.port2 = packet.port2
+        session.bytes2 = 0
+
+    else:
+        session.ip1 = packet.ip2
+        session.port1 = packet.port2
+        session.bytes1 = 0
+
+        session.ip2 = packet.ip1
+        session.port2 = packet.port1
+        session.bytes2 = packet.bytes
 
     session.vlan_id = packet.vlan_id
     session.base.tb = packet.base.timestamp
