@@ -496,6 +496,7 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
         session.port1 = packet.port1
         session.flags1 = packet.flags<<((packet.flags&16)/2)
         session.bytes1 = packet.bytes
+        session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][0] = packet.bytes
 
         session.ip2 = packet.ip2
         session.port2 = packet.port2
@@ -513,6 +514,7 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
         session.port2 = packet.port1
         session.flags2 = packet.flags<<((packet.flags&16)/2)
         session.bytes2 = packet.bytes
+        session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][1] = packet.bytes
 
     # No SYN bit and (port1 >= port2)
     else:
@@ -520,6 +522,7 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
         session.port1 = packet.port1
         session.flags1 = packet.flags<<((packet.flags&16)/2)
         session.bytes1 = packet.bytes
+        session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][0] = packet.bytes
 
         session.ip2 = packet.ip2
         session.port2 = packet.port2
@@ -531,7 +534,6 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
     session.base.te = packet.base.timestamp
     session.base.packets = 1
 
-    session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][0] = packet.bytes
     session.cc1[0] = 0
     session.cc1[1] = 0
     session.cc2[0] = 0
@@ -547,6 +549,7 @@ cdef int generate_udp_session(GenericSession* g_session, GenericPacketHeaders* g
         session.ip1 = packet.ip1
         session.port1 = packet.port1
         session.bytes1 = packet.bytes
+        session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][0] = packet.bytes
 
         session.ip2 = packet.ip2
         session.port2 = packet.port2
@@ -560,13 +563,13 @@ cdef int generate_udp_session(GenericSession* g_session, GenericPacketHeaders* g
         session.ip2 = packet.ip1
         session.port2 = packet.port1
         session.bytes2 = packet.bytes
+        session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][1] = packet.bytes
 
     session.vlan_id = packet.vlan_id
     session.base.tb = packet.base.timestamp
     session.base.te = packet.base.timestamp
     session.base.packets = 1
 
-    session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][0] = packet.bytes
     session.cc1[0] = 0
     session.cc1[1] = 0
     session.cc2[0] = 0
