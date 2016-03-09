@@ -2730,62 +2730,48 @@ class RtpPacket(IpPacket):
 
     capture_dict_key = ((0,0,0,0),0, (0,0,0,0),0, '', None)
 
-# Need to handle:
-#Error parsing rtp packet:  ['1378211937.721699', '192.168.153.61', '10000', '192.168.154.206', '10090', '44', 'RTP', 'PT=DynamicRTP-Type-102,', 'SSRC=0x1FFD08E5,', 'Seq=10898,', 'Time=329132955']
-
     @classmethod
     def parse(pc, pkt, doc):
         if pkt and not doc:
-            if len(pkt) > 14:
-# Handle this:
-#['1377962613.764819', '192.168.245.2', '10001', '192.168.154.2', '55329', '236', 'RTP', 'PT=Reserved', 'for', 'RTCP', 'conflict', 'avoidance,', 'SSRC=0x2EE032,', 'Seq=6,', 'Time=1248342066,', 'Mark']
+
+            pkt_len = len(pkt)
+
+            # Handle this:
+            # 1457555571.447479  10.10.20.45 10533 10.10.48.41  10299 104     UDP
+            if pkt_len <= 7:
                 #print 'Invalid RTP packet length: ', pkt
                 return (), []
-            elif len(pkt) >= 13:
-# First packet len = 14
-#1377793619.734068 192.168.153.60 10002 192.168.154.206 10462 200 RTP PT=ITU-T G.711 PCMU, SSRC=0x776E7820, Seq=46573, Time=1802996531 Mark
 
-# Subsequent packets have len = 13
-#1377793619.743568 192.168.154.206 10462 192.168.153.60 10002 200 RTP PT=ITU-T G.711 PCMU, SSRC=0xFF26B81B, Seq=43613, Time=1751818640
-#1377793619.743571 192.168.153.60 10002 192.168.154.206 10462 200 RTP PT=ITU-T G.711 PCMU, SSRC=0x776E7820, Seq=46574, Time=1802996691
-#1377793619.763564 192.168.154.206 10462 192.168.153.60 10002 200 RTP PT=ITU-T G.711 PCMU, SSRC=0xFF26B81B, Seq=43614, Time=1751818800
+            else:
+# typical packet
+# 1457556004.797061  10.10.20.46 10498 10.200.1.218 10000 360 0xc2c14587 (3267446151) 24200 828152408 99,127,127,0 RTP
+# 1457556004.815568 10.200.1.218 10000 10.10.20.46  10498 360 0x52ae122e (1387139630) 33190 1365478476 99,0 RTP
 
-                #
-                # pkt variable is a list with the following entries:
-                #        0               1          2         3         4  5  6 
-                # 1341226810.949555 192.168.1.127 32878 193.108.80.124 53 73 DNS
-    
                 a1_1,a1_2,a1_3,a1_4 = pkt[1].split(".")
                 a2_1,a2_2,a2_3,a2_4 = pkt[3].split(".")
-
+    
                 ports = [int(pkt[2]), int(pkt[4])]
                 byts = [int(pkt[5]), 0]
-                proto = pkt[6]
-# Handle this:
-#['1378148886.165730', '192.168.154.206', '10009', '192.168.245.2', '10001', '36', 'UDP', 'Source', 'port:', 'swdtp-sv', 'Destination', 'port:', 'scp-config[Malformed', 'Packet]']
-                if proto != 'RTP':
-                    print 'Proto not rtp: ', pkt
-                    return (), [] 
-            
-                ssrc = pkt[10][7:15].strip(',')
+                
+                ssrc = pkt[6][2:10]
                 # Tshark removes leading zeros in ssrc.  
                 # Prepend zeros if ssrc < 8 chars
                 zeros_needed = 8 - len(ssrc)
                 ssrc = '0'*zeros_needed + ssrc
-
-                sequence = int(pkt[11][4:-1])
-                sample_time = int(pkt[12][5:].strip(','))
-
-            else:
-                print 'Error parsing rtp packet: ', pkt 
-                return (), [] 
-
-            # Represent IP addresses a tuples instead of strings
-            addr1 = (int(a1_1), int(a1_2), int(a1_3), int(a1_4))
-            addr2 = (int(a2_1), int(a2_2), int(a2_3), int(a2_4))
-            addrs = [addr1, addr2]
-            epoch_time = pkt[0]
-
+                # ssrc also available as an int
+                #ssrc = int(pkt[7][1:-1])
+    
+                sequence = int(pkt[8])
+                sample_time = int(pkt[9])
+                payload_type = pkt[10]
+                proto = pkt[11]
+    
+                # Represent IP addresses a tuples instead of strings
+                addr1 = (int(a1_1), int(a1_2), int(a1_3), int(a1_4))
+                addr2 = (int(a2_1), int(a2_2), int(a2_3), int(a2_4))
+                addrs = [addr1, addr2]
+                epoch_time = pkt[0]
+    
         elif doc and not pkt:
             addr1 = trafcap.intToTuple(doc['ip1'])
             addr2 = trafcap.intToTuple(doc['ip2'])
@@ -2832,7 +2818,7 @@ class RtpPacket(IpPacket):
 
         data.append(client_index)
         data.append(vlan_id)
-        print data
+        #print data
         return key, data
 
     @classmethod
@@ -2921,9 +2907,12 @@ class RtpPacket(IpPacket):
                '-w', '/run/trafcap_rtp',
                '-P',
                '-o',
-               'column.format:"""time","%t", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "protocol","%p","i","%i"""',
+               'column.format:"""time","%t", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "ssrc","%Cus:rtp.ssrc","seq","%Cus:rtp.seq","ts","%Cus:rtp.timestamp","pt","%Cus:rtp.p_type","proto","%p"""',
                '-f',
                '('+filtr+') or (vlan and '+filtr+')']
+
+               # Unpredictable output
+               #'column.format:"""time","%t", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "protocol","%p","i","%i"""',
 
         # add protocol decode for rtp ports
         insert_index = 14
