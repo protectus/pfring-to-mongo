@@ -8,16 +8,23 @@ cdef enum:
     BYTES_RING_SIZE = 30
     BYTES_DOC_SIZE = 20
 
+    # Size of ring_buffers for packets and saved_sessions
     RING_BUFFER_SIZE = 100000 
-    LIVE_SESSION_BUFFER_SIZE = 1000000 
+
+    LIVE_SESSION_BUFFER_SIZE = 2000000 
     SESSIONS_PER_LOCK = 100    # originally 1000
     # Group buffer slot can be occupied for up to three hours (length of groups2).
     # Buffer size / 10800 seconds = max sessions per second
     #GROUP_SESSION_BUFFER_SIZE = 10000000    # holds 925 sessions/second max on average
-    GROUP_BUFFER_SIZE = 1000000 
+    GROUP_BUFFER_SIZE = 2000000 
     GROUPS_PER_LOCK = 100 
-    GROUP_SCHEDULE_SIZE = 90 
-    GROUP_SCHEDULE_PERIOD = 60 
+    
+    CAPTURE_GROUP_BUFFER_SIZE = 5 
+    CAPTURE_GROUPS_PER_LOCK = 1
+
+    # Groups equivalent of  BYTES_RING_SIZE and BYTES_DOC_SIZE 
+    GROUP_SCHEDULE_SIZE = 40 
+    GROUP_SCHEDULE_PERIOD = 30 
 
 # Heads up: These structs are defined twice so that both pure python and
 # lower-level cython can know about them.  Useful for shared memory stuff.
@@ -97,7 +104,8 @@ cdef struct GenericGroup:
     uint32_t[90][2] traffic_bytes 
     uint32_t ns 
     uint32_t ne 
-    char csldw 
+    # Change_Since_Last_Database_Write flag, 1=yes, 0=no
+    uint8_t csldw 
 
 cdef struct TCPGroup:
     GenericGroup base
@@ -140,9 +148,9 @@ ctypedef object (*generate_session_key_from_session)(GenericSession* session)
 cdef object generate_tcp_session_key_from_session(GenericSession* session)
 cdef object generate_udp_session_key_from_session(GenericSession* session)
 
-ctypedef object (*generate_group_key_from_session)(GenericSession* session)
-cdef object generate_tcp_group_key_from_session(GenericSession* session)
-cdef object generate_udp_group_key_from_session(GenericSession* session)
+ctypedef object (*generate_group_key_from_session)(GenericSession* session, uint8_t)
+cdef object generate_tcp_group_key_from_session(GenericSession* session, uint8_t group_type)
+cdef object generate_udp_group_key_from_session(GenericSession* session, uint8_t group_type)
 
 ctypedef object (*generate_group_key_from_group)(GenericGroup* group)
 cdef object generate_tcp_group_key_from_group(GenericGroup* group)
@@ -150,7 +158,7 @@ cdef object generate_udp_group_key_from_group(GenericGroup* group)
 
 cdef int print_tcp_packet(GenericPacketHeaders* packet) except -1
 cdef int print_tcp_session(GenericSession* session, uint64_t time_cursor) except -1
-cdef int print_tcp_group(GenericGroup* session, uint64_t time_cursor) except -1
+cdef int print_tcp_group(GenericGroup* session, uint64_t time_cursor, uint8_t group_type) except -1
 
 ctypedef GenericSession* (*alloc_capture_session)()
 cdef GenericSession* alloc_tcp_capture_session()
@@ -168,24 +176,27 @@ ctypedef int (*write_session)(object, object, object, list, GenericSession*, int
 cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* capture_session, GenericSession* live_session, object live_session_locks) except -1
 cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* capture_session, GenericSession* live_session, object live_session_locks) except -1
 
-ctypedef GenericGroup* (*alloc_capture_group)()
-cdef GenericGroup* alloc_tcp_capture_group()
-cdef GenericGroup* alloc_udp_capture_group()
+#ctypedef GenericGroup* (*alloc_capture_group)()
+#cdef GenericGroup* alloc_tcp_capture_group()
+#cdef GenericGroup* alloc_udp_capture_group()
 
 ctypedef int (*init_capture_group)(GenericGroup*)
 cdef int init_tcp_capture_group(GenericGroup*)
 cdef int init_udp_capture_group(GenericGroup*)
 
-ctypedef int (*write_group)(object, object, list, GenericGroup*, int, GenericGroup*) except -1
-cdef int write_tcp_group(object group_bulk_writer, object group_collection, list object_ids, GenericGroup* group, int slot, GenericGroup* capture_group) except -1
-cdef int write_udp_group(object group_bulk_writer, object group_collection, list object_ids, GenericGroup* group, int slot, GenericGroup* capture_group) except -1
+ctypedef int (*write_group)(object, object, list, GenericGroup*, int, uint8_t group_type) except -1
+cdef int write_tcp_group(object group_bulk_writer, object group_collection, list object_ids, GenericGroup* group, int slot, uint8_t group_type) except -1
+cdef int write_udp_group(object group_bulk_writer, object group_collection, list object_ids, GenericGroup* group, int slot, uint8_t group_type) except -1
 
-ctypedef int (*generate_group)(GenericGroup*, GenericSession*)
-cdef int generate_tcp_group(GenericGroup* group, GenericSession* session)
-cdef int generate_udp_group(GenericGroup* group, GenericSession* session) 
+ctypedef int (*generate_group)(GenericGroup*, GenericSession*, GenericGroup*, int)
+cdef int generate_tcp_group(GenericGroup* group, GenericSession* session, GenericGroup* c_group, uint8_t group_type)
+cdef int generate_udp_group(GenericGroup* group, GenericSession* session, GenericGroup* c_group, uint8_t group_type) 
 
-ctypedef int (*update_group)(GenericGroup*, GenericSession*)
-cdef int update_tcp_group(GenericGroup* group, GenericSession* session)
-cdef int update_udp_group(GenericGroup* group, GenericSession* session) 
+ctypedef int (*update_group)(GenericGroup*, GenericSession*, GenericGroup*, int)
+cdef int update_tcp_group(GenericGroup* group, GenericSession* session, GenericGroup* c_group, uint8_t group_type)
+cdef int update_udp_group(GenericGroup* group, GenericSession* session, GenericGroup* c_group, uint8_t group_type) 
 
 cdef inline uint64_t peg_to_15minute(uint64_t timestamp)
+cdef inline uint64_t peg_to_180minute(uint64_t timestamp)
+
+cdef int update_group_counts(object session_key, object session_history, uint64_t set_tbm, GenericGroup* group, object counter) except -1

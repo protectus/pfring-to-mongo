@@ -115,6 +115,7 @@ def main():
         # interupts, fatal errors, and cleanup.
         proto_opts = {}
 
+        proto_opts['group_time_window'] = (15, 180)
         # Select protocol.  Note that packet_type variable must be set
         if options.tcp:
             proto_opts['bpf_filter'] = 'ip and tcp'
@@ -132,12 +133,12 @@ def main():
             proto_opts['session_bytes_coll_name'] = 'tcp_sessionBytes'
             proto_opts['capture_info_coll_name'] = 'tcp_captureInfo'
             proto_opts['capture_bytes_coll_name'] = 'tcp_captureBytes'
-            proto_opts['capture_group_name'] = 'tcp_captureGroups'
-            proto_opts['capture_group2_name'] = 'tcp_captureGroups2'
-            proto_opts['session_group_name'] = 'tcp_sessionGroups'
-            proto_opts['session_group2_name'] = 'tcp_sessionGroups2'
+            proto_opts['capture_group_name'] = ('tcp_captureGroups', 'tcp_captureGroups2')
+            #proto_opts['capture_group2_name'] = 'tcp_captureGroups2'
+            proto_opts['session_group_name'] = ('tcp_sessionGroups', 'tcp_sessionGroups2')
+            #proto_opts['session_group2_name'] = 'tcp_sessionGroups2'
             proto_opts['write_group'] = <long>&write_tcp_group
-            proto_opts['alloc_capture_group'] = <long>&alloc_tcp_capture_group
+            #proto_opts['alloc_capture_group'] = <long>&alloc_tcp_capture_group
             proto_opts['init_capture_group'] = <long>&init_tcp_capture_group
             proto_opts['generate_group'] = <long>&generate_tcp_group
             proto_opts['generate_group_key_from_session'] = <long>&generate_tcp_group_key_from_session
@@ -160,12 +161,12 @@ def main():
             proto_opts['session_bytes_coll_name'] = 'udp_sessionBytes'
             proto_opts['capture_info_coll_name'] = 'udp_captureInfo'
             proto_opts['capture_bytes_coll_name'] = 'udp_captureBytes'
-            proto_opts['capture_group_name'] = 'udp_captureGroups'
-            proto_opts['capture_group2_name'] = 'udp_captureGroups2'
-            proto_opts['session_group_name'] = 'udp_sessionGroups'
-            proto_opts['session_group2_name'] = 'udp_sessionGroups2'
+            proto_opts['capture_group_name'] = ('udp_captureGroups', 'udp_captureGroups2')
+            #proto_opts['capture_group2_name'] = 'udp_captureGroups2'
+            proto_opts['session_group_name'] = ('udp_sessionGroups', 'udp_sessionGroups2')
+            #proto_opts['session_group2_name'] = 'udp_sessionGroups2'
             proto_opts['write_group'] = <long>&write_udp_group
-            proto_opts['alloc_capture_group'] = <long>&alloc_udp_capture_group
+            #proto_opts['alloc_capture_group'] = <long>&alloc_udp_capture_group
             proto_opts['init_capture_group'] = <long>&init_udp_capture_group
             proto_opts['generate_group'] = <long>&generate_udp_group
             proto_opts['generate_group_key_from_session'] = <long>&generate_udp_group_key_from_session
@@ -233,6 +234,8 @@ def main():
         session_keeper_live_session_dealloc_count.value = 0
         session_keeper_saved_session_count = multiprocessing.Value(ctypes.c_uint64)
         session_keeper_saved_session_count.value = 0
+        session_keeper_saved_session2_count = multiprocessing.Value(ctypes.c_uint64)
+        session_keeper_saved_session2_count.value = 0
 
         live_session_buffer = multiprocessing.RawArray(session_class, LIVE_SESSION_BUFFER_SIZE)
         live_session_alloc_pipe = multiprocessing.Pipe(False)
@@ -240,24 +243,55 @@ def main():
         live_session_locks = tuple((multiprocessing.Lock() for i in xrange(LIVE_SESSION_BUFFER_SIZE/SESSIONS_PER_LOCK)))
 
         saved_session_cursor_pipe = multiprocessing.Pipe(False)
+        saved_session2_cursor_pipe = multiprocessing.Pipe(False)
         saved_session_ring_buffer = multiprocessing.RawArray(session_class, RING_BUFFER_SIZE)
-        group_buffer = multiprocessing.RawArray(group_class, GROUP_BUFFER_SIZE)
-        group_alloc_pipe = multiprocessing.Pipe(False)
-        group_dealloc_pipe = multiprocessing.Pipe(False)
-        group_locks = tuple((multiprocessing.Lock() for i in xrange(GROUP_BUFFER_SIZE/GROUPS_PER_LOCK)))
+        saved_session2_ring_buffer = multiprocessing.RawArray(session_class, RING_BUFFER_SIZE)
+
         group_updater_saved_session_count = multiprocessing.Value(ctypes.c_uint64)
         group_updater_saved_session_count.value = 0
+        group2_updater_saved_session_count = multiprocessing.Value(ctypes.c_uint64)
+        group2_updater_saved_session_count.value = 0
+
+        group_buffer = multiprocessing.RawArray(group_class, GROUP_BUFFER_SIZE)
+        group2_buffer = multiprocessing.RawArray(group_class, GROUP_BUFFER_SIZE)
+        capture_group_buffer = multiprocessing.RawArray(group_class, CAPTURE_GROUP_BUFFER_SIZE)
+        capture_group2_buffer = multiprocessing.RawArray(group_class, CAPTURE_GROUP_BUFFER_SIZE)
+
+        group_alloc_pipe = multiprocessing.Pipe(False)
+        group_dealloc_pipe = multiprocessing.Pipe(False)
+        capture_group_alloc_pipe = multiprocessing.Pipe(False)
+        capture_group_dealloc_pipe = multiprocessing.Pipe(False)
+        group2_alloc_pipe = multiprocessing.Pipe(False)
+        group2_dealloc_pipe = multiprocessing.Pipe(False)
+        capture_group2_alloc_pipe = multiprocessing.Pipe(False)
+        capture_group2_dealloc_pipe = multiprocessing.Pipe(False)
+        group_locks = tuple((multiprocessing.Lock() for i in xrange(GROUP_BUFFER_SIZE/GROUPS_PER_LOCK)))
+        capture_group_locks = tuple((multiprocessing.Lock() for i in xrange(CAPTURE_GROUP_BUFFER_SIZE/CAPTURE_GROUPS_PER_LOCK)))
+        group2_locks = tuple((multiprocessing.Lock() for i in xrange(GROUP_BUFFER_SIZE/GROUPS_PER_LOCK)))
+        capture_group2_locks = tuple((multiprocessing.Lock() for i in xrange(CAPTURE_GROUP_BUFFER_SIZE/CAPTURE_GROUPS_PER_LOCK)))
+
         group_updater_group_alloc_count = multiprocessing.Value(ctypes.c_uint64)
         group_updater_group_alloc_count.value = 0
+        group2_updater_group_alloc_count = multiprocessing.Value(ctypes.c_uint64)
+        group2_updater_group_alloc_count.value = 0
         group_updater_group_dealloc_count = multiprocessing.Value(ctypes.c_uint64)
         group_updater_group_dealloc_count.value = 0
+        group2_updater_group_dealloc_count = multiprocessing.Value(ctypes.c_uint64)
+        group2_updater_group_dealloc_count.value = 0
+
         group_updater_session_history_count = multiprocessing.Value(ctypes.c_uint64)
         group_updater_session_history_count.value = 0
+        group2_updater_session_history_count = multiprocessing.Value(ctypes.c_uint64)
+        group2_updater_session_history_count.value = 0
+
         group_keeper_group_alloc_count = multiprocessing.Value(ctypes.c_uint64)
         group_keeper_group_alloc_count.value = 0
+        group2_keeper_group_alloc_count = multiprocessing.Value(ctypes.c_uint64)
+        group2_keeper_group_alloc_count.value = 0
         group_keeper_group_dealloc_count = multiprocessing.Value(ctypes.c_uint64)
         group_keeper_group_dealloc_count.value = 0
-        capture_group_buffer = multiprocessing.RawArray(group_class, 5)
+        group2_keeper_group_dealloc_count = multiprocessing.Value(ctypes.c_uint64)
+        group2_keeper_group_dealloc_count.value = 0
 
         packet_parser = multiprocessing.Process(target = packetParser, 
             args=(packet_cursor_pipe[1], parser_packet_count, 
@@ -274,27 +308,58 @@ def main():
                   live_session_alloc_pipe[0], live_session_dealloc_pipe[1], 
                   session_keeper_live_session_alloc_count, session_keeper_live_session_dealloc_count, 
                   saved_session_cursor_pipe[1], saved_session_ring_buffer, 
-                  session_keeper_saved_session_count, proto_opts))
+                  saved_session2_cursor_pipe[1], saved_session2_ring_buffer, 
+                  session_keeper_saved_session_count, 
+                  session_keeper_saved_session2_count, 
+                  proto_opts))
         group_updater = multiprocessing.Process(target = groupUpdater,
             args=(saved_session_cursor_pipe[0], group_updater_saved_session_count, 
-                  saved_session_ring_buffer, group_buffer, group_locks, 
+                  saved_session_ring_buffer, 
+                  group_buffer, group_locks, 
                   group_alloc_pipe[1],  group_dealloc_pipe[0], 
                   group_updater_group_alloc_count, group_updater_group_dealloc_count, 
-                  group_updater_session_history_count, proto_opts))
+                  group_updater_session_history_count, 
+                  capture_group_buffer, capture_group_locks, 
+                  capture_group_alloc_pipe[1], capture_group_dealloc_pipe[0], 
+                  proto_opts, <uint8_t>0))
         group_keeper = multiprocessing.Process(target = groupBookkeeper,
-            args=(group_buffer, group_locks, group_alloc_pipe[0], group_dealloc_pipe[1], 
+            args=(group_buffer, group_locks, 
+                  group_alloc_pipe[0], group_dealloc_pipe[1], 
                   group_keeper_group_alloc_count, group_keeper_group_dealloc_count, 
-                  capture_group_buffer, proto_opts))
+                  capture_group_buffer, capture_group_locks, 
+                  capture_group_alloc_pipe[0], capture_group_dealloc_pipe[1], 
+                  proto_opts, <uint8_t>0))
+
+        group2_updater = multiprocessing.Process(target = groupUpdater,
+            args=(saved_session2_cursor_pipe[0], group2_updater_saved_session_count, 
+                  saved_session2_ring_buffer, 
+                  group2_buffer, group2_locks, 
+                  group2_alloc_pipe[1],  group2_dealloc_pipe[0], 
+                  group2_updater_group_alloc_count, group2_updater_group_dealloc_count, 
+                  group2_updater_session_history_count, 
+                  capture_group2_buffer, capture_group2_locks, 
+                  capture_group2_alloc_pipe[1], capture_group2_dealloc_pipe[0], 
+                  proto_opts, <uint8_t>1))
+        group2_keeper = multiprocessing.Process(target = groupBookkeeper,
+            args=(group2_buffer, group2_locks, 
+                  group2_alloc_pipe[0], group2_dealloc_pipe[1], 
+                  group2_keeper_group_alloc_count, group2_keeper_group_dealloc_count, 
+                  capture_group2_buffer, capture_group2_locks, 
+                  capture_group2_alloc_pipe[0], capture_group2_dealloc_pipe[1], 
+                  proto_opts, <uint8_t>1))
 
         packet_parser.start()
         session_updater.start()
         session_keeper.start()
         group_updater.start()
         group_keeper.start()
+        group2_updater.start()
+        group2_keeper.start()
 
         prev_parser_packet_count = 0
         prev_session_updater_live_session_alloc_count = 0
         prev_group_updater_saved_session_count = 0
+        prev_group2_updater_saved_session_count = 0
         loop_count = 0
         while main_running:
             time.sleep(1)
@@ -318,21 +383,32 @@ def main():
 
             kssc = session_keeper_saved_session_count.value
             gussc = group_updater_saved_session_count.value
+            g2ussc = group2_updater_saved_session_count.value
             ssps = gussc - prev_group_updater_saved_session_count
+            ss2ps = g2ussc - prev_group2_updater_saved_session_count
             ssql = kssc - gussc  # saved_session queue length
             gugac = group_updater_group_alloc_count.value
+            g2ugac = group2_updater_group_alloc_count.value
             gugdc = group_updater_group_dealloc_count.value
+            g2ugdc = group2_updater_group_dealloc_count.value
             gushc = group_updater_session_history_count.value
+            g2ushc = group2_updater_session_history_count.value
 
             gkgac = group_keeper_group_alloc_count.value
+            g2kgac = group2_keeper_group_alloc_count.value
             gkgdc = group_keeper_group_dealloc_count.value
+            g2kgdc = group2_keeper_group_dealloc_count.value
             gklgc = gkgac - gkgdc # live group count
+            g2klgc = g2kgac - g2kgdc # live group2 count
             gaql = gugac - gkgac # group allocate q length
+            g2aql = g2ugac - g2kgac # group2 allocate q length
             gdql = gkgdc - gugdc # group de-allocate q length
+            g2dql = g2kgdc - g2ugdc # group2 de-allocate q length
 
             prev_parser_packet_count = ppc
             prev_session_updater_live_session_alloc_count = ulsac
             prev_group_updater_saved_session_count = gussc 
+            prev_group2_updater_saved_session_count = g2ussc 
 
             #print '{0:9d} {1:6d} > {2:3d} > {3:10d} {4:7d} > {5:4d}  {6:4d} < {7:8d} {8:7d}'.format(rsd, pps, ppql, supc, ulsps, saql, sdql, klsac, klsc)
             #if loop_count % 10 == 0:
@@ -343,21 +419,27 @@ def main():
 
             if loop_count % 10 == 0:
                 if loop_count % 20 != 0:
-                    print '{0:>10}{1:>5}{2:>14}{3:>5}{4:>14}{5:>5}{6:>11}{7:>5}{8:>11}{9:>5}'.format(
+                    print '{0:>10}{1:>5}{2:>14}{3:>5}{4:>14}{5:>5}{6:>11}{7:>5}{8:>10}{9:>5}{10:>11}{11:>5}{12:>10}{13:>5}'.format(
                     '---parser:', packet_parser.pid, 
-                    '---    -updtr:', session_updater.pid, 
-                    '-       --kpr:', session_keeper.pid,
+                    '--     -updtr:', session_updater.pid, 
+                    '-        --kpr:', session_keeper.pid,
                     '-  -gUpdtr:',group_updater.pid,
-                    '-     gKpr:', group_keeper.pid)
+                    '-   -gKpr:', group_keeper.pid,
+                    '- -g2Updtr:',group2_updater.pid,
+                    '-  -g2Kpr:', group2_keeper.pid)
                 else:
-                    print str(datetime.today().strftime("%a %m/%d/%y %H:%M:%S"))+' ----- d:h:m:s '+str(loop_count/86400)+':'+str((loop_count/3600)%24)+':'+str((loop_count/60)%60)+':'+str(loop_count%60)+' ---------------- sessionHist: '+str(gushc)
+                    print str(datetime.today().strftime("%a %m/%d/%y %H:%M:%S"))+' - - - - - d:h:m:s '+str(loop_count/86400)+':'+str((loop_count/3600)%24)+':'+str((loop_count/60)%60)+':'+str(loop_count%60)+' - - - - - gUpdtrSessHist: '+str(gushc)+' - - - - - g2UpdtrSessHist: '+str(g2ushc)
                 print start_bold,
-                print '{0:>8} {1:>6} {2:^4}  {3:>7}  {4:^4}  {5:^4}  {6:>7} {7:^4}  {8:>7} {9:^4}  {10:^4} {11:>8}'.format(
-                      'drop', 'pps',   ' ', 'lsps',   ' ',    ' ', 'liveSns', ' ',  'ssps',  ' ',    ' ', 'liveGrps'),
+                #print '{0:>8} {1:>6} {2:^4}  {3:>7}  {4:^4}__{5:^4}  {6:>7} {7:^4}  {8:>7} {9:^4}  {10:^4} {11:>8} {12:>7} {13:^4}  {14:^4} {15:>8}'.format(
+                #      'drop', 'pps',   ' ', 'lsps',   '',    ' ', 'liveSns', ' ',  'ssps',  ' ',    ' ', 'liveGrps', 'ss2ps', ' ', ' ', 'liveGrps2'),
+
+                    #       0  55114  422>     669  426>     0<  769487    0>    2783    0>    0<   42088     839    0>    0<   87193
+                hdr='    drop    pps .....    lsps ............ liveSns .....    ssps ...........  lvGrps   ss2ps ........... lvGrps2'
+                print hdr,
                 print end_bold
 
-            print '{0:9d} {1:6d} {2:4d}> {3:7d} {4:4d}>  {5:4d}< {6:7d} {7:4d}> {8:7d} {9:4d}> {10:4d}< {11:7d}'.format(
-                    rsd,   pps,   ppql,  ulsps,  saql,    sdql,   klsc,  ssql,   ssps,  gaql,    gdql,   gklgc)
+            print '{0:9d} {1:6d} {2:4d}> {3:7d} {4:4d}>  {5:4d}< {6:7d} {7:4d}> {8:7d} {9:4d}> {10:4d}< {11:7d} {12:7d} {13:4d}> {14:4d}< {15:7d}'.format(
+                    rsd,   pps,   ppql,  ulsps,  saql,    sdql,   klsc,  ssql,   ssps,  gaql,    gdql,   gklgc, ss2ps, g2aql, g2dql, g2klgc)
 
             loop_count += 1
             sys.stdout.flush()
@@ -368,8 +450,11 @@ def main():
         session_keeper.join(1)
         group_updater.join(1)
         group_keeper.join(1)
+        group2_updater.join(1)
+        group2_keeper.join(1)
         
         # Just in case...
+        time.sleep(1)
         if packet_parser.is_alive(): 
             print 'parser still alive...';sys.stdout.flush()
             #packet_parser.terminate()
@@ -385,6 +470,12 @@ def main():
         if group_keeper.is_alive(): 
             print 'group_keeper still alive...';sys.stdout.flush()
             #group_keeper.terminate()
+        if group2_updater.is_alive(): 
+            print 'group2_updater still alive...';sys.stdout.flush()
+            #group2_updater.terminate()
+        if group2_keeper.is_alive(): 
+            print 'group2_keeper still alive...';sys.stdout.flush()
+            #group2_keeper.terminate()
 
     else:
         # Original, uni-process ingest
