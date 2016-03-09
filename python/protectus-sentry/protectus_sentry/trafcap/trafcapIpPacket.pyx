@@ -391,7 +391,8 @@ cdef int parse_tcp_packet(GenericPacketHeaders* g_pkt, pfring_pkthdr* hdr) excep
     shared_pkt.port1 = hdr.extended_hdr.parsed_pkt.l4_src_port
     shared_pkt.port2 = hdr.extended_hdr.parsed_pkt.l4_dst_port
     shared_pkt.base.timestamp = <double>hdr.ts.tv_sec + (<double>hdr.ts.tv_usec / 1000000.0)
-    shared_pkt.vlan_id = hdr.extended_hdr.parsed_pkt.vlan_id
+    #shared_pkt.vlan_id = hdr.extended_hdr.parsed_pkt.vlan_id
+    shared_pkt.vlan_id = hdr.extended_hdr.parsed_pkt.vlan_id if trafcap.ingest_vlan_id else 0
     shared_pkt.bytes = hdr.c_len
     shared_pkt.flags = hdr.extended_hdr.parsed_pkt.tcp.flags
 
@@ -404,7 +405,8 @@ cdef int parse_udp_packet(GenericPacketHeaders* g_pkt, pfring_pkthdr* hdr) excep
     shared_pkt.port1 = hdr.extended_hdr.parsed_pkt.l4_src_port
     shared_pkt.port2 = hdr.extended_hdr.parsed_pkt.l4_dst_port
     shared_pkt.base.timestamp = <double>hdr.ts.tv_sec + (<double>hdr.ts.tv_usec / 1000000.0)
-    shared_pkt.vlan_id = hdr.extended_hdr.parsed_pkt.vlan_id
+    #shared_pkt.vlan_id = hdr.extended_hdr.parsed_pkt.vlan_id
+    shared_pkt.vlan_id = hdr.extended_hdr.parsed_pkt.vlan_id if trafcap.ingest_vlan_id else 0
     shared_pkt.bytes = hdr.c_len
 
 
@@ -1818,7 +1820,7 @@ class TcpPacket(IpPacket):
                     return (),[]
 
                 bytes1 = int(pkt[8].strip(':'))
-                vlan_id = int(pkt[10].strip(','))
+                vlan_id = int(pkt[10].strip(',')) if trafcap.ingest_vlan_id else None 
                 #vlan_pri = int(pkt[12].strip(','))
                 a1_1,a1_2,a1_3,a1_4,port1 = pkt[15].split(".")
                 a2_1,a2_2,a2_3,a2_4,port2 = pkt[17].strip(":").split(".")
@@ -2073,7 +2075,7 @@ class UdpPacket(IpPacket):
                 ports = [0, 0]
                 byts = [int(pkt[4]), 0]
                 proto = pkt[5]
-                vlan_id = int(pkt[1])
+                vlan_id = int(pkt[1]) if trafcap.ingest_vlan_id else None 
 
             # packets with port numbers with have length 7 or more
             elif '.' in pkt[1]:
@@ -2096,7 +2098,7 @@ class UdpPacket(IpPacket):
                 ports = [int(pkt[3]), int(pkt[5])]
                 byts = [int(pkt[6]), 0]
                 proto = " ".join(pkt[7:])
-                vlan_id = int(pkt[1])
+                vlan_id = int(pkt[1]) if trafcap.ingest_vlan_id else None 
 
             # Represent IP addresses a tuples instead of strings
             addr1 = (int(a1_1), int(a1_2), int(a1_3), int(a1_4))
@@ -2372,7 +2374,7 @@ class IcmpPacket(IpPacket):
                 # seq in decimal = pkt[6], seq in hex = pkt[7], vlan_id = pkt[8]
                 seq = pkt[6]
                 if len(pkt) == 9:
-                    vlan_id = int(pkt[8])
+                    vlan_id = int(pkt[8]) if trafcap.ingest_vlan_id else None 
                 elif len(pkt) == 8:
                     vlan_id = None
                 else:
@@ -2380,7 +2382,7 @@ class IcmpPacket(IpPacket):
             else:
                 seq = 0 
                 if len(pkt) == 7:
-                    vlan_id = int(pkt[6])
+                    vlan_id = int(pkt[6]) if trafcap.ingest_vlan_id else None 
                 elif len(pkt) == 6:
                     vlan_id = None
                 else:
