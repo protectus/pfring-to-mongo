@@ -62,6 +62,9 @@ def parseOptions():
     parser.add_option("-p", "--process", dest="process",
                       action="store_true", default=False,
                       help="use multi-process ingest with pf_ring")
+    parser.add_option("-g", "--group", dest="group",
+                      action="store_true", default=False,
+                      help="perform group processing")
     (options, args) = parser.parse_args()
     return options
 

@@ -510,11 +510,12 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
                         current_saved_session.te = min(second_to_write -1 , <uint64_t>current_saved_session.te) 
                         current_saved_session2.te = min(second_to_write -1 , <uint64_t>current_saved_session2.te) 
     
-                        # Send saved_session_cursor to groupsUpdater
-                        saved_session_cursor_pipe.send_bytes(py_current_saved_session_cursor)
-                        saved_session2_cursor_pipe.send_bytes(py_current_saved_session2_cursor)
-                        session_keeper_saved_session_count.value += 1
-                        session_keeper_saved_session2_count.value += 1
+                        # Send saved_session_cursor to groupsUpdater if groups processing is enabled at startup
+                        if trafcap.options.group:
+                            saved_session_cursor_pipe.send_bytes(py_current_saved_session_cursor)
+                            saved_session2_cursor_pipe.send_bytes(py_current_saved_session2_cursor)
+                            session_keeper_saved_session_count.value += 1
+                            session_keeper_saved_session2_count.value += 1
                         # Increment saved_session_cursor
                         saved_session_cursor_p[0] = (saved_session_cursor_p[0] + 1) % RING_BUFFER_SIZE 
                         saved_session2_cursor_p[0] = (saved_session2_cursor_p[0] + 1) % RING_BUFFER_SIZE 
