@@ -750,7 +750,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
     #     Let the "database #     phase" tell us when it's done with a session_group.
     try:
         while groupUpdater_running:
-            while saved_session_cursor_pipe.poll():
+            while saved_session_cursor_pipe.poll(0.02):
                 if session_status == 0:
                     # Get and process a new saved_session.  If the previous saved_session flowed
                     # over a group boundary and is stil being processed, then skip steps in this if
