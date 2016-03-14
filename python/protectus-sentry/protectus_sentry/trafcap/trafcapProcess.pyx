@@ -920,7 +920,8 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                                                                              (new_slot_number_p[0] * group_struct_size)))]
                 #print "De-dictionary-ing session at slot", new_slot_number_p[0]
 
-            if capture_group_dealloc_pipe.poll():
+            # There are a small number of capture_group slots so clean them all up to prevent running out
+            while capture_group_dealloc_pipe.poll():
                 capture_group_dealloc_pipe.recv_bytes_into(new_capture_slot_number_pipeable)
                 # Recycle the slot
                 available_capture_group_slots.append(new_capture_slot_number_pipeable.value)
@@ -1316,7 +1317,7 @@ def groupBookkeeper(group_buffer, group_locks,
                             # into a python Pipe.
                             capture_group_slot_p[0] = capture_slot  # Linked to py_current_group_slot!
                             capture_group_dealloc_pipe.send_bytes(py_current_capture_group_slot)
-                            print group_type, "Deallocating capture_group slot in groupBookkeeper", capture_group_slot_p[0], group_copy.tbm
+                            #print group_type, "Deallocating capture_group slot in groupBookkeeper", capture_group_slot_p[0], group_copy.tbm
                             next_scheduled_checkup_time = 0 
                         else:
                             # Otherwise reschedule the group
