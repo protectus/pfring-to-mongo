@@ -750,7 +750,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
     #     Let the "database #     phase" tell us when it's done with a session_group.
     try:
         while groupUpdater_running:
-            while saved_session_cursor_pipe.poll(0.02):
+            while saved_session_cursor_pipe.poll(0.001):
                 if session_status == 0:
                     # Get and process a new saved_session.  If the previous saved_session flowed
                     # over a group boundary and is stil being processed, then skip steps in this if
@@ -782,8 +782,8 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     
                 capture_group_slot = capture_group_slot_map.get(capture_group_key, -1)
                 if capture_group_slot == -1:
+                    print group_type, 'Allocating capture_group_slot:', new_capture_slot_number_p[0], capture_group_key, len(available_capture_group_slots)
                     new_capture_slot_number_p[0] = available_capture_group_slots.popleft()
-                    #print group_type, 'Allocating capture_group_slot:', new_capture_slot_number_p[0], capture_group_key
                     capture_group = <GenericGroup *>(capture_group_buffer_addr + 
                                                      (new_capture_slot_number_p[0] * group_struct_size))
     
@@ -927,7 +927,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                 # Generate a key so we can delete it from the dictionary
                 capture_group = <GenericGroup *>(capture_group_buffer_addr + 
                                                         (new_capture_slot_number_p[0] * group_struct_size))
-                #print group_type, "Deallocating capture_group slot", new_capture_slot_number_p[0], capture_group.tbm
+                print group_type, "Deallocating capture_group slot", new_capture_slot_number_p[0], capture_group.tbm, len(available_capture_group_slots)
                 del capture_group_slot_map[capture_group.tbm]
 
             # Expire sets fo sessions in session_history.  A session # might live in session_history 
@@ -1304,12 +1304,9 @@ def groupBookkeeper(group_buffer, group_locks,
 
                     #Group has not changed since last write
                     else:
-                        # Group deallocates occur in large batches.  Deallocate pipe will overflow
-                        # if too many groups are deallocated at once.  Observations show 
-                        # that the pipe can handle ~8000 slots.  Deallocate only some slots at this time.
-                        # Other expire groups will be deallocated next time through.
-                        # Expire group after group time window (15 min or 180 min) passes
-                        if (group_copy.tbm + group_time_window*60) < second_to_write:
+                        # Expire capture_group after group time window (15 min or 180 min) passes plus some
+                        # delay to ensure sufficient time for writing to db
+                        if (group_copy.tbm + group_time_window*60 + 60) < second_to_write:
                             # Group has expired - deallocate and clean-up
                             # Write to groupUpdater about a newly freed slot.  On this
                             # end, we have free up the objectid slot.
@@ -1319,6 +1316,7 @@ def groupBookkeeper(group_buffer, group_locks,
                             # into a python Pipe.
                             capture_group_slot_p[0] = capture_slot  # Linked to py_current_group_slot!
                             capture_group_dealloc_pipe.send_bytes(py_current_capture_group_slot)
+                            print group_type, "Deallocating capture_group slot in groupBookkeeper", capture_group_slot_p[0], group_copy.tbm
                             next_scheduled_checkup_time = 0 
                         else:
                             # Otherwise reschedule the group
