@@ -123,7 +123,13 @@ class BrowserNmiPacket(NmiPacket):
             ip = [pkt[2]]
             mac = pkt[3]
             a_index = pkt.index('Announcement')
-            name = [pkt[a_index+1].strip(',')]
+
+            # Handle this: Host Announcement BRIDGERS[Packet size limited during capture]
+            if '[' in pkt[a_index+1]:
+                name = [pkt[a_index+1].split('[')[0]]
+            else:
+                name = [pkt[a_index+1].strip(',')]
+
             if name == ['WORKGROUP']:
                 return pkt_time, []
             return pkt_time, ['BRW', name, mac, ip]
@@ -184,6 +190,18 @@ class DnsNmiPacket(NmiPacket):
             # 1360806194.207006 DNS 192.168.168.1 00:13:10:1a:a2:88 192.168.168.35 0x39f7 Standard query response 0x39f7
             if len(pkt) < 11:   return 0, []
 
+            # Handle this case:
+            #  1375454775.464517 DNS 216.21.236.249 54:75:d0:3e:55:fb 10.200.129.202 
+            #  0x8a71 Standard query response 0x8a71  
+            #  CNAME my-load-balancer-953617886.us-east.elb.amazonaws.com[Malformed Packet]
+            # or
+            # ..... Standard query response 0xd0d4  A 23.0.160.74 A[Malformed Packet]
+            # or
+            # .....  0xa0f9 Standard query response 0xa0f9 [Malformed Packet]
+            if pkt[-1] == 'Packet]': pkt.pop(-1)
+            if pkt[-1] == '[Malformed': pkt.pop(-1)
+            if '[' in pkt[-1]: pkt[-1] = pkt[-1].split('[')[0]
+
             pkt_time = float(pkt[0])
             #print "   pkt: ", pkt
             if pkt[6:9] == ['Standard', 'query', 'response']:
@@ -209,18 +227,14 @@ class DnsNmiPacket(NmiPacket):
                         ip_list.append(pkt.pop(10))
                         if fqhn_or_ip not in name_list:
                             name_list.append(fqhn_or_ip)
-# Handle this case:
-#  1375454775.464517 DNS 216.21.236.249 54:75:d0:3e:55:fb 10.200.129.202 
-#  0x8a71 Standard query response 0x8a71  
-#  CNAME my-load-balancer-953617886.us-east.elb.amazonaws.com[Malformed Packet]
                     elif reply_type == 'CNAME':
                         pkt.pop(10)  # throw away the 'CNAME'
                         cname_val = pkt.pop(10)
-                        if cname_val.endswith('[Malformed'):
-                            cname_val = cname_val[:-10]
-                            # Eliminate trailing 'Packet]' or exception will
-                            # be thrown next time through loop
-                            throw_away = pkt.pop(10) 
+                        #if cname_val.endswith('[Malformed'):
+                        #    cname_val = cname_val[:-10]
+                        #    # Eliminate trailing 'Packet]' or exception will
+                        #    # be thrown next time through loop
+                        #    throw_away = pkt.pop(10) 
                         name_list.append(cname_val)
                         if fqhn_or_ip not in name_list:
                             name_list.append(fqhn_or_ip)

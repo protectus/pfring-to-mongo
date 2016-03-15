@@ -171,6 +171,7 @@ def main():
 
                     else:
                         print "Invalid input..."
+                        print a_line
                         raise Exception("Unexpected protocol.")
 
                 except Exception, e:
