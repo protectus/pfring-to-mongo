@@ -750,7 +750,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
     #     Let the "database #     phase" tell us when it's done with a session_group.
     try:
         while groupUpdater_running:
-            while saved_session_cursor_pipe.poll(0.001):
+            if saved_session_cursor_pipe.poll(0.001):
                 if session_status == 0:
                     # Get and process a new saved_session.  If the previous saved_session flowed
                     # over a group boundary and is stil being processed, then skip steps in this if
@@ -782,7 +782,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     
                 capture_group_slot = capture_group_slot_map.get(capture_group_key, -1)
                 if capture_group_slot == -1:
-                    print group_type, 'Allocating capture_group_slot:', new_capture_slot_number_p[0], capture_group_key, len(available_capture_group_slots)
+                    print group_type, 'Allocating capture_group_slot:', new_capture_slot_number_p[0], ', key:',capture_group_key, ' qlen:', len(available_capture_group_slots)
                     new_capture_slot_number_p[0] = available_capture_group_slots.popleft()
                     capture_group = <GenericGroup *>(capture_group_buffer_addr + 
                                                      (new_capture_slot_number_p[0] * group_struct_size))
@@ -920,15 +920,14 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                                                                              (new_slot_number_p[0] * group_struct_size)))]
                 #print "De-dictionary-ing session at slot", new_slot_number_p[0]
 
-            # There are a small number of capture_group slots so clean them all up to prevent running out
-            while capture_group_dealloc_pipe.poll():
+            if capture_group_dealloc_pipe.poll():
                 capture_group_dealloc_pipe.recv_bytes_into(new_capture_slot_number_pipeable)
                 # Recycle the slot
                 available_capture_group_slots.append(new_capture_slot_number_pipeable.value)
                 # Generate a key so we can delete it from the dictionary
                 capture_group = <GenericGroup *>(capture_group_buffer_addr + 
                                                         (new_capture_slot_number_p[0] * group_struct_size))
-                print group_type, "Deallocating capture_group slot", new_capture_slot_number_p[0], capture_group.tbm, len(available_capture_group_slots)
+                print group_type, "Deallocating capture_group slot", new_capture_slot_number_p[0], ', key:', capture_group.tbm, ', qlen:', len(available_capture_group_slots)
                 del capture_group_slot_map[capture_group.tbm]
 
             # Expire sets fo sessions in session_history.  A session # might live in session_history 
