@@ -186,10 +186,6 @@ class DnsNmiPacket(NmiPacket):
         name_list = []     # Hostnames 
 
         try:
-            # Sanity check for valid DNS response.  An empty response will look like this:
-            # 1360806194.207006 DNS 192.168.168.1 00:13:10:1a:a2:88 192.168.168.35 0x39f7 Standard query response 0x39f7
-            if len(pkt) < 11:   return 0, []
-
             # Handle this case:
             #  1375454775.464517 DNS 216.21.236.249 54:75:d0:3e:55:fb 10.200.129.202 
             #  0x8a71 Standard query response 0x8a71  
@@ -202,8 +198,15 @@ class DnsNmiPacket(NmiPacket):
             if pkt[-1] == '[Malformed': pkt.pop(-1)
             if '[' in pkt[-1]: pkt[-1] = pkt[-1].split('[')[0]
 
+            # If [Malfored Packet] was removed and last item is a type, then remove now-useless type
+            if pkt[-1] in  ['A', 'CNAME', 'PTR', 'RRSIG']:
+                pkt.pop()     # removes last item
+
+            # Sanity check for valid DNS response.  An empty response will look like this:
+            # 1360806194.207006 DNS 192.168.168.1 00:13:10:1a:a2:88 192.168.168.35 0x39f7 Standard query response 0x39f7
+            if len(pkt) < 11:   return 0, []
+
             pkt_time = float(pkt[0])
-            #print "   pkt: ", pkt
             if pkt[6:9] == ['Standard', 'query', 'response']:
                 dns_id = pkt[5] 
                 src = pkt[4]
@@ -221,7 +224,6 @@ class DnsNmiPacket(NmiPacket):
                 reply_type = pkt[10]
 
                 while len(pkt) > 10 and reply_type in ['A', 'CNAME', 'PTR', 'RRSIG']:
-                    reply_type = pkt[10]    # needed for when loop repeats
                     if reply_type == 'A':
                         pkt.pop(10)  # throw away the 'A' 
                         ip_list.append(pkt.pop(10))
@@ -248,6 +250,7 @@ class DnsNmiPacket(NmiPacket):
                     else:
                         raise Exception("Unable to parse DNS traffic - \
                                          did not find A, CNAME, RRSIG, or PTR")
+                    if len(pkt) > 10: reply_type = pkt[10]    # needed for when loop repeats
 
             #1425349005.662003 DNS 10.200.129.210 3c:4a:92:2c:c4:00 4.2.2.2      0x1a27 Standard query 0x1a27  A sb.l.google.com[Malformed Packet]
             if pkt[6:8] == ['Standard', 'query'] and pkt[9] == 'A':
@@ -293,6 +296,8 @@ class DnsNmiPacket(NmiPacket):
                 pc.dns_req.pop(a_key)
 
         except Exception, e:
+            print str(e)
+            traceback.print_exc()
             raise Exception("Unable to parse DNS traffic." )
 
         if (len(ip_list) > 0 or len(name_list) > 0):
