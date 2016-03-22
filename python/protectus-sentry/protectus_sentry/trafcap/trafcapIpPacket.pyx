@@ -1369,6 +1369,11 @@ cdef int write_tcp_group(object group_bulk_writer, object group_collection, list
                 if not trafcap.options.quiet:
                     print e, group_update,traceback.format_exc()
                 trafcap.logException(e, group_update=group_update)
+
+    # debug
+    #if group.port2 == 37:
+    #    print 'Writing:  ne:',group.base.ne, 'ns:',group.base.ns
+
     return 0 
 
 
@@ -1633,7 +1638,7 @@ cdef int update_udp_group(GenericGroup* g_group, GenericSession* g_session, Gene
     # session fit into one group
     return 0
 
-cdef int update_group_counts(object session_key, object session_history, uint64_t set_tbm, 
+cdef int update_group_counts(object session_key, object session_history, uint8_t group_type, 
                              GenericGroup* group, object counter) except -1:
     # Session accounting needed to properly create group's entries for:
     #   ns: number of sessions started within a group
@@ -1662,12 +1667,18 @@ cdef int update_group_counts(object session_key, object session_history, uint64_
             if session_key in session_set:
                 session_in_prev_group = True
 
-        if not session_in_current_group:
-            if not session_in_prev_group:
-                group.ns += 1
-                counter.value += 1
-            else:
-                group.ne += 1
+    if not session_in_current_group:
+        if not session_in_prev_group:
+            group.ns += 1
+            counter.value += 1
+        else:
+            group.ne += 1
+
+    # debug
+    #tcp_group = <TCPGroup *>group
+    #if tcp_group.port2 == 37 and group_type == 0:
+    #    print 'p2=37: ', 'ne:',group.ne, 'ns:',group.ns, 'prev:',session_in_prev_group, \
+    #          'curr:',session_in_current_group, session_set_tbm 
 
 #cdef int share_bytes_doc(GenericBytesDoc* g_doc, object bytes_doc) except -1:
 #    cdef TCPBytesDoc* tcp_bytes_doc = <TCPBytesDoc*>g_doc

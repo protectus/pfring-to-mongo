@@ -819,8 +819,13 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     cap_lock.release() 
     
                     # Group just allocated & not being access elsewhere yet so no need to lock it
-                    update_group_counts(session_key, session_history, capture_group_key, group, group_updater_session_history_count)
+                    update_group_counts(session_key, session_history, group_type, group, group_updater_session_history_count)
     
+                    # debug
+                    #tcp_group = <TCPGroup *>group
+                    #if tcp_group.port2 == 37 and group_type == 0:
+                    #   print group_type, 'p2=37: ', 'ne:',group.ne, 'ns:',group.ns, 'slot:',new_slot_number_p[0], 'ss:',session_status
+
                     # Map the key to the new group 
                     group_slot_map[group_key] = new_slot_number_p[0] 
                     
@@ -850,8 +855,13 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     # Done updating capture_group but still updating session_group
                     cap_lock.release()
     
-                    update_group_counts(session_key, session_history, capture_group_key, group, group_updater_session_history_count)
+                    update_group_counts(session_key, session_history, group_type, group, group_updater_session_history_count)
     
+                    # debug
+                    #tcp_group = <TCPGroup *>group
+                    #if tcp_group.port2 == 37 and group_type == 0:
+                    #    print group_type, 'p2=37: ', 'ne:',group.ne, 'ns:',group.ns, 'slot:',group_slot, 'ss:',session_status
+
                     # for debug
                     #if group_slot == tracked_group_slot:
                     #    tcp_group = <TCPGroup *>group
