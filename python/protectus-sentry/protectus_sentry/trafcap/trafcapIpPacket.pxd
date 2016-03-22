@@ -199,4 +199,4 @@ cdef int update_udp_group(GenericGroup* group, GenericSession* session, GenericG
 cdef inline uint64_t peg_to_15minute(uint64_t timestamp)
 cdef inline uint64_t peg_to_180minute(uint64_t timestamp)
 
-cdef int update_group_counts(object session_key, object session_history, uint64_t set_tbm, GenericGroup* group, object counter) except -1
+cdef int update_group_counts(object session_key, object session_history, uint8_t set_tbm, GenericGroup* group, object counter) except -1
