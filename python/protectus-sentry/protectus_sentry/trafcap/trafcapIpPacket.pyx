@@ -964,16 +964,17 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
     else:
         # If we're not inserting a new doc, we're updating an existing one.
-        info_update = {
-            "$set": {
-                "b1": int(session.bytes1),
-                "b2": int(session.bytes2),
-                "bt": int(session.bytes1+session.bytes2),
-                "pk": int(session.base.packets),
-                "te": session.base.te,
-                "tem": peg_to_minute(<uint64_t>session.base.te)
-            }
-        }
+        set_doc = { "b1": int(session.bytes1),
+                    "b2": int(session.bytes2),
+                    "bt": int(session.bytes1+session.bytes2),
+                    "pk": int(session.base.packets),
+                    "te": session.base.te,
+                    "tem": peg_to_minute(<uint64_t>session.base.te) }
+
+        tdm = (<int>(session.base.te - session.base.tb)) / 60
+        if tdm >= trafcap.lrs_min_duration: set_doc['tdm'] = tdm
+
+        info_update = { "$set": set_doc } 
 
         if trafcap.options.mongo:
             try:
@@ -1140,16 +1141,17 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
     else:
         # If we're not inserting a new doc, we're updating an existing one.
-        info_update = {
-            "$set": {
-                "b1": int(session.bytes1),
-                "b2": int(session.bytes2),
-                "bt": int(session.bytes1+session.bytes2),
-                "pk": int(session.base.packets),
-                "te": session.base.te,
-                "tem": peg_to_minute(<uint64_t>session.base.te)
-            }
-        }
+        set_doc = { "b1": int(session.bytes1),
+                    "b2": int(session.bytes2),
+                    "bt": int(session.bytes1+session.bytes2),
+                    "pk": int(session.base.packets),
+                    "te": session.base.te,
+                    "tem": peg_to_minute(<uint64_t>session.base.te) }
+
+        tdm = (<int>(session.base.te - session.base.tb)) / 60
+        if tdm >= trafcap.lrs_min_duration: set_doc['tdm'] = tdm
+
+        info_update = { "$set": set_doc }
 
         if trafcap.options.mongo:
             try:
