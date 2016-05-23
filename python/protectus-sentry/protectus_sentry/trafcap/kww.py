@@ -133,6 +133,9 @@ def main():
         elif "_injIp" in coll_name:
             begin_name = 'tb'
             end_name = 'texp'
+        elif "_injAllowIp" in coll_name:
+            begin_name = 'tb'
+            end_name = 'tb'
         else:
             begin_name = 'tbm'
             end_name = 'tem'
