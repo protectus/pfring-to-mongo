@@ -125,13 +125,14 @@ class BrowserNmiPacket(NmiPacket):
             a_index = pkt.index('Announcement')
 
             # Handle this: Host Announcement BRIDGERS[Packet size limited during capture]
-            if '[' in pkt[a_index+1]:
-                name = [pkt[a_index+1].split('[')[0]]
+            if pkt[a_index-1] == 'Host' or pkt[a_index-1] == 'Master':
+                if '[' in pkt[a_index+1]:
+                    name = [pkt[a_index+1].split('[')[0]]
+                else:
+                    name = [pkt[a_index+1].strip(',')]
             else:
-                name = [pkt[a_index+1].strip(',')]
-
-            if name == ['WORKGROUP']:
                 return pkt_time, []
+
             return pkt_time, ['BRW', name, mac, ip]
 
         except ValueError:
