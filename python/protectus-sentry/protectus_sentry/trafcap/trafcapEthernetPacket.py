@@ -300,7 +300,7 @@ class OtherPacket(EthernetPacket):
 
     @classmethod
     def startSniffer(pc):
-        filter = 'not (ip and tcp) and not (ip and udp) and not icmp ' + trafcap.cap_filter
+        filter = 'ip and not tcp and not udp and not icmp ' + trafcap.cap_filter
         proc = subprocess.Popen(['/usr/bin/tshark', 
                '-i', trafcap.sniff_interface, 
                '-te', '-n', '-l',
@@ -311,7 +311,7 @@ class OtherPacket(EthernetPacket):
                '-o', 
                'column.format:"""time","%t", "vl","%Cus:vlan.id", "src","%s", "len","%Cus:frame.len", "dst","%d", "proto","%p", "i","%i"""',
                '-f',
-               '('+filter+' and not vlan) or (vlan and '+filter+')'],
+               '('+filter+') or (vlan and '+filter+')'],
                bufsize=-1,
                stdout=subprocess.PIPE, stderr=sys.stdout.fileno())
         return proc
