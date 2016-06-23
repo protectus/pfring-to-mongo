@@ -717,6 +717,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
     cdef GenericGroup* capture_group 
     # Cythonize access to the shared capture_group_buffer 
     cdef long capture_group_buffer_addr = ctypes.addressof(capture_group_buffer)
+    cdef int capture_group_struct_size = ctypes.sizeof(capture_group_buffer) / len(capture_group_buffer)
 
     # Bookkeeping data for capture groups which are maintained by group_updater.
     # Multiple capture groups are needed.  Two saved_session_groups in the same 
@@ -769,6 +770,10 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     # One session maps to two groups if session crosses group's time window boundary.
             
                     session_key = generate_session_key_from_session_function[0](saved_session)
+                else:
+                    # Debug
+                    #cdef TCPSession* a_tcp_session = <TCPSession*>saved_session
+                    print group_type, ' session_status = 1, saved_session.tb:', saved_session.tb, 'session_key:', session_key
     
                 # Get the group key and let the dictionary tell us which slot the group occupies.
                 # The saved_session is either  1)set above (new session) or 
@@ -782,17 +787,20 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     
                 capture_group_slot = capture_group_slot_map.get(capture_group_key, -1)
                 if capture_group_slot == -1:
-                    print group_type, 'Allocating capture_group_slot:', new_capture_slot_number_p[0], ', key:',capture_group_key, ' qlen:', len(available_capture_group_slots)
                     new_capture_slot_number_p[0] = available_capture_group_slots.popleft()
                     capture_group = <GenericGroup *>(capture_group_buffer_addr + 
-                                                     (new_capture_slot_number_p[0] * group_struct_size))
+                                                     (new_capture_slot_number_p[0] * capture_group_struct_size))
     
+                    print group_type, '   Allocated capture_group_slot', new_capture_slot_number_p[0], ', key:',capture_group_key, ' qlen:', len(available_capture_group_slots)
                     # No need to lock group yet - it is only known about here until sent over pipe
                     init_capture_group_function[0](capture_group)
     
                     # Map slot for future reference
                     capture_group_slot_map[capture_group_key] = new_capture_slot_number_p[0]  
     
+                    for key in capture_group_slot_map:
+                        print group_type, '     capture_group_slot_map[', key, '] = ', capture_group_slot_map[key]
+
                     # Tell the next phase about the new capture group
                     capture_group_alloc_pipe.send_bytes(new_capture_slot_number_pipeable)
     
@@ -801,7 +809,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     group_updater_session_history_count.value = 0
                 else:
                     capture_group = <GenericGroup *>(capture_group_buffer_addr + 
-                                                    (capture_group_slot * group_struct_size))
+                                                    (capture_group_slot * capture_group_struct_size))
          
                 if (group_slot == -1):
                     # Create new group from session 
@@ -936,9 +944,12 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                 available_capture_group_slots.append(new_capture_slot_number_pipeable.value)
                 # Generate a key so we can delete it from the dictionary
                 capture_group = <GenericGroup *>(capture_group_buffer_addr + 
-                                                        (new_capture_slot_number_p[0] * group_struct_size))
-                print group_type, "Deallocating capture_group slot", new_capture_slot_number_p[0], ', key:', capture_group.tbm, ', qlen:', len(available_capture_group_slots)
+                                                        (new_capture_slot_number_p[0] * capture_group_struct_size))
+                print group_type, " Deallocated capture_group_slot", new_capture_slot_number_p[0], ', key:', capture_group.tbm, ', qlen:', len(available_capture_group_slots)
                 del capture_group_slot_map[capture_group.tbm]
+
+                for key in capture_group_slot_map:
+                    print group_type, '     capture_group_slot_map[', key, '] = ', capture_group_slot_map[key]
 
             # Expire sets fo sessions in session_history.  A session # might live in session_history 
             # a little longer than needed but that is OK.  Precision is not required.  Iterate
@@ -999,6 +1010,7 @@ def groupBookkeeper(group_buffer, group_locks,
 
     # Cythonize access to the capture buffer
     cdef long capture_group_buffer_addr = ctypes.addressof(capture_group_buffer)
+    cdef int capture_group_struct_size = ctypes.sizeof(capture_group_buffer) / len(capture_group_buffer)
 
     # Create a corresponding bunch of slots for mongoids
     cdef list group_object_ids = [None for x in range(GROUP_BUFFER_SIZE)]
@@ -1018,6 +1030,7 @@ def groupBookkeeper(group_buffer, group_locks,
     cdef GenericGroup* capture_group
 
     cdef GenericGroup* group_copy = <GenericGroup*>malloc(group_struct_size)
+    cdef GenericGroup* capture_group_copy = <GenericGroup*>malloc(capture_group_struct_size)
     #cdef uint64_t group_start_second
     cdef uint64_t group_end_second
 
@@ -1136,7 +1149,7 @@ def groupBookkeeper(group_buffer, group_locks,
 
                 # Since session_buffer is now generic, we need to do memory addresses ourselves.
                 capture_group = <GenericGroup *>(capture_group_buffer_addr + 
-                                                 (capture_group_slot_p[0] * group_struct_size))
+                                                 (capture_group_slot_p[0] * capture_group_struct_size))
                 # This is this session's first check-in.  We need to schedule the first check-up.
     
                 # The schedule structure is GROUPS_SCHEDULE_SIZE (30) rows or slots.  Since group db writes
@@ -1284,11 +1297,11 @@ def groupBookkeeper(group_buffer, group_locks,
                     #print "Reading",schedule_row_number,i,":",schedule[schedule_row_number][i]
                     capture_slot = capture_slots_to_write[i]
                     # Get the group from the buffer
-                    capture_group = <GenericGroup *>(capture_group_buffer_addr + (capture_slot * group_struct_size))
+                    capture_group = <GenericGroup *>(capture_group_buffer_addr + (capture_slot * capture_group_struct_size))
                     capture_lock = capture_group_locks[capture_slot % CAPTURE_GROUPS_PER_LOCK] 
                     capture_lock.acquire()
                     # Get the data we need as quickly as possible so we can release the lock.
-                    memcpy(group_copy, capture_group, group_struct_size)
+                    memcpy(capture_group_copy, capture_group, capture_group_struct_size)
                     if capture_group.csldw: capture_group.csldw = 0
                     capture_lock.release()
     
@@ -1302,12 +1315,12 @@ def groupBookkeeper(group_buffer, group_locks,
                     # - group has not changed so no db write and group has:
                     #    - not yet expired - allow it to stay in the schedule for future updates
                     #    - expired - deallocate it
-                    if group_copy.csldw:
+                    if capture_group_copy.csldw:
                         # Group has changed, write to db.  Writing groups data that is between 60 and 30 seconds 
                         # old. Write 30 seconds of data starting from second_to_write which is approx. 60 seconds 
                         # delayed from real-time.
                         (write_group_function[0])(capture_group_bulk_writer, capture_group_coll, capture_group_object_ids, 
-                                                  group_copy, capture_slot, group_type)
+                                                  capture_group_copy, capture_slot, group_type)
 
                         # Reschedule the group
                         next_scheduled_checkup_time = second_to_write + GROUP_SCHEDULE_PERIOD 
@@ -1316,7 +1329,7 @@ def groupBookkeeper(group_buffer, group_locks,
                     else:
                         # Expire capture_group after group time window (15 min or 180 min) passes plus some
                         # delay to ensure sufficient time for writing to db
-                        if (group_copy.tbm + group_time_window*60 + 60) < second_to_write:
+                        if (capture_group_copy.tbm + group_time_window*60 + 60) < second_to_write:
                             # Group has expired - deallocate and clean-up
                             # Write to groupUpdater about a newly freed slot.  On this
                             # end, we have free up the objectid slot.
@@ -1325,8 +1338,8 @@ def groupBookkeeper(group_buffer, group_locks,
                             # We're still linking to a python struct to get raw bytes
                             # into a python Pipe.
                             capture_group_slot_p[0] = capture_slot  # Linked to py_current_group_slot!
+                            print group_type, 'Deallocating capture_group_slot', capture_group_slot_p[0], '      ', capture_group_copy.tbm, 'in groupBookkeeper'
                             capture_group_dealloc_pipe.send_bytes(py_current_capture_group_slot)
-                            #print group_type, "Deallocating capture_group slot in groupBookkeeper", capture_group_slot_p[0], group_copy.tbm
                             next_scheduled_checkup_time = 0 
                         else:
                             # Otherwise reschedule the group
