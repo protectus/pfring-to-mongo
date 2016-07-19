@@ -1227,10 +1227,11 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
     return 0 
 
-cdef int init_tcp_capture_group(GenericGroup* g_group):
+cdef int init_tcp_capture_group(GenericGroup* g_group, uint8_t group_type, uint64_t session_tb):
     cdef TCPGroup* group = <TCPGroup*>g_group
     memset(group, 0, sizeof(TCPGroup))
-    #group.base.tbm = peg_to_15minute(time.time())
+    group.base.tbm = peg_to_180minute(session_tb) if group_type else \
+                     peg_to_15minute(session_tb)
     #group.base.tem = peg_to_minute(time.time())
     #group.base.csldw = 0 
     group.base.ne = 1
@@ -1238,10 +1239,11 @@ cdef int init_tcp_capture_group(GenericGroup* g_group):
     return 0
 
 
-cdef int init_udp_capture_group(GenericGroup* g_group):
+cdef int init_udp_capture_group(GenericGroup* g_group, uint8_t group_type, uint64_t session_tb):
     cdef UDPGroup* group = <UDPGroup*>g_group
     memset(group, 0, sizeof(UDPGroup))
-    #group.base.tbm = peg_to_15minute(time.time())
+    group.base.tbm = peg_to_180minute(session_tb) if group_type else \
+                     peg_to_15minute(session_tb)
     #group.base.tem = peg_to_minute(time.time())
     #group.base.csldw = 0 
     group.base.ne = 1
@@ -1420,10 +1422,11 @@ cdef int generate_tcp_group(GenericGroup* g_group, GenericSession* g_session, Ge
         group.base.traffic_bytes[i][0] = 0 
         group.base.traffic_bytes[i][1] = 0 
 
-    # cap_group may or may-not be new.  If new, other init is already done
-    if cap_group.base.tbm == 0:
-        cap_group.base.tbm = peg_to_180minute(<uint64_t>session.base.tb) if group_type else \
-                             peg_to_15minute(<uint64_t>session.base.tb)
+    # Move setting of cap_group.base.tbm to init_capture_group function
+    ## cap_group may or may-not be new.  If new, other init is already done
+    #if cap_group.base.tbm == 0:
+    #    cap_group.base.tbm = peg_to_180minute(<uint64_t>session.base.tb) if group_type else \
+    #                         peg_to_15minute(<uint64_t>session.base.tb)
     cap_group.base.tem = peg_to_minute(<uint64_t>session.base.te)
     cap_group.base.csldw = 1 
 

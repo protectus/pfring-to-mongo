@@ -770,10 +770,10 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     # One session maps to two groups if session crosses group's time window boundary.
             
                     session_key = generate_session_key_from_session_function[0](saved_session)
-                else:
-                    # Debug
-                    #cdef TCPSession* a_tcp_session = <TCPSession*>saved_session
-                    print group_type, ' session_status = 1, saved_session.tb:', saved_session.tb, 'session_key:', session_key
+                #else:
+                #    # Debug
+                #    #cdef TCPSession* a_tcp_session = <TCPSession*>saved_session
+                #    print group_type, ' session_status = 1, saved_session.tb:', saved_session.tb, 'session_key:', session_key
     
                 # Get the group key and let the dictionary tell us which slot the group occupies.
                 # The saved_session is either  1)set above (new session) or 
@@ -793,13 +793,14 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
     
                     print group_type, '   Allocated capture_group_slot', new_capture_slot_number_p[0], ', key:',capture_group_key, ' qlen:', len(available_capture_group_slots)
                     # No need to lock group yet - it is only known about here until sent over pipe
-                    init_capture_group_function[0](capture_group)
+                    init_capture_group_function[0](capture_group, group_type, <uint64_t>saved_session.tb)
     
                     # Map slot for future reference
                     capture_group_slot_map[capture_group_key] = new_capture_slot_number_p[0]  
     
-                    for key in capture_group_slot_map:
-                        print group_type, '     capture_group_slot_map[', key, '] = ', capture_group_slot_map[key]
+                    # For debug
+                    #for key in capture_group_slot_map:
+                    #    print group_type, '     capture_group_slot_map[', key, '] = ', capture_group_slot_map[key]
 
                     # Tell the next phase about the new capture group
                     capture_group_alloc_pipe.send_bytes(new_capture_slot_number_pipeable)
@@ -948,8 +949,9 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                 print group_type, " Deallocated capture_group_slot", new_capture_slot_number_p[0], ', key:', capture_group.tbm, ', qlen:', len(available_capture_group_slots)
                 del capture_group_slot_map[capture_group.tbm]
 
-                for key in capture_group_slot_map:
-                    print group_type, '     capture_group_slot_map[', key, '] = ', capture_group_slot_map[key]
+                # For debug
+                #for key in capture_group_slot_map:
+                #    print group_type, '     capture_group_slot_map[', key, '] = ', capture_group_slot_map[key]
 
             # Expire sets fo sessions in session_history.  A session # might live in session_history 
             # a little longer than needed but that is OK.  Precision is not required.  Iterate
@@ -1338,7 +1340,7 @@ def groupBookkeeper(group_buffer, group_locks,
                             # We're still linking to a python struct to get raw bytes
                             # into a python Pipe.
                             capture_group_slot_p[0] = capture_slot  # Linked to py_current_group_slot!
-                            print group_type, 'Deallocating capture_group_slot', capture_group_slot_p[0], '      ', capture_group_copy.tbm, 'in groupBookkeeper'
+                            #print group_type, 'Deallocating capture_group_slot', capture_group_slot_p[0], '      ', capture_group_copy.tbm, 'in groupBookkeeper'
                             capture_group_dealloc_pipe.send_bytes(py_current_capture_group_slot)
                             next_scheduled_checkup_time = 0 
                         else:

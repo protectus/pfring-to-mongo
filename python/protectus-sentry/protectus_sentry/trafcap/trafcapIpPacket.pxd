@@ -180,11 +180,11 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 #cdef GenericGroup* alloc_tcp_capture_group()
 #cdef GenericGroup* alloc_udp_capture_group()
 
-ctypedef int (*init_capture_group)(GenericGroup*)
-cdef int init_tcp_capture_group(GenericGroup*)
-cdef int init_udp_capture_group(GenericGroup*)
+ctypedef int (*init_capture_group)(GenericGroup*, uint8_t, uint64_t)
+cdef int init_tcp_capture_group(GenericGroup* group, uint8_t group_type, uint64_t session_tb)
+cdef int init_udp_capture_group(GenericGroup* group, uint8_t group_type, uint64_t session_tb)
 
-ctypedef int (*write_group)(object, object, list, GenericGroup*, int, uint8_t group_type) except -1
+ctypedef int (*write_group)(object, object, list, GenericGroup*, int, uint8_t) except -1
 cdef int write_tcp_group(object group_bulk_writer, object group_collection, list object_ids, GenericGroup* group, int slot, uint8_t group_type) except -1
 cdef int write_udp_group(object group_bulk_writer, object group_collection, list object_ids, GenericGroup* group, int slot, uint8_t group_type) except -1
 
