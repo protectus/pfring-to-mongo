@@ -2073,6 +2073,10 @@ class UdpPacket(IpPacket):
         if pkt and not doc:
             #pkt = pkt.split()
             pkt_len = len(pkt)
+            # Handle IPv6 the leaks through
+            if pkt[-1] == 'IPv6': return (), []
+            if pkt[-1] == 'ICMPv6': return (), []
+
             if pkt_len == 5:
                 # UDP packet without ports:
                 # 1361040136.481161 192.168.168.5  239.255.255.250  996 IPv4

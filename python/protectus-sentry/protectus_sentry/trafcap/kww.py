@@ -157,7 +157,8 @@ def main():
 
         # Check if the collection exists
         coll[c_num_docs] = cursor.count()
-        if coll[c_num_docs] == 0:
+        # count() sometimes is 0 and sometimes is -1, not sure why
+        if coll[c_num_docs] <= 0:
             # Handle empty or non-existant collections
             try:
                 stats = db.command('collstats', collection_name)
