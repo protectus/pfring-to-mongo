@@ -300,7 +300,7 @@ class OtherPacket(EthernetPacket):
 
     @classmethod
     def startSniffer(pc):
-        filter = 'ip and not tcp and not udp and not icmp ' + trafcap.cap_filter
+        filter = 'not ip6 and not tcp and not udp and not icmp ' + trafcap.cap_filter
         proc = subprocess.Popen(['/usr/bin/tshark', 
                '-i', trafcap.sniff_interface, 
                '-te', '-n', '-l',
