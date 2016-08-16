@@ -948,7 +948,7 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
             if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
                     
-        tdm = (<int>(session.base.te - session.base.tb)) / 60
+        tdm = <int>(session.base.te - session.base.tb)
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
 
         # Insert the new doc and record the objectid
@@ -971,7 +971,7 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
                     "te": session.base.te,
                     "tem": peg_to_minute(<uint64_t>session.base.te) }
 
-        tdm = (<int>(session.base.te - session.base.tb)) / 60
+        tdm = <int>(session.base.te - session.base.tb)
         if tdm >= trafcap.lrs_min_duration: set_doc['tdm'] = tdm
 
         info_update = { "$set": set_doc } 
@@ -1125,7 +1125,7 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
             if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
                     
-        tdm = (<int>(session.base.te - session.base.tb)) / 60
+        tdm = <int>(session.base.te - session.base.tb)
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
 
         # Insert the new doc and record the objectid
@@ -1148,7 +1148,7 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
                     "te": session.base.te,
                     "tem": peg_to_minute(<uint64_t>session.base.te) }
 
-        tdm = (<int>(session.base.te - session.base.tb)) / 60
+        tdm = <int>(session.base.te - session.base.tb)
         if tdm >= trafcap.lrs_min_duration: set_doc['tdm'] = tdm
 
         info_update = { "$set": set_doc }
