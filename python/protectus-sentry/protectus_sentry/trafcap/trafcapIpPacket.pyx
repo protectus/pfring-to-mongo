@@ -3354,7 +3354,10 @@ class TcpInjPacket(IpPacket):
             #            | | | |
             #          ECE | | SYN
             #            URG PSH
-            tcp.set_th_seq(data[pc.p_ack]) 
+
+            # Sometimes ack is None, in that case do not use it 
+            if data[pc.p_ack]: tcp.set_th_seq(data[pc.p_ack]) 
+
             if data[pc.p_seq]:   
                 # defaults to zero
                 flags = int('00010101',2)
