@@ -2204,9 +2204,7 @@ class UdpPacket(IpPacket):
         proc = subprocess.Popen(['/usr/bin/tshark', 
                '-i', trafcap.sniff_interface, 
                '-te', '-l', 
-               '-b', 'filesize:8192',
-               '-b', 'files:5',
-               '-w', '/run/trafcap_udp',
+               '-B', '64',
                '-P',
                '-o', 
                'column.format:"""time","%t", "vl","%Cus:vlan.id", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "protocol","%p"""',
@@ -2214,6 +2212,10 @@ class UdpPacket(IpPacket):
                '('+filtr+') or (vlan and '+filtr+')'],
                bufsize=-1,
                stdout=subprocess.PIPE, stderr=sys.stdout.fileno())
+
+               #'-b', 'filesize:8192',
+               #'-b', 'files:5',
+               #'-w', '/run/trafcap_udp',
         return proc
     
     @classmethod
@@ -2590,9 +2592,7 @@ class IcmpPacket(IpPacket):
         proc = subprocess.Popen(['/usr/bin/tshark', 
                '-i', trafcap.sniff_interface, 
                '-te', '-n', '-l',
-               '-b', 'filesize:8192',
-               '-b', 'files:5',
-               '-w', '/run/trafcap_icmp',
+               '-B', '64',
                '-P',
                '-o', 
                'column.format:"""time","%t", "src","%s", "iplen","%Cus:ip.len", "dst","%d", "type","%Cus:icmp.type", "code","%Cus:icmp.code", "seq","%Cus:icmp.seq", "vl","%Cus:vlan.id"""',
@@ -2600,6 +2600,10 @@ class IcmpPacket(IpPacket):
                 '('+filtr+') or (vlan and '+filtr+')'],
                bufsize=-1,
                stdout=subprocess.PIPE, stderr=sys.stdout.fileno())
+
+               #'-b', 'filesize:8192',
+               #'-b', 'files:5',
+               #'-w', '/run/trafcap_icmp',
         return proc
     
     @classmethod
@@ -2922,14 +2926,15 @@ class RtpPacket(IpPacket):
         param_list = ['/usr/bin/tshark',                        
                '-i', trafcap.sniff_interface,
                '-te', '-l',
-               '-b', 'filesize:8192',
-               '-b', 'files:5',
-               '-w', '/run/trafcap_rtp',
+               '-B', '64',
                '-P',
                '-o',
                'column.format:"""time","%t", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "ssrc","%Cus:rtp.ssrc","seq","%Cus:rtp.seq","ts","%Cus:rtp.timestamp","pt","%Cus:rtp.p_type","proto","%p"""',
                '-f',
                '('+filtr+') or (vlan and '+filtr+')']
+               #'-b', 'filesize:8192',
+               #'-b', 'files:5',
+               #'-w', '/run/trafcap_rtp',
 
                # Unpredictable output
                #'column.format:"""time","%t", "src","%s", "sport","%Cus:udp.srcport", "dst","%d", "dprt","%Cus:udp.dstport", "iplen","%Cus:ip.len", "protocol","%p","i","%i"""',

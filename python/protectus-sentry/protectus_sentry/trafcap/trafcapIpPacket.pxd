@@ -11,12 +11,12 @@ cdef enum:
     # Size of ring_buffers for packets and saved_sessions
     RING_BUFFER_SIZE = 100000 
 
-    LIVE_SESSION_BUFFER_SIZE = 2000000 
+    LIVE_SESSION_BUFFER_SIZE = 200000 
     SESSIONS_PER_LOCK = 100    # originally 1000
     # Group buffer slot can be occupied for up to three hours (length of groups2).
     # Buffer size / 10800 seconds = max sessions per second
     #GROUP_SESSION_BUFFER_SIZE = 10000000    # holds 925 sessions/second max on average
-    GROUP_BUFFER_SIZE = 2000000 
+    GROUP_BUFFER_SIZE = 200000 
     GROUPS_PER_LOCK = 100 
     
     CAPTURE_GROUP_BUFFER_SIZE = 10 
