@@ -47,11 +47,23 @@ PCAPNG_MAGIC_NUMBER = 439041101       # 0x1a2b3c4d
 PCAPNG_MAGIC_NUMBER_SWPD = 1295788826 # 0x4d3c2b1a
 PCAPNG_SECT_HDR_BLK_TYPE = 168627466  # 0x0A0D0D0A
 
+def postMsg(msg):
+    sys.stderr.write('\n' + time.ctime() + ' - ' + msg + '\n') 
+    sys.stderr.flush()
+
+tap_py_file_obj = None 
+cdef FILE* pcap_stream_ptr
+def cleanupAndExit():
+    # Close file io 
+    if tap_py_file_obj: tap_py_file_obj.close()
+    # Causing segfault 
+    #fclose(pcap_stream_ptr)
+    postMsg('Pcap_ingest exiting')
+    sys.exit()
+    
 def catchCntlC(signum, stack):
-    # If any syb-procs, kill them here
-    #if proc:
-    #    os.kill(proc.pid, signal.SIGTERM)
-    sys.exit('Exiting pcap ingest')
+    postMsg('Cntl-C detected')
+    cleanupAndExit()
 
 signal.signal(signal.SIGINT, catchCntlC)
 signal.signal(signal.SIGTERM, catchCntlC)
@@ -68,12 +80,7 @@ cdef bint pcapAquired(int debug_flag, uint32_t micr_sec, int capt_len,
        capt_len > MAX_SNAPLEN or \
        wire_len > MAX_SNAPLEN:
         pcap_aquired = False 
-        sys.stdout.write('\n' + time.ctime() + ' - ' + 
-                         'Pcap not aquired (' + str(debug_flag) + 
-                         #' micr_sec:' + str(micr_sec) + 
-                         #',capt_len:' + str(capt_len) + 
-                         #',wire_len:' + str(wire_len) + 
-                         ')\n')
+        postMsg('Pcap not aquired (' + str(debug_flag) + ')')
     else:
         pcap_aquired = True 
     return pcap_aquired
@@ -106,7 +113,8 @@ def parseArgs():
                         help='input file (or pipe?, fifo?); defaults to STDIN')
     parser.add_argument('-i', dest='interface', type=str, required=True,
                         help='interface on which to output packets; required')
-    parser.add_argument('-v', dest='verbose', type=bool, default=False,
+    parser.add_argument('-v', dest='verbose', action='store_true', 
+                        default=False,
                         help='show verbose output with pkt count')
     args = parser.parse_args()
     if args.file_input == '-': args.file_input = sys.stdin.fileno()
@@ -172,7 +180,6 @@ def main():
     #ret1 = ioctl(tap_py_file_obj.fileno(), TUNSETIFF, <void*>ifreq_ptr)
     #ret2 = ioctl(tap_py_file_obj.fileno(), TUNSETNOCSUM, 1)
     #print ret1, ret2
-    #sys.exit()
 
 
     # Method: Identify pcap packet header using time value and other patterns.
@@ -268,17 +275,11 @@ def main():
                                               pcap_phle.capt_len,
                                               pcap_stream_ptr)
     
-                            sys.stdout.write('\n' + time.ctime() + ' - ' +
-                                             'Pcap aquired; clock diff: ' + 
-                                             str(time_diff) + 
-                                             ' sec\n') 
-                            sys.stdout.flush()
+                            postMsg('Pcap aquired; clock diff: ' + 
+                                     str(time_diff) + ' sec') 
     
-                # Future dev: Check if second pcap stream has started
                 elif pcap_data.word == PCAP_MAGIC_NUMBER:
-                    sys.stdout.write('\n' + time.ctime() + ' - ' +
-                                     'Pcap magic_number detected\n') 
-                    sys.stdout.flush()
+                    postMsg('Pcap magic_number detected') 
                     # Read rest of what should be the pcap global header.
                     # We don't use the global header but need to get it 
                     # out of the pipe so we can get to the epoch time.
@@ -286,20 +287,12 @@ def main():
                                       sizeof(PcapGlobalHeaderLessMagicNumber), 
                                       pcap_stream_ptr)
     
-                    # Read what should be the epoch time
-                    #num_bytes = fread(pcap_data, 1, sizeof(PcapData), 
-                    #                  pcap_stream_ptr)
-    
                 elif pcap_data.word == PCAP_MAGIC_NUMBER_SWPD:
-                    sys.stdout.write('\n' + time.ctime() + ' - ' +
-                                     'Pcap magic_number detected; ' + 
-                                     'ERROR: Bytes swapped!\n') 
-                    sys.stdout.flush()
-                    # Continue reading in case this was a false positive 
+                    postMsg('Pcap magic_number detected; ' + 
+                            'ERROR: Bytes swapped!') 
+                    # Future dev here...
     
                 elif pcap_data.word == PCAPNG_SECT_HDR_BLK_TYPE:
-                    # Future dev - fully process pcap-ng
-    
                     # Read what should be the section header block length
                     num_bytes = fread(pcap_data, 1, sizeof(PcapData), 
                                       pcap_stream_ptr)
@@ -308,25 +301,21 @@ def main():
                                       pcap_stream_ptr)
     
                     if pcap_data.word == PCAPNG_MAGIC_NUMBER:
-                        sys.stdout.write('\n' + time.ctime() + ' - ' +
-                                         'Pcap-ng stream detected\n') 
-                        sys.stdout.flush()
+                        postMsg('Pcap-ng stream detected') 
     
-                    if pcap_data.word == PCAPNG_MAGIC_NUMBER_SWPD:
-                        sys.stdout.write('\n' + time.ctime() + ' - ' +
-                                         'Pcap-ng stream detected; ' + 
-                                         'ERROR: Bytes swapped!\n') 
-                        sys.stdout.flush()
-                    # Continue reading in case this was a false positive 
+                    elif pcap_data.word == PCAPNG_MAGIC_NUMBER_SWPD:
+                        postMsg('Pcap-ng stream detected; ' + 
+                                'ERROR: Bytes swapped!') 
+                    else:
+                        pass
+                    # Future dev here...
                 else:
                     pass
     
             # Check if stdin was closed due to upstream processing error  
             if feof(pcap_stream_ptr) != 0: 
-                sys.stderr.write('\n' + time.ctime() + ' - ' +
-                                 'Stdin closed; Pcap ingest exiting\n')
-                sys.stderr.flush()
-                sys.exit() 
+                postMsg('Stdin closed')
+                cleanupAndExit()
 
             loop_count += 1
             if args.verbose:
@@ -336,12 +325,8 @@ def main():
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            sys.stderr.write('\n' + time.ctime() + ' - ' + str(e) + 
-                             ' in line # ' + str(exc_tb.tb_lineno) + 
-                             ';  Pcap ingest exiting\n')
-            sys.stderr.flush()
-            sys.exit()
-
+            postMsg(str(e) + ' in line # ' + str(exc_tb.tb_lineno) )
+            cleanupAndExit()
     
 if __name__ == "__main__":
     main()
