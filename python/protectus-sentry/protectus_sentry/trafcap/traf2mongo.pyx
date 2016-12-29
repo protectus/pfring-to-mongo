@@ -218,7 +218,7 @@ def main():
         #fl = fcntl.fcntl(fd, fcntl.F_GETFL) 
         #print 'has_attr: ', hasattr(fcntl, 'F_SETPIPE_SZ')  ==> This is False
         #fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK) 
-        packet_ring_buffer = multiprocessing.RawArray(packet_header_class, RING_BUFFER_SIZE)
+        packet_ring_buffer = multiprocessing.RawArray(packet_header_class, trafcap.packet_ring_buffer_size)
 
         ring_stats_recv = multiprocessing.Value(ctypes.c_uint64)
         ring_stats_recv.value = 0
@@ -240,23 +240,23 @@ def main():
         session_keeper_saved_session2_count = multiprocessing.Value(ctypes.c_uint64)
         session_keeper_saved_session2_count.value = 0
 
-        live_session_buffer = multiprocessing.RawArray(session_class, LIVE_SESSION_BUFFER_SIZE)
+        live_session_buffer = multiprocessing.RawArray(session_class, trafcap.live_session_buffer_size)
         live_session_alloc_pipe = multiprocessing.Pipe(False)
         live_session_dealloc_pipe = multiprocessing.Pipe(False)
-        live_session_locks = tuple((multiprocessing.Lock() for i in xrange(LIVE_SESSION_BUFFER_SIZE/SESSIONS_PER_LOCK)))
+        live_session_locks = tuple((multiprocessing.Lock() for i in xrange(trafcap.live_session_buffer_size/SESSIONS_PER_LOCK)))
 
         saved_session_cursor_pipe = multiprocessing.Pipe(False)
         saved_session2_cursor_pipe = multiprocessing.Pipe(False)
-        saved_session_ring_buffer = multiprocessing.RawArray(session_class, RING_BUFFER_SIZE)
-        saved_session2_ring_buffer = multiprocessing.RawArray(session_class, RING_BUFFER_SIZE)
+        saved_session_ring_buffer = multiprocessing.RawArray(session_class, trafcap.saved_session_ring_buffer_size)
+        saved_session2_ring_buffer = multiprocessing.RawArray(session_class, trafcap.saved_session_ring_buffer_size)
 
         group_updater_saved_session_count = multiprocessing.Value(ctypes.c_uint64)
         group_updater_saved_session_count.value = 0
         group2_updater_saved_session_count = multiprocessing.Value(ctypes.c_uint64)
         group2_updater_saved_session_count.value = 0
 
-        group_buffer = multiprocessing.RawArray(group_class, GROUP_BUFFER_SIZE)
-        group2_buffer = multiprocessing.RawArray(group_class, GROUP_BUFFER_SIZE)
+        group_buffer = multiprocessing.RawArray(group_class, trafcap.group_buffer_size)
+        group2_buffer = multiprocessing.RawArray(group_class, trafcap.group2_buffer_size)
         capture_group_buffer = multiprocessing.RawArray(group_class, CAPTURE_GROUP_BUFFER_SIZE)
         capture_group2_buffer = multiprocessing.RawArray(group_class, CAPTURE_GROUP_BUFFER_SIZE)
 
@@ -268,9 +268,9 @@ def main():
         group2_dealloc_pipe = multiprocessing.Pipe(False)
         capture_group2_alloc_pipe = multiprocessing.Pipe(False)
         capture_group2_dealloc_pipe = multiprocessing.Pipe(False)
-        group_locks = tuple((multiprocessing.Lock() for i in xrange(GROUP_BUFFER_SIZE/GROUPS_PER_LOCK)))
+        group_locks = tuple((multiprocessing.Lock() for i in xrange(trafcap.group_buffer_size/GROUPS_PER_LOCK)))
         capture_group_locks = tuple((multiprocessing.Lock() for i in xrange(CAPTURE_GROUP_BUFFER_SIZE/CAPTURE_GROUPS_PER_LOCK)))
-        group2_locks = tuple((multiprocessing.Lock() for i in xrange(GROUP_BUFFER_SIZE/GROUPS_PER_LOCK)))
+        group2_locks = tuple((multiprocessing.Lock() for i in xrange(trafcap.group2_buffer_size/GROUPS_PER_LOCK)))
         capture_group2_locks = tuple((multiprocessing.Lock() for i in xrange(CAPTURE_GROUP_BUFFER_SIZE/CAPTURE_GROUPS_PER_LOCK)))
 
         group_updater_group_alloc_count = multiprocessing.Value(ctypes.c_uint64)

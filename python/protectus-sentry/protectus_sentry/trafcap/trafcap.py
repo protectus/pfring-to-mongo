@@ -80,6 +80,8 @@ def refreshConfigVars():
     global mongo_server, mongo_port, traffic_db, traffic_ttl
     global inj_filter, inj_timeout, cc_list_type, cc_list
     global suricata_cap_filter
+    global packet_ring_buffer_size, saved_session_ring_buffer_size 
+    global live_session_buffer_size, group_buffer_size, group2_buffer_size
     # Read settings from config file
     config = ConfigParser.SafeConfigParser()
     config.optionxform = str  # Read config keys case sensitively.
@@ -111,6 +113,12 @@ def refreshConfigVars():
     mongo_port = config.getint('mongo', 'mongo_port')
     traffic_db = config.get('mongo', 'traffic_db')
     traffic_ttl = config.get('mongo', 'traffic_ttl')
+
+    packet_ring_buffer_size = config.getint('trafcap', 'packet_ring_buffer_size')
+    live_session_buffer_size = config.getint('trafcap', 'live_session_buffer_size')
+    saved_session_ring_buffer_size = config.getint('trafcap', 'saved_session_ring_buffer_size')
+    group_buffer_size = config.getint('trafcap', 'group_buffer_size')
+    group2_buffer_size = config.getint('trafcap', 'group2_buffer_size')
 
     # Also get and store the current installed system version.
     global system_version

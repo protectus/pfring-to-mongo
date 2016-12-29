@@ -112,7 +112,7 @@ def packetParser(packet_cursor_pipe, parsed_packet_count, packet_ring_buffer,
     
             parsed_packet_count.value += 1
             packet_cursor_pipe.send_bytes(py_packet_cursor_pipeable)  
-            packet_cursor_p[0] = (packet_cursor_p[0] + 1) % RING_BUFFER_SIZE 
+            packet_cursor_p[0] = (packet_cursor_p[0] + 1) % trafcap.packet_ring_buffer_size 
 
     except IOError: # Handle signal during pipe access
         if not trafcap.options.quiet: print 'packetParser handled IOError....'
@@ -155,7 +155,7 @@ def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_bu
     cdef long packet_cursor_addr = ctypes.addressof(py_packet_cursor_pipeable)
     cdef uint32_t* packet_cursor_p = <uint32_t*>packet_cursor_addr
 
-    available_live_session_slots = deque(xrange(LIVE_SESSION_BUFFER_SIZE))
+    available_live_session_slots = deque(xrange(trafcap.live_session_buffer_size))
     cdef dict live_session_slot_map = {}
     cdef int live_session_slot
     cdef GenericSession* live_session
@@ -312,7 +312,7 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
     cdef int saved_session2_struct_size = ctypes.sizeof(saved_session2_ring_buffer) / len(saved_session2_ring_buffer)
 
     # Create a corresponding bunch of slots for mongoids
-    cdef list session_object_ids = [None for x in range(LIVE_SESSION_BUFFER_SIZE)]
+    cdef list session_object_ids = [None for x in range(trafcap.live_session_buffer_size)]
 
     # Cythonize the current slot number for live_session_buffer
     # These slots are allocated by sessionUpdater and deallocated by sessionBookkeeper
@@ -340,7 +340,7 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
 
     cdef uint32_t *schedule[BYTES_RING_SIZE]
     for i in range(BYTES_RING_SIZE):
-        schedule[i] = <uint32_t*>malloc(sizeof(uint32_t) * LIVE_SESSION_BUFFER_SIZE)
+        schedule[i] = <uint32_t*>malloc(sizeof(uint32_t) * trafcap.live_session_buffer_size)
 
     # Variables during session check-ins
     cdef int schedule_number, next_schedule_number
@@ -517,8 +517,8 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
                             session_keeper_saved_session_count.value += 1
                             session_keeper_saved_session2_count.value += 1
                         # Increment saved_session_cursor
-                        saved_session_cursor_p[0] = (saved_session_cursor_p[0] + 1) % RING_BUFFER_SIZE 
-                        saved_session2_cursor_p[0] = (saved_session2_cursor_p[0] + 1) % RING_BUFFER_SIZE 
+                        saved_session_cursor_p[0] = (saved_session_cursor_p[0] + 1) % trafcap.saved_session_ring_buffer_size 
+                        saved_session2_cursor_p[0] = (saved_session2_cursor_p[0] + 1) % trafcap.saved_session_ring_buffer_size 
     
                     else:
                         # Find out where the next available byte is, and schedule a
@@ -695,7 +695,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
     update_group_address = <long>proto_opts['update_group']
     update_group_function = <update_group*>update_group_address
 
-    available_group_slots = deque(xrange(GROUP_BUFFER_SIZE))
+    available_group_slots = deque(xrange(trafcap.group2_buffer_size if group_type else trafcap.group_buffer_size))
     cdef dict group_slot_map = {}
     cdef int group_slot
     cdef GenericSession* saved_session
@@ -1015,7 +1015,7 @@ def groupBookkeeper(group_buffer, group_locks,
     cdef int capture_group_struct_size = ctypes.sizeof(capture_group_buffer) / len(capture_group_buffer)
 
     # Create a corresponding bunch of slots for mongoids
-    cdef list group_object_ids = [None for x in range(GROUP_BUFFER_SIZE)]
+    cdef list group_object_ids = [None for x in range(trafcap.group2_buffer_size if group_type else trafcap.group_buffer_size)]
     cdef list capture_group_object_ids = [None for x in range(CAPTURE_GROUP_BUFFER_SIZE)]
 
     # Cythonize the current slot number for group_buffer
@@ -1042,7 +1042,7 @@ def groupBookkeeper(group_buffer, group_locks,
 
     cdef uint32_t *schedule[GROUP_SCHEDULE_SIZE]
     for i in range(GROUP_SCHEDULE_SIZE):
-        schedule[i] = <uint32_t*>malloc(sizeof(uint32_t) * GROUP_BUFFER_SIZE)
+        schedule[i] = <uint32_t*>malloc(sizeof(uint32_t) * trafcap.group2_buffer_size if group_type else trafcap.group_buffer_size)
 
     # Setup a bunch of queues for second-by-second scheduling of capture group writes to the database
     cdef uint32_t capture_schedule_sizes[GROUP_SCHEDULE_SIZE]

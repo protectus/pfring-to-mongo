@@ -8,15 +8,18 @@ cdef enum:
     BYTES_RING_SIZE = 30
     BYTES_DOC_SIZE = 20
 
+    # Buffer sizes moved to trafcap.conf - allows Sentry
+    # config tuning for smaller memory footprint
+    # 
     # Size of ring_buffers for packets and saved_sessions
-    RING_BUFFER_SIZE = 100000 
+    #PACKET_RING_BUFFER_SIZE = 100000 
+    #SAVED_SESSION_RING_BUFFER_SIZE = 10000 
+    #LIVE_SESSION_BUFFER_SIZE = 1000000 
+    # Group buffer slot can be occupied for up to 3 hours (length of groups2).
+    #GROUP_BUFFER_SIZE = 500000 
+    #GROUP2_BUFFER_SIZE = 2000000 
 
-    LIVE_SESSION_BUFFER_SIZE = 2000000 
     SESSIONS_PER_LOCK = 100    # originally 1000
-    # Group buffer slot can be occupied for up to three hours (length of groups2).
-    # Buffer size / 10800 seconds = max sessions per second
-    #GROUP_SESSION_BUFFER_SIZE = 10000000    # holds 925 sessions/second max on average
-    GROUP_BUFFER_SIZE = 2000000 
     GROUPS_PER_LOCK = 100 
     
     CAPTURE_GROUP_BUFFER_SIZE = 10 
