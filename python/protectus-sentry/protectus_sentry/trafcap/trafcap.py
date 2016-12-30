@@ -343,6 +343,40 @@ def geoIpAsnLookupTpl(ip_addr):
 def geoIpAsnLookupInt(ip_addr):
     return geoIpAsnLookup(intToString(ip_addr))
 
+from dns import resolver,reversename
+dns_resolver = resolver.Resolver()
+# Set arbitrary 1 second timeouts
+dns_resolver.timeout = 1
+dns_resolver.lifetime = 1
+def getDnsPtrRec(ip_addr):
+    # Returns PTR record string given a string representing a dotted quad
+    addr=reversename.from_address(ip_addr)
+    try:
+        answer = str(dns_resolver.query(addr,'PTR')[0])   # dns.resolver.Answer
+    except:
+        answer = ''
+    return answer
+
+def getDnsMxRec(domain_name):
+    # Give a string domain name, returns MX rec list somewhat sorted by 
+    # decreasing priority (increasing MX record preference field) 
+    previous_preference = None 
+    mx_list = None
+    try:
+        answer = dns_resolver.query(domain_name, 'MX')
+        for rdata in answer:
+            if not previous_preference:  
+                previous_preference = rdata.preference
+                mx_list = [str(rdata.exchange)]
+                continue
+            if rdata.preference >= previous_preference:
+                mx_list.append(rdata.exchange)
+            else:
+                mx_list.insert(0, rdata.exchange)
+    except:
+        mx_list = [] 
+    return mx_list 
+
 # stores Suricata classification info for use during IDS event ingest
 classification_config_dict = None
 
