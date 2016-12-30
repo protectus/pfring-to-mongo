@@ -353,6 +353,7 @@ def getDnsPtrRec(ip_addr):
     addr=reversename.from_address(ip_addr)
     try:
         answer = str(dns_resolver.query(addr,'PTR')[0])   # dns.resolver.Answer
+        answer = answer.rstrip('.')
     except:
         answer = ''
     return answer
@@ -361,18 +362,20 @@ def getDnsMxRec(domain_name):
     # Give a string domain name, returns MX rec list somewhat sorted by 
     # decreasing priority (increasing MX record preference field) 
     previous_preference = None 
-    mx_list = None
+    mx_list = [] 
     try:
         answer = dns_resolver.query(domain_name, 'MX')
         for rdata in answer:
-            if not previous_preference:  
+            if not mx_list:  
+                # mx_list is empty
+                mx_list.append(str(rdata.exchange).rstrip('.'))
                 previous_preference = rdata.preference
-                mx_list = [str(rdata.exchange)]
                 continue
             if rdata.preference >= previous_preference:
-                mx_list.append(rdata.exchange)
+                mx_list.append(str(rdata.exchange).rstrip('.'))
             else:
-                mx_list.insert(0, rdata.exchange)
+                mx_list.insert(0, str(rdata.exchange).rstrip('.'))
+            previous_preference = rdata.preference
     except:
         mx_list = [] 
     return mx_list 
