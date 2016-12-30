@@ -322,6 +322,25 @@ def  geoIpLookupInt(ip_addr):
 
     return addr_cc, addr_name, addr_loc
 
+ga = GeoIP.open("/opt/sentry/geoip/GeoIPASNum.dat",GeoIP.GEOIP_STANDARD)
+def  geoIpAsnLookupInt(ip_addr):
+    g_org = ga.org_by_addr(intToString(ip_addr))
+    # Returned format:    AS15169 Google Inc.
+
+    if g_org == None:
+        org_asn = None
+        org_name = None
+    else:
+        try:
+            index = g_org.index(' ')
+            org_asn, org_name = g_org[:index], g_org[index+1:]
+        except ValueError:
+            # Returned format:  AS15457
+            org_asn = g_org.strip()
+            org_name = None
+
+    return org_asn, org_name
+
 # stores Suricata classification info for use during IDS event ingest
 classification_config_dict = None
 
