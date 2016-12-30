@@ -296,50 +296,52 @@ def mongoSetup(**kwargs):
     return db
 
 gi = GeoIP.open("/opt/sentry/geoip/GeoLiteCity.dat",GeoIP.GEOIP_STANDARD)
-def  geoIpLookup(ip_addr):
-    g_addr = gi.record_by_addr(tupleToString(ip_addr))
+def geoIpLookup(ip_addr):
+    # ip_addr is a string representing a dotted quad
+    g_addr = gi.record_by_addr(ip_addr)
     if g_addr == None:
         addr_cc = None 
         addr_name = None 
         addr_loc = None
+        addr_city = None
+        addr_region = None
     else:
         addr_cc = g_addr['country_code']
         addr_name = g_addr['country_name']
         addr_loc = [g_addr['longitude'], g_addr['latitude']]
+        addr_city = g_addr['city']            # Could be None
+        addr_region = g_addr['region_name']   # Could be None
+    return addr_cc, addr_name, addr_loc, addr_city, addr_region
 
-    return addr_cc, addr_name, addr_loc
+def geoIpLookupTpl(ip_addr):
+    return geoIpLookup(tupleToString(ip_addr))
 
-def  geoIpLookupInt(ip_addr):
-    g_addr = gi.record_by_addr(intToString(ip_addr))
-    if g_addr == None:
-        addr_cc = None 
-        addr_name = None 
-        addr_loc = None
-    else:
-        addr_cc = g_addr['country_code']
-        addr_name = g_addr['country_name']
-        addr_loc = [g_addr['longitude'], g_addr['latitude']]
-
-    return addr_cc, addr_name, addr_loc
+def geoIpLookupInt(ip_addr):
+    return geoIpLookup(intToString(ip_addr))
 
 ga = GeoIP.open("/opt/sentry/geoip/GeoIPASNum.dat",GeoIP.GEOIP_STANDARD)
-def  geoIpAsnLookupInt(ip_addr):
+def geoIpAsnLookup(ip_addr):
+    # Returns org info given a string representing a dotted quad
     g_org = ga.org_by_addr(intToString(ip_addr))
-    # Returned format:    AS15169 Google Inc.
-
     if g_org == None:
         org_asn = None
         org_name = None
     else:
         try:
+            # Returned format:    AS15169 Google Inc.
             index = g_org.index(' ')
             org_asn, org_name = g_org[:index], g_org[index+1:]
         except ValueError:
             # Returned format:  AS15457
             org_asn = g_org.strip()
             org_name = None
-
     return org_asn, org_name
+
+def geoIpAsnLookupTpl(ip_addr):
+    return geoIpAsnLookup(tupleToString(ip_addr))
+
+def geoIpAsnLookupInt(ip_addr):
+    return geoIpAsnLookup(intToString(ip_addr))
 
 # stores Suricata classification info for use during IDS event ingest
 classification_config_dict = None

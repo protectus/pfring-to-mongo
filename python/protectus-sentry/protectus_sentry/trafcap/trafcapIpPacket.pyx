@@ -922,8 +922,8 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
         # Set CC and vlanId only for sessionInfo & Bytes, not for captureInfo & Bytes
         if live_session_locks:
             # Get cc for new info_doc and update session (which is actually a session_copy)
-            cc1, name1, loc1 = trafcap.geoIpLookupInt(session.ip1)
-            cc2, name2, loc2 = trafcap.geoIpLookupInt(session.ip2)
+            cc1, name1, loc1, city1, region1 = trafcap.geoIpLookupInt(session.ip1)
+            cc2, name2, loc2, city2, region2 = trafcap.geoIpLookupInt(session.ip2)
             
             # May need to update cc1 &/or cc2 in original session.
             if cc1 or cc2:
@@ -1099,8 +1099,8 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
         # Set CC and vlanId only for sessionInfo & Bytes, not for captureInfo & Bytes
         if live_session_locks:
             # Get cc for new info_doc and update session (which is actually a session_copy)
-            cc1, name1, loc1 = trafcap.geoIpLookupInt(session.ip1)
-            cc2, name2, loc2 = trafcap.geoIpLookupInt(session.ip2)
+            cc1, name1, loc1, city1, region1 = trafcap.geoIpLookupInt(session.ip1)
+            cc2, name2, loc2, city2, region2 = trafcap.geoIpLookupInt(session.ip2)
             
             # May need to update cc1 &/or cc2 in original session.
             if cc1 or cc2:
@@ -1324,7 +1324,7 @@ cdef int write_tcp_group(object group_bulk_writer, object group_collection, list
         if group.cc1[0] != 0:
             group_doc["cc1"] = chr(group.cc1[0]) + chr(group.cc1[1])
         else:
-            cc1, name1, loc1 = trafcap.geoIpLookupInt(group.ip1)
+            cc1, name1, loc1, city1, region1 = trafcap.geoIpLookupInt(group.ip1)
             if cc1: 
                 group_doc["cc1"] = cc1
                 group.cc1[0] = ord(cc1[0])
@@ -1333,7 +1333,7 @@ cdef int write_tcp_group(object group_bulk_writer, object group_collection, list
         if group.cc2[0] != 0:
             group_doc["cc2"] = chr(group.cc2[0]) + chr(group.cc2[1])
         else:
-            cc2, name2, loc2 = trafcap.geoIpLookupInt(group.ip2)
+            cc2, name2, loc2, city2, region2 = trafcap.geoIpLookupInt(group.ip2)
             if cc2: 
                 group_doc["cc2"] = cc2
                 group.cc2[0] = ord(cc2[0])
@@ -2021,8 +2021,8 @@ class TcpPacket(IpPacket):
                       float(data[pc.p_etime]),True,
                       0, 0, 0, 0, None, None] 
         else:
-            cc1, name1, loc1 = trafcap.geoIpLookup(data[pc.p_ip1][pc.p_addr])
-            cc2, name2, loc2 = trafcap.geoIpLookup(data[pc.p_ip2][pc.p_addr])
+            cc1, name1, loc1 = trafcap.geoIpLookupTpl(data[pc.p_ip1][pc.p_addr])
+            cc2, name2, loc2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
 
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
@@ -2237,8 +2237,8 @@ class UdpPacket(IpPacket):
                       float(data[pc.p_etime]),True,
                       0, 0, 0, 0, None, None] 
         else:
-            cc1, name1, loc1 = trafcap.geoIpLookup(data[pc.p_ip1][pc.p_addr])
-            cc2, name2, loc2 = trafcap.geoIpLookup(data[pc.p_ip2][pc.p_addr])
+            cc1, name1, loc1 = trafcap.geoIpLookupTpl(data[pc.p_ip1][pc.p_addr])
+            cc2, name2, loc2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
 
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
@@ -2656,8 +2656,8 @@ class IcmpPacket(IpPacket):
                       float(data[pc.p_etime]),True,
                       0, 0, 0, 0, None, None] 
         else:
-            cc1, name1, loc1 = trafcap.geoIpLookup(data[pc.p_ip1][pc.p_addr])
-            cc2, name2, loc2 = trafcap.geoIpLookup(data[pc.p_ip2][pc.p_addr])
+            cc1, name1, loc1 = trafcap.geoIpLookupTpl(data[pc.p_ip1][pc.p_addr])
+            cc2, name2, loc2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
 
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
@@ -2986,9 +2986,7 @@ class RtpPacket(IpPacket):
                         float(data[pc.p_etime]), True, 
                         0, 0, 0, 0, None, None, None] 
         else:
-            # Skip country lookup - VoIP traffic usually intenral
-            #cc1, name1, loc1 = trafcap.geoIpLookup(data[pc.p_ip1][pc.p_addr])
-            #cc2, name2, loc2 = trafcap.geoIpLookup(data[pc.p_ip2][pc.p_addr])
+            # Skip country lookup - VoIP traffic usually internal
             cc1 = loc1 = cc2 = loc2 = None
 
             # build circular buffer
@@ -3402,7 +3400,7 @@ class TcpInjPacket(IpPacket):
         #bi = a_info[pc.i_bi]
         #not_bi = abs(bi - 1)  # This IP did not cause the block
         if a_info[pc.i_cc] == None:
-            cc, name, loc = trafcap.geoIpLookup(a_info[a_info[pc.i_bi]])
+            cc, name, loc = trafcap.geoIpLookupTpl(a_info[a_info[pc.i_bi]])
             a_info[pc.i_cc] = cc
             a_info[pc.i_loc] = loc 
             
