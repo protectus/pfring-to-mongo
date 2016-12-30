@@ -322,7 +322,7 @@ def geoIpLookupInt(ip_addr):
 ga = GeoIP.open("/opt/sentry/geoip/GeoIPASNum.dat",GeoIP.GEOIP_STANDARD)
 def geoIpAsnLookup(ip_addr):
     # Returns org info given a string representing a dotted quad
-    g_org = ga.org_by_addr(intToString(ip_addr))
+    g_org = ga.org_by_addr(ip_addr)
     if g_org == None:
         org_asn = None
         org_name = None
