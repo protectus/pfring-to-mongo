@@ -2021,8 +2021,8 @@ class TcpPacket(IpPacket):
                       float(data[pc.p_etime]),True,
                       0, 0, 0, 0, None, None] 
         else:
-            cc1, name1, loc1 = trafcap.geoIpLookupTpl(data[pc.p_ip1][pc.p_addr])
-            cc2, name2, loc2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
+            cc1,name1,loc1,city1,region1 = trafcap.geoIpLookupTpl(data[pc.p_ip1][pc.p_addr])
+            cc2,name2,loc2,city2,region2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
 
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
@@ -2237,8 +2237,8 @@ class UdpPacket(IpPacket):
                       float(data[pc.p_etime]),True,
                       0, 0, 0, 0, None, None] 
         else:
-            cc1, name1, loc1 = trafcap.geoIpLookupTpl(data[pc.p_ip1][pc.p_addr])
-            cc2, name2, loc2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
+            cc1,name1,loc1,city1,region1 = trafcap.geoIpLookupTpl(data[pc.p_ip1][pc.p_addr])
+            cc2,name2,loc2,city2,region2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
 
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
@@ -2656,8 +2656,8 @@ class IcmpPacket(IpPacket):
                       float(data[pc.p_etime]),True,
                       0, 0, 0, 0, None, None] 
         else:
-            cc1, name1, loc1 = trafcap.geoIpLookupTpl(data[pc.p_ip1][pc.p_addr])
-            cc2, name2, loc2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
+            cc1,name1,loc1,city1,region1 = trafcap.geoIpLookupTpl(data[pc.p_ip1][pc.p_addr])
+            cc2,name2,loc2,city2,region2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
 
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
@@ -3400,7 +3400,7 @@ class TcpInjPacket(IpPacket):
         #bi = a_info[pc.i_bi]
         #not_bi = abs(bi - 1)  # This IP did not cause the block
         if a_info[pc.i_cc] == None:
-            cc, name, loc = trafcap.geoIpLookupTpl(a_info[a_info[pc.i_bi]])
+            cc,name,loc,city,region = trafcap.geoIpLookupTpl(a_info[a_info[pc.i_bi]])
             a_info[pc.i_cc] = cc
             a_info[pc.i_loc] = loc 
             
