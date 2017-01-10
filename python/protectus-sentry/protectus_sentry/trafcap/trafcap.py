@@ -468,7 +468,8 @@ collection_info = (
 ('oth_sessionGroups2', [[[('tem',1),('tbm',1),('s',1),('d',1),('m',1)]]]),
 ('oth_captureGroups2', [[[('tem',1),('tbm',1)]]]),
 #('oth_captureInfo',   [ ]),
-('nmi',                [[ [('tm',1),('i',1)] ]])
+('nmi',                [[ [('tm',1),('i',1)] ]]),
+('http_eventInfo',     [[ [('tm',1)] ]])
 )
 
 def redoIndex(db, c_name, c_indxs):
