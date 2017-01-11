@@ -348,7 +348,7 @@ dns_resolver = resolver.Resolver()
 # Set arbitrary 1 second timeouts
 dns_resolver.timeout = 1
 dns_resolver.lifetime = 1
-def getDnsPtrRec(ip_addr):
+def dnsPtrRecLookup(ip_addr):
     # Returns PTR record string given a string representing a dotted quad
     addr=reversename.from_address(ip_addr)
     try:
@@ -358,7 +358,10 @@ def getDnsPtrRec(ip_addr):
         answer = ''
     return answer
 
-def getDnsMxRec(domain_name):
+def dnsPtrRecLookupInt(ip_addr):
+    return dnsPtrRecLookup(intToString(ip_addr))
+
+def dnsMxRecLookup(domain_name):
     # Give a string domain name, returns MX rec list somewhat sorted by 
     # decreasing priority (increasing MX record preference field) 
     previous_preference = None 
