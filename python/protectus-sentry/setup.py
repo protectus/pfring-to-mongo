@@ -19,7 +19,8 @@ requires = [
     'GeoIP',
     'PyYAML',
     'passlib',
-    'impacket'
+    'impacket',
+    'dnspython'
 ]
 
 setup_settings = {}
