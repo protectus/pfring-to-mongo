@@ -5,3 +5,4 @@ impacket==0.9.12
 passlib==1.6.2
 pymongo==3.0.2
 wsgiref==0.1.2
+dnspython==1.15.0
