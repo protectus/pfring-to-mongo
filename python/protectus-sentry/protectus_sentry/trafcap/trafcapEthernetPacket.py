@@ -25,7 +25,7 @@ class EthernetPacket(object):
     #     src            dst
     # [addr, bytes], [addr, bytes]
     i_src=0; i_dst=1
-    i_addr=0; i_bytes=1;
+    i_addr=0; i_bytes=1; i_pkt=2
     i_tb=2; i_te=3; i_pkts=4; i_ci=5; i_proto=6
     i_msg=7
     i_ldwt=8      # last_db_write_time
@@ -78,7 +78,7 @@ class EthernetPacket(object):
                          "se":a_bytes[pc.b_se],
                          "sbm":trafcap.secondsToMinute(a_bytes[pc.b_sb]),
                          "sem":trafcap.secondsToMinute(a_bytes[pc.b_se]),
-                         "pk":a_bytes[pc.b_pkts],
+                         #"pk":a_bytes[pc.b_pkts],
                          "pr":a_info[pc.i_proto],
                          "b":a_bytes[pc.b_array]}
         if a_info[pc.i_vl]: session_bytes['vl'] = a_info[pc.i_vl]
@@ -99,6 +99,8 @@ class EthernetPacket(object):
                     "tb":a_info[pc.i_tb],
                     "te":a_info[pc.i_te],
                     "pk":a_info[pc.i_pkts],
+                    "pk1":a_info[ci][pc.i_pkt],
+                    "pk2":a_info[si][pc.i_pkt],
                     "pr":a_info[pc.i_proto]}
         tdm = tem-tbm
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
@@ -173,7 +175,7 @@ class EthernetPacket(object):
     @classmethod
     def buildInfoDictItem(pc, key, data):
         if key == pc.capture_dict_key:
-            new_info = [[0,0], [0,0], 
+            new_info = [[0,0,0], [0,0,0], 
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
                         1, 0, '', '',
                         float(data[pc.p_etime]), True, None, None] 
@@ -222,7 +224,7 @@ class OtherPacket(EthernetPacket):
 
     # Legend for Other packet data list returned by the parse method:
     p_src=0; p_dst=1
-    p_addr=0; p_bytes=1;
+    p_addr=0; p_bytes=1; p_pkts=2
     p_etime=2
     p_proto=3
     p_msg=4
@@ -254,7 +256,7 @@ class OtherPacket(EthernetPacket):
                         msg = msg[:512] + '...'
                         break
     
-                data = [(pkt[1], int(pkt[2])), (pkt[3], 0), pkt[0], pkt[4], msg]
+                data = [(pkt[1], int(pkt[2]), 1), (pkt[3], 0, 0), pkt[0], pkt[4], msg]
     
                 vlan_id = None
                 #        0      1       2      
@@ -272,13 +274,19 @@ class OtherPacket(EthernetPacket):
                         break
     
                 vlan_id = int(pkt[1])
-                data = [(pkt[2], int(pkt[3])), (pkt[4], 0), pkt[0], pkt[5], msg]
+                data = [(pkt[2], int(pkt[3]), 1), (pkt[4], 0, 0), pkt[0], pkt[5], msg]
                 #        0      1       2      
                 #       src  ,  dst  , msg
                 key = (pkt[2], pkt[4], msg, vlan_id)
     
         elif doc and not pkt:
-            data = [(doc['s'], doc['b1']), (doc['d'], doc['b2']), 
+            try:
+                pkts = [doc['pk1'],doc['pk2']]
+            except KeyError:
+                # Arbitrary packet count if doc is in old format without pk1 and pk2
+                pkts = [0, 0]
+
+            data = [(doc['s'], doc['b1'], pkts[0]), (doc['d'], doc['b2'], pkts[1]), 
                      doc['tb'], doc['pr'], doc['m']]
 
             try:

@@ -106,7 +106,7 @@ class IpPacket(object):
                          "se":a_bytes[pc.b_se],
                          "sbm":trafcap.secondsToMinute(a_bytes[pc.b_sb]),
                          "sem":trafcap.secondsToMinute(a_bytes[pc.b_se]),
-                         "pk":a_bytes[pc.b_pkts],
+                         #"pk":a_bytes[pc.b_pkts],
                          "pr":a_info[pc.i_proto],
                          "b":a_bytes[pc.b_array],
                          "cc1":a_info[pc.i_cc1],
@@ -314,12 +314,14 @@ class PythonTCPSession(Structure):
         ("ip1", c_uint32),
         ("port1", c_uint16),
         ("bytes1", c_uint64),
+        ("pkts1", c_uint64),
         ("flags1", c_uint16),
         ("cc1", c_char * 2),
 
         ("ip2", c_uint32),
         ("port2", c_uint16),
         ("bytes2", c_uint64),
+        ("pkts2", c_uint64),
         ("flags2", c_uint16),
         ("cc2", c_char * 2),
 
@@ -332,11 +334,13 @@ class PythonUDPSession(Structure):
         ("ip1", c_uint32),
         ("port1", c_uint16),
         ("bytes1", c_uint64),
+        ("pkts1", c_uint64),
         ("cc1", c_char * 2),
 
         ("ip2", c_uint32),
         ("port2", c_uint16),
         ("bytes2", c_uint64),
+        ("pkts2", c_uint64),
         ("cc2", c_char * 2),
 
         ("vlan_id", c_int16),
@@ -430,10 +434,12 @@ cdef int print_tcp_session(GenericSession* g_session, uint64_t time_marker) exce
     print "IP1: ", str(session.ip1),
     print "port1: ", str( session.port1),
     print "bytes1: ", str( session.bytes1),
+    print "pkts1: ", str( session.pkts1),
     print "flags1: ", str( session.flags1)
     print "IP2: ", str( session.ip2),
     print "port2: ", str( session.port2),
     print "bytes2: ", str( session.bytes2),
+    print "pkts2: ", str( session.pkts2),
     print "flags2: ", str( session.flags2)
     print "vlanid: ", str( session.vlan_id),
     print "time begin: ", str( session.base.tb),
@@ -502,11 +508,13 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
         session.port1 = packet.port1
         session.flags1 = packet.flags<<((packet.flags&16)/2)
         session.bytes1 = packet.bytes
+        session.pkts1 = 1 
         session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][0] = packet.bytes
 
         session.ip2 = packet.ip2
         session.port2 = packet.port2
         session.bytes2 = 0
+        session.pkts2 = 0
         session.flags2 = 0
 
     # SYN-ACK flags detected - not sure what happened to SYN packet
@@ -514,12 +522,14 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
         session.ip1 = packet.ip2
         session.port1 = packet.port2
         session.bytes1 = 0
+        session.pkts1 = 0
         session.flags1 = 0
 
         session.ip2 = packet.ip1
         session.port2 = packet.port1
         session.flags2 = packet.flags<<((packet.flags&16)/2)
         session.bytes2 = packet.bytes
+        session.pkts2 = 1 
         session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][1] = packet.bytes
 
     # No SYN bit and (port1 >= port2)
@@ -528,11 +538,13 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
         session.port1 = packet.port1
         session.flags1 = packet.flags<<((packet.flags&16)/2)
         session.bytes1 = packet.bytes
+        session.pkts1 = 1 
         session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][0] = packet.bytes
 
         session.ip2 = packet.ip2
         session.port2 = packet.port2
         session.bytes2 = 0
+        session.pkts2 = 0
         session.flags2 = 0
 
     session.vlan_id = packet.vlan_id
@@ -555,20 +567,24 @@ cdef int generate_udp_session(GenericSession* g_session, GenericPacketHeaders* g
         session.ip1 = packet.ip1
         session.port1 = packet.port1
         session.bytes1 = packet.bytes
+        session.pkts1 = 1 
         session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][0] = packet.bytes
 
         session.ip2 = packet.ip2
         session.port2 = packet.port2
         session.bytes2 = 0
+        session.pkts2 = 0
 
     else:
         session.ip1 = packet.ip2
         session.port1 = packet.port2
         session.bytes1 = 0
+        session.pkts1 = 0
 
         session.ip2 = packet.ip1
         session.port2 = packet.port1
         session.bytes2 = packet.bytes
+        session.pkts2 = 1 
         session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][1] = packet.bytes
 
     session.vlan_id = packet.vlan_id
@@ -613,6 +629,7 @@ cdef int update_tcp_session(GenericSession* g_session, GenericPacketHeaders* g_p
         #session.ip1 = packet.ip1
         #session.port1 = packet.port1
         session.bytes1 += packet.bytes
+        session.pkts1 += 1 
         session.flags1 |= packet.flags<<((packet.flags&16)/2)
         session.base.traffic_bytes[bytes_slot][0] += packet.bytes
 
@@ -620,6 +637,7 @@ cdef int update_tcp_session(GenericSession* g_session, GenericPacketHeaders* g_p
         #session.ip2 = packet.ip2
         #session.port2 = packet.port2
         session.bytes2 += packet.bytes
+        session.pkts2 += 1 
         session.flags2 |= packet.flags<<((packet.flags&16)/2)
         session.base.traffic_bytes[bytes_slot][1] += packet.bytes
 
@@ -655,12 +673,14 @@ cdef int update_udp_session(GenericSession* g_session, GenericPacketHeaders* g_p
         #session.ip1 = packet.ip1
         #session.port1 = packet.port1
         session.bytes1 += packet.bytes
+        session.pkts1 += 1 
         session.base.traffic_bytes[bytes_slot][0] += packet.bytes
 
     else:
         #session.ip2 = packet.ip2
         #session.port2 = packet.port2
         session.bytes2 += packet.bytes
+        session.pkts2 += 1 
         session.base.traffic_bytes[bytes_slot][1] += packet.bytes
 
     return 0
@@ -916,7 +936,9 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             "tem":peg_to_minute(<uint64_t>session.base.te),
             "tb":session.base.tb,
             "te":session.base.te,
-            "pk":int(session.base.packets)
+            "pk":int(session.base.packets),
+            "pk1":int(session.pkts1),
+            "pk2":int(session.pkts2)
         }
 
         # Set CC and vlanId only for sessionInfo & Bytes, not for captureInfo & Bytes
@@ -968,6 +990,8 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
                     "b2": int(session.bytes2),
                     "bt": int(session.bytes1+session.bytes2),
                     "pk": int(session.base.packets),
+                    "pk1": int(session.pkts1),
+                    "pk2": int(session.pkts2),
                     "te": session.base.te,
                     "tem": peg_to_minute(<uint64_t>session.base.te) }
 
@@ -1093,7 +1117,9 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             "tem":peg_to_minute(<uint64_t>session.base.te),
             "tb":session.base.tb,
             "te":session.base.te,
-            "pk":int(session.base.packets)
+            "pk":int(session.base.packets),
+            "pk1":int(session.pkts1),
+            "pk2":int(session.pkts2)
         }
 
         # Set CC and vlanId only for sessionInfo & Bytes, not for captureInfo & Bytes
@@ -1145,6 +1171,8 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
                     "b2": int(session.bytes2),
                     "bt": int(session.bytes1+session.bytes2),
                     "pk": int(session.base.packets),
+                    "pk1": int(session.pkts1),
+                    "pk2": int(session.pkts2),
                     "te": session.base.te,
                     "tem": peg_to_minute(<uint64_t>session.base.te) }
 
@@ -1724,7 +1752,7 @@ class TcpPacket(IpPacket):
     #        data[0]  (ip1)     ,     data[1]   (ip2)       , [2]  , [3]
     #[[(addr),port,bytes,[flag]], [(addr),port,bytes,[flag]],epoch ,proto]
     p_ip1=0; p_ip2=1
-    p_addr=0; p_port=1; p_bytes=2; p_flags=3
+    p_addr=0; p_port=1; p_bytes=2; p_flags=3; p_pkts=4
     p_etime=2
     p_proto=3
     p_vl=4   # vlan_id
@@ -1734,7 +1762,7 @@ class TcpPacket(IpPacket):
     #   data[0]    (ip1)    ,     data[1]   (ip2)  ,[2],[3],[4],[5],[6], [7]
     #[[(adr),prt,byts,[flg]],[(adr),prt,byts,[flg]], tb, ta, te,pkts, ci,prto]
     i_ip1=0; i_ip2=1
-    i_addr=0; i_port=1; i_bytes=2; i_flags=3
+    i_addr=0; i_port=1; i_bytes=2; i_flags=3; i_pkt=4
     i_tb=2; i_ta=3; i_te=4; i_pkts=5; i_ci=6; i_proto=7
     i_ldwt=8      # last_db_write_time
     i_csldw=9     # changed_since_last_db_write
@@ -1889,6 +1917,7 @@ class TcpPacket(IpPacket):
 
             ports = [port1_int, port2_int]
             byts = [bytes1, 0]
+            pkts = [1, 0]
             epoch_time = pkt[0]
             proto = "_"                            # for future use 
 
@@ -1898,6 +1927,12 @@ class TcpPacket(IpPacket):
                      trafcap.intToTuple(doc['ip2'])]
             ports = [doc['p1'], doc['p2']]
             byts = [doc['b1'], doc['b2']]
+            # pk1 &pk2 are new fields - handle if they are not in doc
+            try:
+                pkts = [doc['pk1'], doc['pk2']]
+            except KeyError:
+                # Arbitrary packet count for old format doc without pk1 and pk2
+                pkts = [0 ,0]
             flag_list = [doc['f1'], doc['f2']]
             epoch_time = doc['tb']
             proto = doc.get('pr', None)
@@ -1911,7 +1946,7 @@ class TcpPacket(IpPacket):
             return (), [] 
         
         # Sort to get a consistent key for each TCP session
-        data = sorted(zip(addrs, ports, byts, flag_list))
+        data = sorted(zip(addrs, ports, byts, flag_list, pkts))
         #[((1,2,3,4), 25254, 0, ['_', '_', '_', '_', '_', '_', '_', '_']),
         # ((9,8,7,6), 22,  140, ['P', '_', '_', '_', '_', '_', '_', '_'])]
     
@@ -1948,6 +1983,8 @@ class TcpPacket(IpPacket):
                     "tb":a_info[pc.i_tb],
                     "te":a_info[pc.i_te],
                     "pk":a_info[pc.i_pkts],
+                    "pk1":a_info[ci][pc.i_pkt],
+                    "pk2":a_info[si][pc.i_pkt],
                     "pr":a_info[pc.i_proto],
                     "cc1":a_info[pc.i_cc1],
                     "loc1":a_info[pc.i_loc1],
@@ -2015,7 +2052,7 @@ class TcpPacket(IpPacket):
     @classmethod
     def buildInfoDictItem(pc, key, data):
         if key == pc.capture_dict_key:
-            new_info=[[(0,0,0,0),0,0,[]], [(0,0,0,0),0,0,[]], 
+            new_info=[[(0,0,0,0),0,0,[],0], [(0,0,0,0),0,0,[],0], 
                       float(data[pc.p_etime]), 0, float(data[pc.p_etime]),
                       1, 0, data[pc.p_proto],
                       float(data[pc.p_etime]),True,
@@ -2046,7 +2083,7 @@ class UdpPacket(IpPacket):
     # data[0]    (ip1)  ,    data[1]   (ip2) , [2]  , [3] ,    [4]
     #[(addr),port,bytes], [(addr),port,bytes],epoch ,proto, client_index
     p_ip1=0; p_ip2=1
-    p_addr=0; p_port=1; p_bytes=2;
+    p_addr=0; p_port=1; p_bytes=2; p_pkts=3
     p_etime=2
     p_proto=3
     p_ci=4
@@ -2057,7 +2094,7 @@ class UdpPacket(IpPacket):
     #  data[0] (ip1)   ,  data[1]  (ip2)  , [2], [3], [4], [5],  [6]
     #[[(adr),port,byts], [(adr),port,byts], tb , te , pkts,  ci, proto]
     i_ip1=0; i_ip2=1
-    i_addr=0; i_port=1; i_bytes=2;
+    i_addr=0; i_port=1; i_bytes=2; i_pkt=3
     i_tb=2; i_te=3; i_pkts=4; i_ci=5; i_proto=6
     i_ldwt=7      # last_db_write_time
     i_csldw=8     # changed_since_last_db_write
@@ -2125,6 +2162,7 @@ class UdpPacket(IpPacket):
             addr2 = (int(a2_1), int(a2_2), int(a2_3), int(a2_4))
             addrs = [addr1, addr2]
             epoch_time = pkt[0]
+            pkts = [1, 0]
 
         elif doc and not pkt:
             addr1 = trafcap.intToTuple(doc['ip1'])
@@ -2132,6 +2170,14 @@ class UdpPacket(IpPacket):
             addrs = [addr1, addr2]
             ports = [doc['p1'], doc['p2']]
             byts = [doc['b1'], doc['b2']]
+            # pk1 &pk2 are new fields - handle if they are not in doc
+            try:
+                pkts = [doc['pk1'], doc['pk2']]
+            except KeyError:
+                # Arbitrary packet count for old format doc without pk1 and pk2
+                pkts = [0 ,0]
+
+
             epoch_time = doc['tb']
             proto = doc.get('pr', None)
             try:
@@ -2145,7 +2191,7 @@ class UdpPacket(IpPacket):
         sending_addr = addr1
 
         # sort to get a consistent key for each session
-        data = sorted(zip(addrs, ports, byts))
+        data = sorted(zip(addrs, ports, byts, pkts))
         # [((192, 43, 172, 30), 53, 0), ((192, 168, 19, 227), 53629, 68)]
 
         # add the data 
@@ -2188,6 +2234,8 @@ class UdpPacket(IpPacket):
                     "tb":a_info[pc.i_tb],
                     "te":a_info[pc.i_te],
                     "pk":a_info[pc.i_pkts],
+                    "pk1":a_info[ci][pc.i_pkt],
+                    "pk2":a_info[si][pc.i_pkt],
                     "pr":a_info[pc.i_proto],
                     "cc1":a_info[pc.i_cc1],
                     "loc1":a_info[pc.i_loc1],
@@ -2231,7 +2279,7 @@ class UdpPacket(IpPacket):
     @classmethod
     def buildInfoDictItem(pc, key, data):
         if key == pc.capture_dict_key:
-            new_info=[[(0,0,0,0),0,0], [(0,0,0,0),0,0], 
+            new_info=[[(0,0,0,0),0,0,0], [(0,0,0,0),0,0,0], 
                       float(data[pc.p_etime]), float(data[pc.p_etime]),
                       1, 0, data[pc.p_proto],
                       float(data[pc.p_etime]),True,
@@ -2267,7 +2315,7 @@ class IcmpPacket(IpPacket):
     # data[0]    (ip1)  ,    data[1]   (ip2) , [2]  , [3] ,    [4]
     #[(addr),type,bytes], [(addr),type,bytes],epoch ,proto, client_index
     p_ip1=0; p_ip2=1
-    p_addr=0; p_type=1; p_bytes=2;
+    p_addr=0; p_type=1; p_bytes=2; p_pkts=3
     p_etime=2
     p_proto=3
     p_ci=4
@@ -2278,7 +2326,7 @@ class IcmpPacket(IpPacket):
     #  data[0] (ip1)   ,  data[1]  (ip2)  , [2], [3], [4], [5],  [6]
     #[[(adr),type,byts], [(adr),type,byts], tb , te , pkts,  ci, proto]
     i_ip1=0; i_ip2=1
-    i_addr=0; i_type=1; i_bytes=2;
+    i_addr=0; i_type=1; i_bytes=2; i_pkt=3
     i_tb=2; i_te=3; i_pkts=4; i_ci=5; i_proto=6
     i_ldwt=7      # last_db_write_time
     i_csldw=8     # changed_since_last_db_write
@@ -2380,6 +2428,7 @@ class IcmpPacket(IpPacket):
             if ',' in byts: 
                 byts = pkt[2].split(',')[0]
             byts = [int(byts), 0]
+            pkts = [1, 0]
     
             epoch_time = pkt[0]
             epoch_time_float = float(pkt[0])
@@ -2441,6 +2490,14 @@ class IcmpPacket(IpPacket):
             addr2 = trafcap.intToTuple(doc['ip2'])
             addrs = [addr1, addr2]
             byts = [doc['b1'], doc['b2']]
+
+            # pk1 &pk2 are new fields - handle if they are not in doc
+            try:
+                pkts = [doc['pk1'], doc['pk2']]
+            except KeyError:
+                # Arbitrary packet count for old format doc without pk1 and pk2
+                pkts = [0 ,0]
+
             type_and_code = [[doc['ty1']], doc['ty2']]
             epoch_time = doc['tb']
             proto = 'ICMP' 
@@ -2462,7 +2519,7 @@ class IcmpPacket(IpPacket):
         sending_addr = addr1
     
         # sort to get a consistent key for each packet
-        data = sorted(zip(addrs, type_and_code, byts))
+        data = sorted(zip(addrs, type_and_code, byts, pkts))
         # [((192,43,172,30), type, bytes), ((192,168,19,227), type, bytes)]
 
         # add other data 
@@ -2524,6 +2581,8 @@ class IcmpPacket(IpPacket):
                     "tb":a_info[pc.i_tb],
                     "te":a_info[pc.i_te],
                     "pk":a_info[pc.i_pkts],
+                    "pk1":a_info[ci][pc.i_pkt],
+                    "pk2":a_info[si][pc.i_pkt],
                     "cc1":a_info[pc.i_cc1],
                     "loc1":a_info[pc.i_loc1],
                     "cc2":a_info[pc.i_cc2],
@@ -2548,7 +2607,7 @@ class IcmpPacket(IpPacket):
                          "se":a_bytes[pc.b_se],
                          "sbm":trafcap.secondsToMinute(a_bytes[pc.b_sb]),
                          "sem":trafcap.secondsToMinute(a_bytes[pc.b_se]),
-                         "pk":a_bytes[pc.b_pkts],
+                         #"pk":a_bytes[pc.b_pkts],
                          "pr":a_info[pc.i_proto],
                          "b":a_bytes[pc.b_array],
                          "cc1":a_info[pc.i_cc1],
@@ -2650,7 +2709,7 @@ class IcmpPacket(IpPacket):
     @classmethod
     def buildInfoDictItem(pc, key, data):
         if key == pc.capture_dict_key:
-            new_info=[[(0,0,0,0),[],0], [(0,0,0,0),[],0], 
+            new_info=[[(0,0,0,0),[],0,0], [(0,0,0,0),[],0,0], 
                       float(data[pc.p_etime]), float(data[pc.p_etime]),
                       1, 0, data[pc.p_proto],
                       float(data[pc.p_etime]),True,

@@ -289,7 +289,14 @@ class TrafcapEthPktContainer(TrafcapContainer):
 
             if self.container_type == "session":
                 a_info[pc.i_src][pc.i_bytes] += data[pc.p_src][pc.p_bytes]
-                a_info[pc.i_src][pc.i_bytes] += data[pc.p_src][pc.p_bytes]
+                a_info[pc.i_src][pc.i_pkt] += data[pc.p_src][pc.p_pkts]
+                #a_info[pc.i_src][pc.i_pkt] += 1 
+
+                # Following line noticed as duplicate of line above and 
+                # commented out - PFG - Jan2017.  The line was doubling 
+                # byte counts for 'other' traffic. 
+                #a_info[pc.i_src][pc.i_bytes] += data[pc.p_src][pc.p_bytes]
+
                 # updateInfoDict not needed for Ethernet packets
                 #pc.updateInfoDict(data, a_info)
 
@@ -410,6 +417,11 @@ class TrafcapIpPktContainer(TrafcapEthPktContainer):
             if self.container_type == "session":
                 a_info[pc.i_ip1][pc.i_bytes] += data[pc.p_ip1][pc.p_bytes]
                 a_info[pc.i_ip2][pc.i_bytes] += data[pc.p_ip2][pc.p_bytes]
+                
+                a_info[pc.i_ip1][pc.i_pkt] += data[pc.p_ip1][pc.p_pkts]
+                a_info[pc.i_ip2][pc.i_pkt] += data[pc.p_ip2][pc.p_pkts]
+
+                # Do any protocol-specific updates
                 pc.updateInfoDict(data, a_info)
 
             elif self.container_type == "capture":

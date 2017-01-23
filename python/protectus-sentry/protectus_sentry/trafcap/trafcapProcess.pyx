@@ -546,7 +546,7 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
                         # end, all we have to do is free up the objectid slot and
                         # update the capture packets counter with all the packets
                         # from this session.
-                        capture_session.packets += session.packets
+                        capture_session.packets += session_copy.packets
                         # session_object_ids assigned in the write_session function
                         session_object_ids[slot] = None
     
