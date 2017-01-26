@@ -75,10 +75,12 @@ class IpPacket(object):
     g_proto=11
     g_cc1=12
     g_loc1=13
-    g_cc2=14
-    g_loc2=15
-    g_id=16      # mongo object id
-    g_vl=17      # vlan id
+    g_asn1=14
+    g_cc2=15
+    g_loc2=16
+    g_asn2=17
+    g_id=18      # mongo object id
+    g_vl=19      # vlan id
 
     # Session criteria is same for TCP and UDP....ICMP and Other must override
 #    @classmethod
@@ -108,21 +110,19 @@ class IpPacket(object):
                          "sem":trafcap.secondsToMinute(a_bytes[pc.b_se]),
                          #"pk":a_bytes[pc.b_pkts],
                          "pr":a_info[pc.i_proto],
-                         "b":a_bytes[pc.b_array],
-                         "cc1":a_info[pc.i_cc1],
-                         "loc1":a_info[pc.i_loc1],
-                         "cc2":a_info[pc.i_cc2],
-                         "loc2":a_info[pc.i_loc2]}
+                         "b":a_bytes[pc.b_array]}
+        #Only write these fields to db if they are defined 
+        if a_info[pc.i_cc1]: session_bytes['cc1'] = a_info[pc.i_cc1]
+        if a_info[pc.i_loc1]: session_bytes['loc1'] = a_info[pc.i_loc1]
+        if a_info[pc.i_asn1]: session_bytes['as1'] = a_info[pc.i_asn1]
+        if a_info[pc.i_cc2]: session_bytes['cc2'] = a_info[pc.i_cc2]
+        if a_info[pc.i_loc2]: session_bytes['loc2'] = a_info[pc.i_loc2]
+        if a_info[pc.i_asn2]: session_bytes['as2'] = a_info[pc.i_asn2]
         if a_info[pc.i_vl]: session_bytes['vl'] = a_info[pc.i_vl]
         return session_bytes
 
     @classmethod
     def buildGroupsDoc(pc, a_group):
-        #group_criteria = {"ip1":a_group[pc.g_ip1],
-        #                  "ip2":a_group[pc.g_ip2],
-        #                  "p2":a_group[pc.g_p2],
-        #                  "tbm":a_group[pc.g_tbm]}
-
         group_bytes = []
         for item in a_group[pc.g_b]:
             if item[pc.g_1] != 0 or item[pc.g_2] != 0:
@@ -139,11 +139,14 @@ class IpPacket(object):
                       "ne":a_group[pc.g_ne],
                       #"pk":a_group[pc.g_pkts],
                       "pr":a_group[pc.g_proto],
-                      "b":group_bytes,
-                      "cc1":a_group[pc.g_cc1],
-                      "loc1":a_group[pc.g_loc1],
-                      "cc2":a_group[pc.g_cc2],
-                      "loc2":a_group[pc.g_loc2]}
+                      "b":group_bytes}
+        #Only write these fields to db if they are defined 
+        if a_group[pc.g_cc1]: group_data["cc1"] = a_group[pc.g_cc1]
+        if a_group[pc.g_loc1]: group_data["loc1"] = a_group[pc.g_loc1]
+        if a_group[pc.g_asn1]: group_data["as1"] = a_group[pc.g_asn1]
+        if a_group[pc.g_cc2]: group_data["cc2"] = a_group[pc.g_cc2]
+        if a_group[pc.g_loc2]: group_data["loc2"] = a_group[pc.g_loc2]
+        if a_group[pc.g_asn2]: group_data["as2"] = a_group[pc.g_asn2]
         if a_group[pc.g_vl]: group_data['vl'] = a_group[pc.g_vl]
         return group_data
 
@@ -164,6 +167,7 @@ class IpPacket(object):
 
     @classmethod
     def updateGroupsDict(pc, a_bytes, chunck_size, doc_win_start):
+        # bytes doc comes from mongo and may have cc, loc, and asn fields
         tmp_array = []
         for a_index in range(0, 90, 1):
             tmp_array.append([a_index*chunck_size, 0, 0])
@@ -176,8 +180,10 @@ class IpPacket(object):
                   a_bytes.get('pr', None),
                   a_bytes.get('cc1', None),
                   a_bytes.get('loc1', None),
+                  a_bytes.get('as1', None),
                   a_bytes.get('cc2', None),
                   a_bytes.get('loc2', None),
+                  a_bytes.get('as2', None),
                   None, 
                   a_bytes.get('vl', None)]
 
@@ -317,6 +323,7 @@ class PythonTCPSession(Structure):
         ("pkts1", c_uint64),
         ("flags1", c_uint16),
         ("cc1", c_char * 2),
+        ("as1", c_uint32),
 
         ("ip2", c_uint32),
         ("port2", c_uint16),
@@ -324,6 +331,7 @@ class PythonTCPSession(Structure):
         ("pkts2", c_uint64),
         ("flags2", c_uint16),
         ("cc2", c_char * 2),
+        ("as2", c_uint32),
 
         ("vlan_id", c_int16),
     )
@@ -336,12 +344,14 @@ class PythonUDPSession(Structure):
         ("bytes1", c_uint64),
         ("pkts1", c_uint64),
         ("cc1", c_char * 2),
+        ("as1", c_uint32),
 
         ("ip2", c_uint32),
         ("port2", c_uint16),
         ("bytes2", c_uint64),
         ("pkts2", c_uint64),
         ("cc2", c_char * 2),
+        ("as2", c_uint32),
 
         ("vlan_id", c_int16),
     )
@@ -362,11 +372,13 @@ class PythonTCPGroup(Structure):
         ("ip1", c_uint32),
         ("bytes1", c_uint64),
         ("cc1", c_char * 2),
+        ("as1", c_uint32),
 
         ("ip2", c_uint32),
         ("port2", c_uint16),
         ("bytes2", c_uint64),
         ("cc2", c_char * 2),
+        ("as2", c_uint32),
 
         ("vlan_id", c_int16),
     )
@@ -377,11 +389,13 @@ class PythonUDPGroup(Structure):
         ("ip1", c_uint32),
         ("bytes1", c_uint64),
         ("cc1", c_char * 2),
+        ("as1", c_uint32),
 
         ("ip2", c_uint32),
         ("port2", c_uint16),
         ("bytes2", c_uint64),
         ("cc2", c_char * 2),
+        ("as2", c_uint32),
 
         ("vlan_id", c_int16),
     )
@@ -557,6 +571,8 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
     session.cc2[0] = 0
     session.cc2[1] = 0
 
+    session.asn1 = 0
+    session.asn2 = 0
     return 0
     
 cdef int generate_udp_session(GenericSession* g_session, GenericPacketHeaders* g_packet):
@@ -597,6 +613,8 @@ cdef int generate_udp_session(GenericSession* g_session, GenericPacketHeaders* g
     session.cc2[0] = 0
     session.cc2[1] = 0
 
+    session.asn1 = 0
+    session.asn2 = 0
     return 0
     
 cdef int update_tcp_session(GenericSession* g_session, GenericPacketHeaders* g_packet):
@@ -946,25 +964,34 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             # Get cc for new info_doc and update session (which is actually a session_copy)
             cc1, name1, loc1, city1, region1 = trafcap.geoIpLookupInt(session.ip1)
             cc2, name2, loc2, city2, region2 = trafcap.geoIpLookupInt(session.ip2)
+            asn1, org1 = trafcap.geoIpAsnLookupInt(session.ip1)
+            asn2, org2 = trafcap.geoIpAsnLookupInt(session.ip2)
             
             # May need to update cc1 &/or cc2 in original session.
-            if cc1 or cc2:
+            if cc1 or cc2 or asn1 or asn2:
                 lock = live_session_locks[slot % SESSIONS_PER_LOCK]
                 lock.acquire()
     
+
+                # Populate session_copy for use when creating bytes_doc 
+                # Populate original session for use during future writes
                 if cc1: 
                     info_doc["cc1"] = cc1
-                    # Populate session_copy for use when creating bytes_doc 
-                    # Populate original session for use during future writes
                     session.cc1[0] = live_session.cc1[0] = ord(cc1[0])
                     session.cc1[1] = live_session.cc1[1] = ord(cc1[1])
     
                 if cc2: 
                     info_doc["cc2"] = cc2
-                    # Populate session_copy for use when creating bytes_doc 
-                    # Populate original session for use during future writes
                     session.cc2[0] = live_session.cc2[0] = ord(cc2[0])
                     session.cc2[1] = live_session.cc2[1] = ord(cc2[1])
+
+                if asn1:
+                    info_doc["as1"] = int(asn1[2:])
+                    session.asn1 = live_session.asn1 = int(asn1[2:]) 
+    
+                if asn2:
+                    info_doc["as2"] = int(asn2[2:])
+                    session.asn2 = live_session.asn2 = int(asn2[2:]) 
     
                 lock.release()
 
@@ -1025,7 +1052,8 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
     # Set CC and vlan only for sessionInfo & Bytes, not for captureInfo & Bytes
     if live_session_locks:
-        # Populate bytes_doc country code from session_copy
+        # Populate bytes_doc country code from session_copy.  Session is
+        # zeroed-out when created so unpopulated fields will be 0
         if session.cc1[0] != 0:
             bytes_doc["cc1"] = chr(session.cc1[0]) + chr(session.cc1[1])
     
@@ -1033,6 +1061,8 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             bytes_doc["cc2"] = chr(session.cc2[0]) + chr(session.cc2[1])
     
         if session.vlan_id >= 0: bytes_doc['vl'] = session.vlan_id
+        if session.asn1 != 0: bytes_doc['as1'] = session.asn1
+        if session.asn2 != 0: bytes_doc['as2'] = session.asn2
 
     cdef int second, i
     cdef uint32_t* bytes_subarray
@@ -1127,25 +1157,33 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             # Get cc for new info_doc and update session (which is actually a session_copy)
             cc1, name1, loc1, city1, region1 = trafcap.geoIpLookupInt(session.ip1)
             cc2, name2, loc2, city2, region2 = trafcap.geoIpLookupInt(session.ip2)
+            asn1, org1 = trafcap.geoIpAsnLookupInt(session.ip1)
+            asn2, org2 = trafcap.geoIpAsnLookupInt(session.ip2)
             
             # May need to update cc1 &/or cc2 in original session.
-            if cc1 or cc2:
+            if cc1 or cc2 or asn1 or asn2:
                 lock = live_session_locks[slot % SESSIONS_PER_LOCK]
                 lock.acquire()
     
+                # Populate session_copy for use when creating bytes_doc 
+                # Populate original session for use during future writes
                 if cc1: 
                     info_doc["cc1"] = cc1
-                    # Populate session_copy for use when creating bytes_doc 
-                    # Populate original session for use during future writes
                     session.cc1[0] = live_session.cc1[0] = ord(cc1[0])
                     session.cc1[1] = live_session.cc1[1] = ord(cc1[1])
     
                 if cc2: 
                     info_doc["cc2"] = cc2
-                    # Populate session_copy for use when creating bytes_doc 
-                    # Populate original session for use during future writes
                     session.cc2[0] = live_session.cc2[0] = ord(cc2[0])
                     session.cc2[1] = live_session.cc2[1] = ord(cc2[1])
+
+                if asn1:
+                    info_doc["as1"] = int(asn1[2:])
+                    session.asn1 = live_session.asn1 = int(asn1[2:])
+
+                if asn2:
+                    info_doc["as2"] = int(asn2[2:])
+                    session.asn2 = live_session.asn2 = int(asn2[2:])
     
                 lock.release()
 
@@ -1206,7 +1244,8 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
     # Set CC and vlan only for sessionInfo & Bytes, not for captureInfo & Bytes
     if live_session_locks:
-        # Populate bytes_doc country code from session_copy
+        # Populate bytes_doc country code from session_copy.  Session is
+        # zeroed-out when created so unpopulated fields will be 0
         if session.cc1[0] != 0:
             bytes_doc["cc1"] = chr(session.cc1[0]) + chr(session.cc1[1])
     
@@ -1214,6 +1253,8 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             bytes_doc["cc2"] = chr(session.cc2[0]) + chr(session.cc2[1])
     
         if session.vlan_id >= 0: bytes_doc['vl'] = session.vlan_id
+        if session.asn1 != 0: bytes_doc['as1'] = session.asn1
+        if session.asn2 != 0: bytes_doc['as2'] = session.asn2
 
     cdef int second, i
     cdef uint32_t* bytes_subarray
@@ -1351,23 +1392,27 @@ cdef int write_tcp_group(object group_bulk_writer, object group_collection, list
         # Group data should already have cc populated.  Check just in case.
         if group.cc1[0] != 0:
             group_doc["cc1"] = chr(group.cc1[0]) + chr(group.cc1[1])
-        else:
-            cc1, name1, loc1, city1, region1 = trafcap.geoIpLookupInt(group.ip1)
-            if cc1: 
-                group_doc["cc1"] = cc1
-                group.cc1[0] = ord(cc1[0])
-                group.cc1[1] = ord(cc1[1])
+        # Fixed bug in generate_*_group functions - should no longer need this:
+        #else:
+        #    cc1, name1, loc1, city1, region1 = trafcap.geoIpLookupInt(group.ip1)
+        #    if cc1: 
+        #        group_doc["cc1"] = cc1
+        #        group.cc1[0] = ord(cc1[0])
+        #        group.cc1[1] = ord(cc1[1])
 
         if group.cc2[0] != 0:
             group_doc["cc2"] = chr(group.cc2[0]) + chr(group.cc2[1])
-        else:
-            cc2, name2, loc2, city2, region2 = trafcap.geoIpLookupInt(group.ip2)
-            if cc2: 
-                group_doc["cc2"] = cc2
-                group.cc2[0] = ord(cc2[0])
-                group.cc2[1] = ord(cc2[1])
+        # Fixed bug in generate_*_group functions - should no longer need this:
+        #else:
+        #    cc2, name2, loc2, city2, region2 = trafcap.geoIpLookupInt(group.ip2)
+        #    if cc2: 
+        #        group_doc["cc2"] = cc2
+        #        group.cc2[0] = ord(cc2[0])
+        #        group.cc2[1] = ord(cc2[1])
 
         if group.vlan_id >= 0: group_doc['vl'] = group.vlan_id
+        if group.asn1 != 0: group_doc['as1'] = group.asn1
+        if group.asn2 != 0: group_doc['as2'] = group.asn2
 
         # Insert the new doc and record the objectid
         if trafcap.options.mongo:
@@ -1433,11 +1478,13 @@ cdef int generate_tcp_group(GenericGroup* g_group, GenericSession* g_session, Ge
     group.ip1 = session.ip1
     group.cc1[0] = session.cc1[0] 
     group.cc1[1] = session.cc1[1] 
+    group.asn1 = session.asn1
 
     group.ip2 = session.ip2
     group.port2 = session.port2
-    group.cc1[0] = session.cc1[0] 
-    group.cc1[1] = session.cc1[1] 
+    group.cc2[0] = session.cc2[0] 
+    group.cc2[1] = session.cc2[1] 
+    group.asn2 = session.asn2
 
     group.vlan_id = session.vlan_id
 
@@ -1514,11 +1561,13 @@ cdef int generate_udp_group(GenericGroup* g_group, GenericSession* g_session, Ge
     group.ip1 = session.ip1
     group.cc1[0] = session.cc1[0] 
     group.cc1[1] = session.cc1[1] 
+    group.asn1 = session.asn1
 
     group.ip2 = session.ip2
     group.port2 = session.port2
-    group.cc1[0] = session.cc1[0] 
-    group.cc1[1] = session.cc1[1] 
+    group.cc2[0] = session.cc2[0] 
+    group.cc2[1] = session.cc2[1] 
+    group.asn2 = session.asn2
 
     group.vlan_id = session.vlan_id
 
@@ -1768,10 +1817,12 @@ class TcpPacket(IpPacket):
     i_csldw=9     # changed_since_last_db_write
     i_cc1=10
     i_loc1=11
-    i_cc2=12
-    i_loc2=13
-    i_id=14        # mongo object id
-    i_vl=15        # vlan id
+    i_asn1=12
+    i_cc2=13
+    i_loc2=14
+    i_asn2=15
+    i_id=16        # mongo object id
+    i_vl=17        # vlan id
 
     # This function written to retain some functionality from the
     # original parse() function once pf_ring is being used.
@@ -1985,11 +2036,15 @@ class TcpPacket(IpPacket):
                     "pk":a_info[pc.i_pkts],
                     "pk1":a_info[ci][pc.i_pkt],
                     "pk2":a_info[si][pc.i_pkt],
-                    "pr":a_info[pc.i_proto],
-                    "cc1":a_info[pc.i_cc1],
-                    "loc1":a_info[pc.i_loc1],
-                    "cc2":a_info[pc.i_cc2],
-                    "loc2":a_info[pc.i_loc2]}
+                    "pr":a_info[pc.i_proto]}
+        #Only write these fields to db if they are defined 
+        if a_info[pc.i_cc1]: info_doc['cc1'] = a_info[pc.i_cc1]
+        if a_info[pc.i_loc1]: info_doc['loc1'] = a_info[pc.i_loc1]
+        if a_info[pc.i_asn1]: info_doc['as1'] = a_info[pc.i_asn1]
+        if a_info[pc.i_cc2]: info_doc['cc2'] = a_info[pc.i_cc2]
+        if a_info[pc.i_loc2]: info_doc['loc2'] = a_info[pc.i_loc2]
+        if a_info[pc.i_asn2] != 0: info_doc['as2'] = a_info[pc.i_asn2]
+
         tdm = tem-tbm
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
         if a_info[pc.i_vl]: info_doc['vl'] = a_info[pc.i_vl]
@@ -2056,10 +2111,12 @@ class TcpPacket(IpPacket):
                       float(data[pc.p_etime]), 0, float(data[pc.p_etime]),
                       1, 0, data[pc.p_proto],
                       float(data[pc.p_etime]),True,
-                      0, 0, 0, 0, None, None] 
+                      None, None, None, None, None, None, None, None] 
         else:
             cc1,name1,loc1,city1,region1 = trafcap.geoIpLookupTpl(data[pc.p_ip1][pc.p_addr])
             cc2,name2,loc2,city2,region2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
+            asn1, org1 = trafcap.geoIpAsnLookupTpl(data[pc.p_ip1][pc.p_addr])
+            asn2, org2 = trafcap.geoIpAsnLookupTpl(data[pc.p_ip2][pc.p_addr])
 
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
@@ -2067,7 +2124,7 @@ class TcpPacket(IpPacket):
                         float(data[pc.p_etime]), 0, float(data[pc.p_etime]),
                         1, 0, data[pc.p_proto],
                         float(data[pc.p_etime]),True,
-                        cc1, loc1, cc2, loc2, None, data[pc.p_vl]]
+                        cc1, loc1, asn1, cc2, loc2, asn2, None, data[pc.p_vl]]
 
             pc.findClient(data, new_info)
         return new_info
@@ -2100,10 +2157,12 @@ class UdpPacket(IpPacket):
     i_csldw=8     # changed_since_last_db_write
     i_cc1=9
     i_loc1=10
-    i_cc2=11
-    i_loc2=12
-    i_id=13       # mongo object id
-    i_vl=14       # vlan id
+    i_asn1=11
+    i_cc2=12
+    i_loc2=13
+    i_asn2=14
+    i_id=15       # mongo object id
+    i_vl=16       # vlan id
 
     @classmethod
     def parse(pc, pkt, doc):
@@ -2236,11 +2295,15 @@ class UdpPacket(IpPacket):
                     "pk":a_info[pc.i_pkts],
                     "pk1":a_info[ci][pc.i_pkt],
                     "pk2":a_info[si][pc.i_pkt],
-                    "pr":a_info[pc.i_proto],
-                    "cc1":a_info[pc.i_cc1],
-                    "loc1":a_info[pc.i_loc1],
-                    "cc2":a_info[pc.i_cc2],
-                    "loc2":a_info[pc.i_loc2]}
+                    "pr":a_info[pc.i_proto]}
+        #Only write these fields to db if they are defined 
+        if a_info[pc.i_cc1]: info_doc['cc1'] = a_info[pc.i_cc1]
+        if a_info[pc.i_loc1]: info_doc['loc1'] = a_info[pc.i_loc1]
+        if a_info[pc.i_asn1]: info_doc['as1'] = a_info[pc.i_asn1]
+        if a_info[pc.i_cc2]: info_doc['cc2'] = a_info[pc.i_cc2]
+        if a_info[pc.i_loc2]: info_doc['loc2'] = a_info[pc.i_loc2]
+        if a_info[pc.i_asn2]: info_doc['as2'] = a_info[pc.i_asn2]
+
         tdm = tem-tbm
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
         if a_info[pc.i_vl]: info_doc['vl'] = a_info[pc.i_vl]
@@ -2285,10 +2348,12 @@ class UdpPacket(IpPacket):
                       float(data[pc.p_etime]), float(data[pc.p_etime]),
                       1, 0, data[pc.p_proto],
                       float(data[pc.p_etime]),True,
-                      0, 0, 0, 0, None, None] 
+                      None, None, None, None, None, None, None, None] 
         else:
             cc1,name1,loc1,city1,region1 = trafcap.geoIpLookupTpl(data[pc.p_ip1][pc.p_addr])
             cc2,name2,loc2,city2,region2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
+            asn1, org1 = trafcap.geoIpAsnLookupTpl(data[pc.p_ip1][pc.p_addr])
+            asn2, org2 = trafcap.geoIpAsnLookupTpl(data[pc.p_ip2][pc.p_addr])
 
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
@@ -2296,7 +2361,7 @@ class UdpPacket(IpPacket):
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
                         1, 0, data[pc.p_proto],
                         float(data[pc.p_etime]),True,
-                        cc1, loc1, cc2, loc2, None, data[pc.p_vl]]
+                        cc1, loc1, asn1, cc2, loc2, asn2, None, data[pc.p_vl]]
 
             pc.findClient(data, new_info)
         return new_info
@@ -2334,10 +2399,12 @@ class IcmpPacket(IpPacket):
     i_csldw=8     # changed_since_last_db_write
     i_cc1=9
     i_loc1=10
-    i_cc2=11
-    i_loc2=12
-    i_id=13       # mongo object id
-    i_vl=14       # vlan id
+    i_asn1=11
+    i_cc2=12
+    i_loc2=13
+    i_asn2=14
+    i_id=15       # mongo object id
+    i_vl=16       # vlan id
 
     # Legend for how data is stored in the Session Bytes dictionary 
     # and the Capture Bytes dictionary 
@@ -2371,10 +2438,12 @@ class IcmpPacket(IpPacket):
     g_proto=11
     g_cc1=12
     g_loc1=13
-    g_cc2=14
-    g_loc2=15
-    g_id=16        # mongo object id
-    g_vl=17        # vlan id
+    g_asn1=14
+    g_cc2=15
+    g_loc2=16
+    g_asn2=17
+    g_id=18        # mongo object id
+    g_vl=19        # vlan id
 
     @classmethod
     def parse(pc, pkt, doc):
@@ -2584,11 +2653,15 @@ class IcmpPacket(IpPacket):
                     "te":a_info[pc.i_te],
                     "pk":a_info[pc.i_pkts],
                     "pk1":a_info[ci][pc.i_pkt],
-                    "pk2":a_info[si][pc.i_pkt],
-                    "cc1":a_info[pc.i_cc1],
-                    "loc1":a_info[pc.i_loc1],
-                    "cc2":a_info[pc.i_cc2],
-                    "loc2":a_info[pc.i_loc2]}
+                    "pk2":a_info[si][pc.i_pkt]}
+        #Only write these fields to db if they are defined 
+        if a_info[pc.i_cc1]: info_doc['cc1'] = a_info[pc.i_cc1]
+        if a_info[pc.i_loc1]: info_doc['loc1'] = a_info[pc.i_loc1]
+        if a_info[pc.i_asn1]: info_doc['as1'] = a_info[pc.i_asn1]
+        if a_info[pc.i_cc2]: info_doc['cc2'] = a_info[pc.i_cc2]
+        if a_info[pc.i_loc2]: info_doc['loc2'] = a_info[pc.i_loc2]
+        if a_info[pc.i_asn2]: info_doc['as2'] = a_info[pc.i_asn2]
+
         tdm = tem-tbm
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
         if a_info[pc.i_vl]: info_doc['vl'] = a_info[pc.i_vl]
@@ -2611,11 +2684,14 @@ class IcmpPacket(IpPacket):
                          "sem":trafcap.secondsToMinute(a_bytes[pc.b_se]),
                          #"pk":a_bytes[pc.b_pkts],
                          "pr":a_info[pc.i_proto],
-                         "b":a_bytes[pc.b_array],
-                         "cc1":a_info[pc.i_cc1],
-                         "loc1":a_info[pc.i_loc1],
-                         "cc2":a_info[pc.i_cc2],
-                         "loc2":a_info[pc.i_loc2]}
+                         "b":a_bytes[pc.b_array]}
+        #Only write these fields to db if they are defined 
+        if a_info[pc.i_cc1] != 0: session_bytes['cc1'] = a_info[pc.i_cc1]
+        if a_info[pc.i_loc1] != 0: session_bytes['loc1'] = a_info[pc.i_loc1]
+        if a_info[pc.i_asn1] != 0: session_bytes['as1'] = a_info[pc.i_asn1]
+        if a_info[pc.i_cc2] != 0: session_bytes['cc2'] = a_info[pc.i_cc2]
+        if a_info[pc.i_loc2] != 0: session_bytes['loc2'] = a_info[pc.i_loc2]
+        if a_info[pc.i_asn2] != 0: session_bytes['as2'] = a_info[pc.i_asn2]
         if a_info[pc.i_vl]: session_bytes['vl'] = a_info[pc.i_vl]
         return session_bytes
 
@@ -2637,11 +2713,14 @@ class IcmpPacket(IpPacket):
                       "ne":a_group[pc.g_ne],
                       #"pk":a_group[pc.g_pkts],
                       "pr":a_group[pc.g_proto],
-                      "b":group_bytes,
-                      "cc1":a_group[pc.g_cc1],
-                      "loc1":a_group[pc.g_loc1],
-                      "cc2":a_group[pc.g_cc2],
-                      "loc2":a_group[pc.g_loc2]}
+                      "b":group_bytes}
+        #Only write these fields to db if they are defined 
+        if a_group[pc.g_cc1]: group_data["cc1"] = a_group[pc.g_cc1]
+        if a_group[pc.g_loc1]: group_data["loc1"] = a_group[pc.g_loc1]
+        if a_group[pc.g_asn1]: group_data["as1"] = a_group[pc.g_asn1]
+        if a_group[pc.g_cc2]: group_data["cc2"] = a_group[pc.g_cc2]
+        if a_group[pc.g_loc2]: group_data["loc2"] = a_group[pc.g_loc2]
+        if a_group[pc.g_asn2]: group_data["as2"] = a_group[pc.g_asn2]
         if a_group[pc.g_vl]: group_data['vl'] = a_group[pc.g_vl]
         return group_data
 
@@ -2679,6 +2758,7 @@ class IcmpPacket(IpPacket):
 
     @classmethod
     def updateGroupsDict(pc, a_bytes, chunck_size, doc_win_start):
+        # bytes doc comes from mongo and may have cc, loc, and asn fields
         tmp_array = []
         for a_index in range(0, 90, 1):
             tmp_array.append([a_index*chunck_size, 0, 0])
@@ -2687,9 +2767,15 @@ class IcmpPacket(IpPacket):
                   a_bytes['ip2'], 0,
                   doc_win_start, trafcap.secondsToMinute(a_bytes['se']),
                   0, 0,
-                  tmp_array, 0, a_bytes.get('pr', None),
-                  a_bytes['cc1'], a_bytes['loc1'], 
-                  a_bytes['cc2'], a_bytes['loc2'], None, a_bytes['vl']]
+                  tmp_array, 0, 
+                  a_bytes.get('pr', None),
+                  a_bytes.get('cc1', None),
+                  a_bytes.get('loc1', None),
+                  a_bytes.get('as1', None),
+                  a_bytes.get('cc2', None),
+                  a_bytes.get('loc2', None),
+                  a_bytes.get('as2', None),
+                  None, a_bytes['vl']]
         return a_group
 
     @classmethod
@@ -2717,10 +2803,12 @@ class IcmpPacket(IpPacket):
                       float(data[pc.p_etime]), float(data[pc.p_etime]),
                       1, 0, data[pc.p_proto],
                       float(data[pc.p_etime]),True,
-                      0, 0, 0, 0, None, None] 
+                      None, None, None, None, None, None, None, None] 
         else:
             cc1,name1,loc1,city1,region1 = trafcap.geoIpLookupTpl(data[pc.p_ip1][pc.p_addr])
             cc2,name2,loc2,city2,region2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
+            asn1, org1 = trafcap.geoIpAsnLookupTpl(data[pc.p_ip1][pc.p_addr])
+            asn2, org2 = trafcap.geoIpAsnLookupTpl(data[pc.p_ip2][pc.p_addr])
 
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
@@ -2728,7 +2816,7 @@ class IcmpPacket(IpPacket):
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
                         1, 0, data[pc.p_proto],
                         float(data[pc.p_etime]),True,
-                        cc1, loc1, cc2, loc2, None, data[pc.p_vl]]
+                        cc1, loc1, asn1, cc2, loc2, asn2, None, data[pc.p_vl]]
 
             pc.findClient(data, new_info)
         return new_info
@@ -3048,7 +3136,7 @@ class RtpPacket(IpPacket):
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
                         1, 0, '', '', 0,
                         float(data[pc.p_etime]), True, 
-                        0, 0, 0, 0, None, None, None] 
+                        None, None, None, None, None, None, None] 
         else:
             # Skip country lookup - VoIP traffic usually internal
             cc1 = loc1 = cc2 = loc2 = None
@@ -3194,7 +3282,8 @@ class TcpInjPacket(IpPacket):
     i_csldw=9     # changed_since_last_db_write
     i_cc=10
     i_loc=11
-    i_id=12        # mongo object id
+    i_asn=12      # ASN corresponding to cc
+    i_id=13       # mongo object id
 
     @classmethod
     def parse(pc, pkt, doc):
@@ -3478,6 +3567,7 @@ class TcpInjPacket(IpPacket):
                     "te":a_info[pc.i_te],
                     "cc":a_info[pc.i_cc],
                     "loc":a_info[pc.i_loc],
+                    "as":a_info[pc.i_asn],
                     "pk":a_info[pc.i_pkts]}
         tdm = tem-tbm
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm

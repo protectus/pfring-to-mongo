@@ -78,6 +78,7 @@ cdef struct TCPSession:
     uint64_t pkts1
     uint16_t flags1
     char[2] cc1
+    uint32_t asn1
 
     uint32_t ip2
     uint16_t port2
@@ -85,6 +86,7 @@ cdef struct TCPSession:
     uint64_t pkts2
     uint16_t flags2
     char[2] cc2
+    uint32_t asn2
 
     int16_t vlan_id
 
@@ -96,12 +98,14 @@ cdef struct UDPSession:
     uint64_t bytes1
     uint64_t pkts1
     char[2] cc1
+    uint32_t asn1
 
     uint32_t ip2
     uint16_t port2
     uint64_t bytes2
     uint64_t pkts2
     char[2] cc2
+    uint32_t asn2
 
     int16_t vlan_id
 
@@ -120,11 +124,13 @@ cdef struct TCPGroup:
     uint32_t ip1
     uint64_t bytes1
     char[2] cc1
+    uint32_t asn1
 
     uint32_t ip2
     uint16_t port2
     uint64_t bytes2
     char[2] cc2
+    uint32_t asn2
 
     int16_t vlan_id
 
@@ -134,11 +140,13 @@ cdef struct UDPGroup:
     uint32_t ip1
     uint64_t bytes1
     char[2] cc1
+    uint32_t asn1
 
     uint32_t ip2
     uint16_t port2
     uint64_t bytes2
     char[2] cc2
+    uint32_t asn2
 
     int16_t vlan_id
 
