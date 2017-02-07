@@ -19,7 +19,7 @@ VERSION = '0.1'
 requires = [
     'pyramid == 1.2',
     'ujson',
-    'pymongo >= 3.0',
+    'pymongo >= 3.2',
     'WebError',
     'pygeoip',
     'protectus-sentry'
