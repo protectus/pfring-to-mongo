@@ -2117,6 +2117,9 @@ class TcpPacket(IpPacket):
             cc2,name2,loc2,city2,region2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
             asn1, org1 = trafcap.geoIpAsnLookupTpl(data[pc.p_ip1][pc.p_addr])
             asn2, org2 = trafcap.geoIpAsnLookupTpl(data[pc.p_ip2][pc.p_addr])
+            # If ASN exists, convert it from int to string
+            if asn1: asn1 = int(asn1[2:])
+            if asn2: asn2 = int(asn2[2:])
 
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
@@ -2354,6 +2357,9 @@ class UdpPacket(IpPacket):
             cc2,name2,loc2,city2,region2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
             asn1, org1 = trafcap.geoIpAsnLookupTpl(data[pc.p_ip1][pc.p_addr])
             asn2, org2 = trafcap.geoIpAsnLookupTpl(data[pc.p_ip2][pc.p_addr])
+            # If ASN exists, convert it from int to string
+            if asn1: asn1 = int(asn1[2:])
+            if asn2: asn2 = int(asn2[2:])
 
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
@@ -2809,6 +2815,9 @@ class IcmpPacket(IpPacket):
             cc2,name2,loc2,city2,region2 = trafcap.geoIpLookupTpl(data[pc.p_ip2][pc.p_addr])
             asn1, org1 = trafcap.geoIpAsnLookupTpl(data[pc.p_ip1][pc.p_addr])
             asn2, org2 = trafcap.geoIpAsnLookupTpl(data[pc.p_ip2][pc.p_addr])
+            # If ASN exists, convert it from int to string
+            if asn1: asn1 = int(asn1[2:])
+            if asn2: asn2 = int(asn2[2:])
 
             # Create new dictionary entry.
             # Zip creates tuples, convert to lists so they can be manipulated.
