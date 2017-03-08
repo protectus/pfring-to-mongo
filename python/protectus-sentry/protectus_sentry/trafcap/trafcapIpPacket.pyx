@@ -2860,7 +2860,7 @@ class RtpPacket(IpPacket):
     # data[0]    (ip1)  ,    data[1]   (ip2) , [2]  , [3] ,    [4]
     #[(addr),port,bytes], [(addr),port,bytes],epoch ,proto, client_index
     p_ip1=0; p_ip2=1
-    p_addr=0; p_port=1; p_bytes=2;
+    p_addr=0; p_port=1; p_bytes=2; p_pkts=3
     p_ssrc=2
     p_etime=3
     p_proto=4
