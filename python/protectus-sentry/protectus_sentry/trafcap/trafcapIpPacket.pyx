@@ -2874,7 +2874,7 @@ class RtpPacket(IpPacket):
     #  data[0] (ip1)   ,  data[1]  (ip2)  , [2], [3], [4], [5],  [6]
     #[[(adr),port,byts], [(adr),port,byts], tb , te , pkts,  ci, proto]
     i_ip1=0; i_ip2=1
-    i_addr=0; i_port=1; i_bytes=2;
+    i_addr=0; i_port=1; i_bytes=2; i_pkt=3
     i_tb=2; i_te=3; i_pkts=4; i_ci=5; i_proto=6
     i_ssrc=7
     i_ini_seq=8
