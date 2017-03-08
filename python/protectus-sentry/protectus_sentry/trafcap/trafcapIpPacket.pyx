@@ -2951,6 +2951,7 @@ class RtpPacket(IpPacket):
                 addr2 = (int(a2_1), int(a2_2), int(a2_3), int(a2_4))
                 addrs = [addr1, addr2]
                 epoch_time = pkt[0]
+                pkts = [1, 0]
     
         elif doc and not pkt:
             addr1 = trafcap.intToTuple(doc['ip1'])
@@ -2963,7 +2964,12 @@ class RtpPacket(IpPacket):
             ssrc = doc['ssrc']
             sequence = 0            # Need to add!
             sample_time = 0         #  Need to add!
-            pass
+            # pk1 &pk2 are new fields - handle if they are not in doc
+            try:
+                pkts = [doc['pk1'], doc['pk2']]
+            except KeyError:
+                # Arbitrary packet count for old format doc without pk1 and pk2
+                pkts = [0 ,0]
 
         else:
             return (), [] 
@@ -2971,7 +2977,7 @@ class RtpPacket(IpPacket):
         sending_addr = addr1
 
         # sort to get a consistent key for each session
-        data = sorted(zip(addrs, ports, byts))
+        data = sorted(zip(addrs, ports, byts, pkts))
         # [((192, 43, 172, 30), 53, 0), ((192, 168, 19, 227), 53629, 68)]
 
         # add the data 
@@ -3141,7 +3147,7 @@ class RtpPacket(IpPacket):
     @classmethod
     def buildInfoDictItem(pc, key, data):
         if key == pc.capture_dict_key:
-            new_info = [[(0,0,0,0),0,0], [(0,0,0,0),0,0], 
+            new_info = [[(0,0,0,0),0,0,0], [(0,0,0,0),0,0,0], 
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
                         1, 0, '', '', 0,
                         float(data[pc.p_etime]), True, 
