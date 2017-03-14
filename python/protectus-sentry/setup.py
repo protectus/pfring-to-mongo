@@ -20,7 +20,8 @@ requires = [
     'PyYAML',
     'passlib',
     'impacket',
-    'dnspython'
+    'dnspython',
+    'python2-pythondialog'
 ]
 
 setup_settings = {}
