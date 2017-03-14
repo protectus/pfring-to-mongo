@@ -295,6 +295,10 @@ def mongoSetup(**kwargs):
         db['config'].delete_one({'x': 1})
     return db
 
+def chkUtf8(a_string):
+    # If string is not None, ensure it is in UTF8 format; else return None
+    return a_string.decode('utf8', 'ignore') if a_string else a_string
+
 gi = GeoIP.open("/opt/sentry/geoip/GeoLiteCity.dat",GeoIP.GEOIP_STANDARD)
 def geoIpLookup(ip_addr):
     # ip_addr is a string representing a dotted quad
@@ -306,11 +310,12 @@ def geoIpLookup(ip_addr):
         addr_city = None
         addr_region = None
     else:
-        addr_cc = g_addr['country_code']
-        addr_name = g_addr['country_name']
+        # Fields could be non-UTF8 or could be None
+        addr_cc = chkUtf8(g_addr['country_code'])
+        addr_name = chkUtf8(g_addr['country_name'])
         addr_loc = [g_addr['longitude'], g_addr['latitude']]
-        addr_city = g_addr['city']            # Could be None
-        addr_region = g_addr['region_name']   # Could be None
+        addr_city = chkUtf8(g_addr['city'])
+        addr_region = chkUtf8(g_addr['region_name'])
     return addr_cc, addr_name, addr_loc, addr_city, addr_region
 
 def geoIpLookupTpl(ip_addr):
@@ -335,7 +340,7 @@ def geoIpAsnLookup(ip_addr):
             # Returned format:  AS15457
             org_asn = g_org.strip()
             org_name = None
-    return org_asn, org_name
+    return org_asn, chkUtf8(org_name)
 
 def geoIpAsnLookupTpl(ip_addr):
     return geoIpAsnLookup(tupleToString(ip_addr))
