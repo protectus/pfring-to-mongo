@@ -36,6 +36,14 @@ CIDR_RE = re.compile("""
     $                              #End of String
 """, re.X)
 
+ASN_RE = re.compile("""
+    .*
+    AS                             # ASN Number prefix
+    (?P<asn>[0-9]{1,10})           # the ASN number
+    [ ]                            # One space
+    (?P<name>.*)                   # ASN Org Name
+""", re.X)
+
 def convertLocalSubnets(local_subnet_strings):
     """
     Converts local_subnet strings from config file into a list of tuples.
@@ -324,7 +332,8 @@ def geoIpLookupTpl(ip_addr):
 def geoIpLookupInt(ip_addr):
     return geoIpLookup(intToString(ip_addr))
 
-ga = GeoIP.open("/opt/sentry/geoip/GeoIPASNum.dat",GeoIP.GEOIP_STANDARD)
+ga_filename="/opt/sentry/geoip/GeoIPASNum.dat"
+ga = GeoIP.open(ga_filename, GeoIP.GEOIP_STANDARD)
 def geoIpAsnLookup(ip_addr):
     # Returns org info given a string representing a dotted quad
     g_org = ga.org_by_addr(ip_addr)
@@ -347,6 +356,50 @@ def geoIpAsnLookupTpl(ip_addr):
 
 def geoIpAsnLookupInt(ip_addr):
     return geoIpAsnLookup(intToString(ip_addr))
+
+
+def readAsnFile(asn_file):
+    # Loads the binary db into a dictionary of ints to strings
+    result = {}
+    found_any = False
+    for line in asn_file:
+        if "AS" not in line:
+            continue
+        
+        for item in line.split('\x00'):
+            match = ASN_RE.match(item)
+            if match is None:
+                continue
+
+            found_any = True
+            asn = int(match.group("asn"))
+            name = match.group("name")
+            result[asn] = name
+
+    if not found_any:
+        raise Exception("No ASNs found in file")
+
+    return result
+    
+
+asn_names = None
+def initAsnNames():
+    global asn_names
+
+    if asn_names is not None:
+        # Nothing to do
+        return
+
+    with open(ga_filename) as asn_file:
+        asn_names = readAsnFile(asn_file)
+
+
+def geoIpAsnNameLookupInt(asn):
+    if asn_names is None:
+        raise RuntimeError("ASN Database has not been initialized")
+
+    return asn_names.get(asn, None)
+    
 
 from dns import resolver,reversename
 dns_resolver = resolver.Resolver()
