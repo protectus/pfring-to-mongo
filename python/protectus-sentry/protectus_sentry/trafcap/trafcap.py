@@ -361,7 +361,6 @@ def geoIpAsnLookupInt(ip_addr):
 def readAsnFile(asn_file):
     # Loads the binary db into a dictionary of ints to strings
     result = {}
-    found_any = False
     for line in asn_file:
         if "AS" not in line:
             continue
@@ -371,13 +370,12 @@ def readAsnFile(asn_file):
             if match is None:
                 continue
 
-            found_any = True
             asn = int(match.group("asn"))
             name = match.group("name")
             result[asn] = name
 
-    if not found_any:
-        raise Exception("No ASNs found in file")
+    if len(result) == 0:
+        print "Warning: No ASN names found to load in readAsnFile"
 
     return result
     
