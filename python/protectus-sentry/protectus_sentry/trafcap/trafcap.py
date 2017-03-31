@@ -13,6 +13,9 @@ import traceback
 import sys
 import GeoIP
 import json
+# Include sentry-hardware which defines network interfaces
+sys.path.extend(['/opt/sentry/hardware'])
+import sentryHardware
 
 last_seq_off_the_wire = 0
 current_time = 0.
@@ -105,8 +108,13 @@ def refreshConfigVars():
     inj_timeout = config.getint('trafcap', 'inj_timeout')
     cc_list_type = config.get('trafcap', 'cc_list_type').lower()
     cc_list = json.loads(config.get('trafcap', 'cc_list'))
-    sniff_interface = config.get('interface', 'sniff_interface')
-    network_interface = config.get('interface', 'network_interface')
+
+    # Now getting these from sentry-hardware
+    #sniff_interface = config.get('interface', 'sniff_interface')
+    #network_interface = config.get('interface', 'network_interface')
+    sniff_interface = sentryHardware.getSniffInterface()
+    network_interface = sentryHardware.getNetworkInterface()
+
     lrs_min_duration = config.getint('trafcap', 'lrs_min_duration')
     rtp_portrange = config.get('trafcap', 'rtp_portrange')
     http_save_url_qs = config.getboolean('trafcap', 'http_save_url_qs')
