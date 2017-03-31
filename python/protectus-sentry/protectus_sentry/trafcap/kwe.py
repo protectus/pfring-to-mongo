@@ -180,7 +180,7 @@ def main():
     db = trafcap.mongoSetup()
 
     # check for remove operation already running
-    a_dict = db['$cmd.sys.inprog'].find_one()
+    a_dict = db.current_op() 
     for operation in a_dict['inprog']:
         if operation['op'] == 'remove':
             print 'Remove already in progress.....exiting.'
