@@ -109,11 +109,17 @@ def refreshConfigVars():
     cc_list_type = config.get('trafcap', 'cc_list_type').lower()
     cc_list = json.loads(config.get('trafcap', 'cc_list'))
 
-    # Now getting these from sentry-hardware
-    #sniff_interface = config.get('interface', 'sniff_interface')
-    #network_interface = config.get('interface', 'network_interface')
-    sniff_interface = sentryHardware.getSniffInterface()
-    network_interface = sentryHardware.getNetworkInterface()
+    # Default is to obtain interface names from networking files in /etc.
+    # Entry in config file can be used to override hardware settings.
+    try:
+       network_interface = config.get('interface', 'network_interface')
+    except ConfigParser.NoOptionError:
+       network_interface = sentryHardware.getNetworkInterface()
+    #
+    try:
+       sniff_interface = config.get('interface', 'sniff_interface')
+    except ConfigParser.NoOptionError:
+       sniff_interface = sentryHardware.getSniffInterface()
 
     lrs_min_duration = config.getint('trafcap', 'lrs_min_duration')
     rtp_portrange = config.get('trafcap', 'rtp_portrange')
