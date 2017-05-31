@@ -180,6 +180,8 @@ def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_bu
     update_session_address = <long>proto_opts['update_session']
     update_session_function = <update_session*>update_session_address
 
+    cdef int live_session_locks_len = len(live_session_locks)
+
     # The primary packet loop
     # General Strategy:
     #   - Since we can't get C pointers right out of a python dictionary very
@@ -230,7 +232,7 @@ def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_bu
                 # Update existing session
                 # Since session_buffer is now generic, we need to do memory addresses ourselves.
                 live_session = <GenericSession *>(live_session_buffer_addr + (live_session_slot * session_struct_size))
-                lock = live_session_locks[live_session_slot % SESSIONS_PER_LOCK] 
+                lock = live_session_locks[live_session_slot % live_session_locks_len] 
                 lock.acquire()
                 (update_session_function[0])(live_session, packet)
                 lock.release()
@@ -361,6 +363,8 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
     cdef int mongo_session_writes = 0
     cdef int mongo_capture_writes = 0
     #cdef int session_count = 0
+
+    cdef int live_session_locks_len = len(live_session_locks)
     
     ## Connection-Tracking Debugging ##
     #tracked_slots = set()
@@ -455,7 +459,7 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
                     slot = slots_to_write[i]
                     # Since session_buffer is now generic, we need to do memory addresses ourselves.
                     session = <GenericSession *>(live_session_buffer_addr + (slot * session_struct_size))
-                    lock = live_session_locks[slot % SESSIONS_PER_LOCK] 
+                    lock = live_session_locks[slot % live_session_locks_len] 
                     lock.acquire()
                     # Get the data we need as quickly as possible so we can release the lock.
                     memcpy(session_copy, session, session_struct_size)
@@ -483,7 +487,8 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
                         # Write to database (or at least queue)
                         (write_session_function[0])(info_bulk_writer, bytes_bulk_writer, session_info_coll, 
                                                     session_object_ids, session_copy, slot, second_to_write_from, 
-                                                    second_to_write, capture_session, session, live_session_locks)
+                                                    second_to_write, capture_session, session, 
+                                                    live_session_locks, live_session_locks_len)
 
                         mongo_session_writes += 2
                         next_scheduled_checkup_time = second_to_write + BYTES_DOC_SIZE
@@ -595,7 +600,7 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
                                                 capture_object_ids, capture_session, 0, 
                                                 capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2), 
                                                 capture_scheduled_checkup_time - BYTES_DOC_SIZE, dummy_session,
-                                                session, None)
+                                                session, None, live_session_locks_len)
     
                     mongo_capture_writes += 2
                     capture_scheduled_checkup_time = second_to_write + (BYTES_DOC_SIZE / 2)
@@ -735,6 +740,8 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
     tracked_group_slot = -1 
     tracked_slot_display_count = 0
 
+    cdef int group_locks_len = len(group_locks)
+    cdef int capture_group_locks_len = len(capture_group_locks)
 
     # The primary packet loop
     # General Strategy:
@@ -822,7 +829,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     # saved_session only changed by groupUpdater so no lock required when reading from it.
                     # capture_group already generated so next line actually updates it.
                     # capture_group may or may not be new so it needs to be locked.
-                    cap_lock = capture_group_locks[capture_group_slot % CAPTURE_GROUPS_PER_LOCK] 
+                    cap_lock = capture_group_locks[capture_group_slot % capture_group_locks_len] 
                     cap_lock.acquire()
                     session_status = generate_group_function[0](group, saved_session, capture_group, group_type)
                     cap_lock.release() 
@@ -851,9 +858,9 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     #if group_slot == tracked_group_slot:
                     #    tcp_group = <TCPGroup *>group
                     #    print 'Seeing tracked_group_slot ', tracked_group_slot, ' before lock...', tcp_group.vlan_id
-                    lock = group_locks[group_slot % GROUPS_PER_LOCK] 
+                    lock = group_locks[group_slot % group_locks_len] 
                     lock.acquire()
-                    cap_lock = capture_group_locks[capture_group_slot % CAPTURE_GROUPS_PER_LOCK] 
+                    cap_lock = capture_group_locks[capture_group_slot % capture_group_locks_len] 
                     cap_lock.acquire()
                     # for debug
                     #if group_slot == tracked_group_slot:
@@ -1077,6 +1084,9 @@ def groupBookkeeper(group_buffer, group_locks,
     tracked_slots = set()
     tracked_slot_tem = 0
 
+    cdef int group_locks_len = len(group_locks)
+    cdef int capture_group_locks_len = len(capture_group_locks)
+
     # The primary loop
     # There are several tasks to accomplish:
     #   - Process new groups.  We'll receive word of new connections as
@@ -1213,7 +1223,7 @@ def groupBookkeeper(group_buffer, group_locks,
                     slot = slots_to_write[i]
                     # Get the group from the buffer
                     group = <GenericGroup *>(group_buffer_addr + (slot * group_struct_size))
-                    lock = group_locks[slot % GROUPS_PER_LOCK] 
+                    lock = group_locks[slot % group_locks_len] 
                     lock.acquire()
                     # Get the data we need as quickly as possible so we can release the lock.
                     memcpy(group_copy, group, group_struct_size)
@@ -1300,7 +1310,7 @@ def groupBookkeeper(group_buffer, group_locks,
                     capture_slot = capture_slots_to_write[i]
                     # Get the group from the buffer
                     capture_group = <GenericGroup *>(capture_group_buffer_addr + (capture_slot * capture_group_struct_size))
-                    capture_lock = capture_group_locks[capture_slot % CAPTURE_GROUPS_PER_LOCK] 
+                    capture_lock = capture_group_locks[capture_slot % capture_group_locks_len] 
                     capture_lock.acquire()
                     # Get the data we need as quickly as possible so we can release the lock.
                     memcpy(capture_group_copy, capture_group, capture_group_struct_size)

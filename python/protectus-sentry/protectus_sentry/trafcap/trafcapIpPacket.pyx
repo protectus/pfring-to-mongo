@@ -9,7 +9,6 @@ import trafcap
 from datetime import datetime
 import traceback
 import re
-#import numpy
 from bisect import bisect_left, insort
 # for packet injection
 import socket
@@ -916,7 +915,7 @@ cdef object generate_udp_group_key_from_group(GenericGroup* g_group):
     return <object>key
 
 
-cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session, GenericSession* l_session, object live_session_locks) except -1:
+cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session, GenericSession* l_session, object live_session_locks, int live_session_locks_len) except -1:
     cdef TCPSession* session = <TCPSession*>g_session
     cdef TCPSession* capture_session = <TCPSession*>g_capture_session
     cdef TCPSession* live_session = <TCPSession*>l_session
@@ -969,10 +968,9 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             
             # May need to update cc1 &/or cc2 in original session.
             if cc1 or cc2 or asn1 or asn2:
-                lock = live_session_locks[slot % SESSIONS_PER_LOCK]
+                lock = live_session_locks[slot % live_session_locks_len]
                 lock.acquire()
     
-
                 # Populate session_copy for use when creating bytes_doc 
                 # Populate original session for use during future writes
                 if cc1: 
@@ -1111,7 +1109,7 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
     return 0 
 
 
-cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session, GenericSession* l_session, object live_session_locks) except -1:
+cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session, GenericSession* l_session, object live_session_locks, int live_session_locks_len) except -1:
     cdef UDPSession* session = <UDPSession*>g_session
     cdef UDPSession* capture_session = <UDPSession*>g_capture_session
     cdef UDPSession* live_session = <UDPSession*>l_session
@@ -1162,7 +1160,7 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             
             # May need to update cc1 &/or cc2 in original session.
             if cc1 or cc2 or asn1 or asn2:
-                lock = live_session_locks[slot % SESSIONS_PER_LOCK]
+                lock = live_session_locks[slot % live_session_locks_len]
                 lock.acquire()
     
                 # Populate session_copy for use when creating bytes_doc 

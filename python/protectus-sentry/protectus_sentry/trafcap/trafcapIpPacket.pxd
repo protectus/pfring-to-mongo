@@ -187,9 +187,9 @@ ctypedef int (*update_session)(GenericSession*, GenericPacketHeaders*)
 cdef int update_tcp_session(GenericSession* session, GenericPacketHeaders* packet)
 cdef int update_udp_session(GenericSession* session, GenericPacketHeaders* packet)
 
-ctypedef int (*write_session)(object, object, object, list, GenericSession*, int, uint64_t, uint64_t, GenericSession*, GenericSession*, object) except -1
-cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* capture_session, GenericSession* live_session, object live_session_locks) except -1
-cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* capture_session, GenericSession* live_session, object live_session_locks) except -1
+ctypedef int (*write_session)(object, object, object, list, GenericSession*, int, uint64_t, uint64_t, GenericSession*, GenericSession*, object, int) except -1
+cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* capture_session, GenericSession* live_session, object live_session_locks, int live_session_locks_len) except -1
+cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* capture_session, GenericSession* live_session, object live_session_locks, int live_session_locks_len) except -1
 
 #ctypedef GenericGroup* (*alloc_capture_group)()
 #cdef GenericGroup* alloc_tcp_capture_group()
