@@ -113,12 +113,12 @@ def refreshConfigVars():
     # Entry in config file can be used to override hardware settings.
     try:
        network_interface = config.get('interface', 'network_interface')
-    except ConfigParser.NoOptionError:
+    except (ConfigParser.NoOptionError, ConfigParser.NoSectionError):
        network_interface = sentryHardware.getNetworkInterface()
     #
     try:
        sniff_interface = config.get('interface', 'sniff_interface')
-    except ConfigParser.NoOptionError:
+    except (ConfigParser.NoOptionError, ConfigParser.NoSectionError):
        sniff_interface = sentryHardware.getSniffInterface()
 
     lrs_min_duration = config.getint('trafcap', 'lrs_min_duration')
