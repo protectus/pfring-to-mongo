@@ -408,7 +408,6 @@ cdef int parse_tcp_packet(GenericPacketHeaders* g_pkt, pfring_pkthdr* hdr) excep
     shared_pkt.port1 = hdr.extended_hdr.parsed_pkt.l4_src_port
     shared_pkt.port2 = hdr.extended_hdr.parsed_pkt.l4_dst_port
     shared_pkt.base.timestamp = <double>hdr.ts.tv_sec + (<double>hdr.ts.tv_usec / 1000000.0)
-    #shared_pkt.vlan_id = hdr.extended_hdr.parsed_pkt.vlan_id
     shared_pkt.vlan_id = hdr.extended_hdr.parsed_pkt.vlan_id if trafcap.ingest_vlan_id else 0
     shared_pkt.bytes = hdr.c_len
     shared_pkt.flags = hdr.extended_hdr.parsed_pkt.tcp.flags
@@ -422,7 +421,6 @@ cdef int parse_udp_packet(GenericPacketHeaders* g_pkt, pfring_pkthdr* hdr) excep
     shared_pkt.port1 = hdr.extended_hdr.parsed_pkt.l4_src_port
     shared_pkt.port2 = hdr.extended_hdr.parsed_pkt.l4_dst_port
     shared_pkt.base.timestamp = <double>hdr.ts.tv_sec + (<double>hdr.ts.tv_usec / 1000000.0)
-    #shared_pkt.vlan_id = hdr.extended_hdr.parsed_pkt.vlan_id
     shared_pkt.vlan_id = hdr.extended_hdr.parsed_pkt.vlan_id if trafcap.ingest_vlan_id else 0
     shared_pkt.bytes = hdr.c_len
 
@@ -637,8 +635,6 @@ cdef int update_tcp_session(GenericSession* g_session, GenericPacketHeaders* g_p
             session.base.traffic_bytes[slot_second % BYTES_RING_SIZE][0] = 0
             session.base.traffic_bytes[slot_second % BYTES_RING_SIZE][1] = 0
 
-    #session.vlan_id = vlan
-    #session.tb = 
     session.base.te = packet.base.timestamp
     session.base.packets += 1
     cdef int bytes_slot = current_packet_second % BYTES_RING_SIZE
@@ -681,8 +677,6 @@ cdef int update_udp_session(GenericSession* g_session, GenericPacketHeaders* g_p
             session.base.traffic_bytes[slot_second % BYTES_RING_SIZE][0] = 0
             session.base.traffic_bytes[slot_second % BYTES_RING_SIZE][1] = 0
 
-    #session.vlan_id = vlan
-    #session.tb = 
     session.base.te = packet.base.timestamp
     session.base.packets += 1
     cdef int bytes_slot = current_packet_second % BYTES_RING_SIZE
@@ -993,7 +987,7 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
     
                 lock.release()
 
-            if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
+            if session.vlan_id > 0: info_doc['vl'] = session.vlan_id
                     
         tdm = <int>(session.base.te - session.base.tb)
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
@@ -1058,7 +1052,7 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
         if session.cc2[0] != 0:
             bytes_doc["cc2"] = chr(session.cc2[0]) + chr(session.cc2[1])
     
-        if session.vlan_id >= 0: bytes_doc['vl'] = session.vlan_id
+        if session.vlan_id > 0: bytes_doc['vl'] = session.vlan_id
         if session.asn1 != 0: bytes_doc['as1'] = session.asn1
         if session.asn2 != 0: bytes_doc['as2'] = session.asn2
 
@@ -1185,7 +1179,7 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
     
                 lock.release()
 
-            if session.vlan_id >= 0: info_doc['vl'] = session.vlan_id
+            if session.vlan_id > 0: info_doc['vl'] = session.vlan_id
                     
         tdm = <int>(session.base.te - session.base.tb)
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
@@ -1250,7 +1244,7 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
         if session.cc2[0] != 0:
             bytes_doc["cc2"] = chr(session.cc2[0]) + chr(session.cc2[1])
     
-        if session.vlan_id >= 0: bytes_doc['vl'] = session.vlan_id
+        if session.vlan_id > 0: bytes_doc['vl'] = session.vlan_id
         if session.asn1 != 0: bytes_doc['as1'] = session.asn1
         if session.asn2 != 0: bytes_doc['as2'] = session.asn2
 
@@ -1408,7 +1402,7 @@ cdef int write_tcp_group(object group_bulk_writer, object group_collection, list
         #        group.cc2[0] = ord(cc2[0])
         #        group.cc2[1] = ord(cc2[1])
 
-        if group.vlan_id >= 0: group_doc['vl'] = group.vlan_id
+        if group.vlan_id > 0: group_doc['vl'] = group.vlan_id
         if group.asn1 != 0: group_doc['as1'] = group.asn1
         if group.asn2 != 0: group_doc['as2'] = group.asn2
 

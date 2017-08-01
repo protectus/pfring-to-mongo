@@ -273,7 +273,7 @@ class OtherPacket(EthernetPacket):
                         msg = msg[:512] + '...'
                         break
     
-                vlan_id = int(pkt[1])
+                vlan_id = int(pkt[1]) if trafcap.ingest_vlan_id else 0
                 data = [(pkt[2], int(pkt[3]), 1), (pkt[4], 0, 0), pkt[0], pkt[5], msg]
                 #        0      1       2      
                 #       src  ,  dst  , msg
