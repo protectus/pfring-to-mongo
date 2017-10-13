@@ -41,7 +41,7 @@ class NmiPacket(object):
                '-w', '/run/trafcap_nmi',
                '-P',
                '-o',
-               'column.format:"""time","%t", "proto","%p", "src","%s", "esrc","%Cus:eth.src", "dst","%d", "id","%Cus:dns.id", "hn","%Cus:bootp.option.hostname", "i","%i"""',
+               'column.format:"""time","%t", "proto","%p", "src","%s", "esrc","%Cus:eth.src", "dst","%d", "id","%Cus:dns.id", "hn","%Cus:bootp.option.hostname", "yo","%Cus:bootp.ip.your", "i","%i"""',
                '-f',
                '(arp or(ip and udp and port(53 or 67 or 138))) or (vlan and (arp or(ip and udp and port (53 or 67 or 138))))'],
                # ip string in packet filter (above) ensures IPV4
