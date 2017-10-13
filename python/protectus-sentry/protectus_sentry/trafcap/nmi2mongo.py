@@ -161,6 +161,15 @@ def main():
                         if len(key) > 0:   # successful parse
                            nmi.update(pkt_time, key)
 
+                    elif line[1] == "DHCP":
+                        # 0.000000 DHCP 10.141.1.58 b8:ae:ed:2b:32:ef 10.141.1.1 miveyM79 DHCP Request - Transaction ID 0xe78ec802 
+                        file = open(trafcap.error_log,"a")
+                        file.write("\n")
+                        for item in line: file.write(item + ' ')
+                        file.write("\n")
+                        file.close()
+                        continue
+
                     elif line[1] == "NBDS":
                         # 1343070866.624366 NBDS 00:16:3E:31:CC:5C 192.168.1.112 [Malformed Packet]
                         continue
@@ -192,7 +201,7 @@ def main():
                     file.write(e.__str__())
                     file.write(traceback.format_exc())
                     file.write("\n-------------line------------------\n")
-                    for item in line: file.write(item)
+                    for item in line: file.write(item + ' ')
                     file.write("\n-------------lines-----------------\n")
                     file.write("\n".join(lines))
                     file.write("\n-------------buffer----------------\n")
