@@ -101,7 +101,6 @@ class ArpNmiPacket(NmiPacket):
         else:
             return 0, [] 
 
-
 class BrowserNmiPacket(NmiPacket):
     """
     Class for handling BROWSER traffic
@@ -145,6 +144,72 @@ class BrowserNmiPacket(NmiPacket):
             raise Exception("Unable to parse BROWSER traffic." )
 
         return
+
+
+class DhcpNmiPacket(NmiPacket):
+    """
+    Class for handling DHCP / BOOTP traffic
+    """
+    def __init__(self):
+        return
+
+    # Class attribute
+    dhcp_req = {}
+
+    @classmethod
+    def parse(pc, pkt):
+        # Either Inform packets:
+        #     1508163682.781175 DHCP 10.141.2.224 00:0a:f7:4c:c7:a2 255.255.255.255 Owner-PC 0.0.0.0 DHCP Inform - Transaction ID 0x4dae08e
+        # or Request / Ack packt pair
+        #     1508165493.225875 DHCP 0.0.0.0 54:9f:13:47:76:40 255.255.255.255 iPhone-3 0.0.0.0 DHCP Request - Transaction ID 0x13c1ec76 
+        #     1508165493.225973 DHCP 10.141.1.1 c0:ea:e4:c5:6b:3c 255.255.255.255 10.141.3.173 DHCP ACK - Transaction ID 0x13c1ec76 
+        try:
+            pkt_time = float(pkt[0])
+            if pkt[8] == "Inform":
+                ip = pkt[2]
+                mac = pkt[3]
+                name = pkt[5]
+
+            elif pkt[8] == 'Request':
+                # If duplicate request occurs, dict entry will simply be over-written.
+                mac = pkt[3]
+                name = pkt[5]
+                trans_id = pkt[-1] 
+                pc.dhcp_req[trans_id] = [pkt_time, mac, name]
+                return 0,[]
+
+            elif pkt[7] == 'ACK':
+                # If unmatched ACK occurs, drop the packet and continue
+                ip = pkt[5]
+                trans_id = pkt[-1]
+                try:
+                    item = pc.dhcp_req.pop(trans_id)
+                    mac = item[1]
+                    name = item[2]
+                except KeyError:
+                    # Request not found
+                    return 0,[]
+
+            else:
+                return pkt_time, []
+
+            # Clean-up unanswered requests from the dhcp_req dict
+            keys_to_pop = []
+            current_time = time.time()
+            for a_key in pc.dhcp_req:
+                if (pc.dhcp_req[a_key][0] < (current_time -\
+                                       float(trafcap.session_expire_timeout))):
+                    keys_to_pop.append(a_key)
+
+            for a_key in keys_to_pop:
+                pc.dhcp_req.pop(a_key)
+
+        except Exception, e:
+            print str(e)
+            traceback.print_exc()
+            raise Exception("Unable to parse DHCP traffic." )
+
+        return pkt_time, ['DHCP', [name], mac, [ip]]
 
 class DnsNmiPacket(NmiPacket):
     """
