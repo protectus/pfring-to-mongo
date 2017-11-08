@@ -108,6 +108,7 @@ cdef struct UDPSession:
     uint32_t asn2
 
     int16_t vlan_id
+    char[3] proto 
 
 cdef struct GenericGroup:
     uint64_t tbm
@@ -149,6 +150,7 @@ cdef struct UDPGroup:
     uint32_t asn2
 
     int16_t vlan_id
+    char[3] proto 
 
 
 ctypedef int (*parse_packet)(GenericPacketHeaders*, pfring_pkthdr*) except -1
