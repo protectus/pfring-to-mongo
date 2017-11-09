@@ -578,7 +578,7 @@ cdef int generate_udp_session(GenericSession* g_session, GenericPacketHeaders* g
     cdef UDPSession *session = <UDPSession*>g_session
     cdef UDPPacketHeaders* packet = <UDPPacketHeaders*>g_packet
 
-    if (packet.port2 > packet.port2):
+    if (packet.port1 > packet.port2):
         session.ip1 = packet.ip1
         session.port1 = packet.port1
         session.bytes1 = packet.bytes
