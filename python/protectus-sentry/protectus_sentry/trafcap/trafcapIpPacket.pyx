@@ -1159,7 +1159,7 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             if session.port2 == 53: proto = 'DNS'
             
             # May need to update cc1 &/or cc2 in original session.
-            if cc1 or cc2 or asn1 or asn2:
+            if cc1 or cc2 or asn1 or asn2 or proto:
                 lock = live_session_locks[slot % live_session_locks_len]
                 lock.acquire()
     
