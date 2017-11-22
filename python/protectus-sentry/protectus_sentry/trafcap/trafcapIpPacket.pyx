@@ -279,7 +279,7 @@ class PythonGenericPacketHeaders(Structure):
         ("timestamp", c_double),
     )
     
-cdef int proto_str_len = 3
+cdef int proto_str_len = 5
 class PythonTCPPacketHeaders(Structure):
     _fields_ = (
         ("base", PythonGenericPacketHeaders),
@@ -913,6 +913,9 @@ cdef object generate_udp_group_key_from_group(GenericGroup* g_group):
     return <object>key
 
 
+# Initialize port_to_proto_decodes dictionary
+trafcap.initProtoDecodes()
+
 cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, object info_collection, list object_ids, GenericSession* g_session, int slot, uint64_t second_to_write_from, uint64_t second_to_write_to, GenericSession* g_capture_session, GenericSession* l_session, object live_session_locks, int live_session_locks_len) except -1:
     cdef TCPSession* session = <TCPSession*>g_session
     cdef TCPSession* capture_session = <TCPSession*>g_capture_session
@@ -1155,8 +1158,11 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             cc2, name2, loc2, city2, region2 = trafcap.geoIpLookupInt(session.ip2)
             asn1, org1 = trafcap.geoIpAsnLookupInt(session.ip1)
             asn2, org2 = trafcap.geoIpAsnLookupInt(session.ip2)
-            proto = None
-            if session.port2 == 53: proto = 'DNS'
+            # Assign a proto if possible
+            if session.port2 in trafcap.udp_port_to_proto_decodes:
+                proto = trafcap.udp_port_to_proto_decodes[session.port2][0:proto_str_len]
+            else:
+                proto = None
             
             # May need to update cc1 &/or cc2 in original session.
             if cc1 or cc2 or asn1 or asn2 or proto:
@@ -1185,7 +1191,7 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
     
                 if proto:
                     info_doc["pr"] = proto
-                    for j in range(0, proto_str_len):
+                    for j in range(0, min(proto_str_len, len(proto))):
                         session.proto[j] = live_session.proto[j] = ord(proto[j])
     
                 lock.release()
@@ -1261,7 +1267,7 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
         
         if session.proto[0] != 0:
             bytes_doc['pr'] = ''
-            for j in range(0, proto_str_len):
+            for j in range(0, min(proto_str_len, len(session.proto))):
                 bytes_doc['pr'] += chr(session.proto[j])
 
     cdef int second, i
@@ -1508,7 +1514,7 @@ cdef int write_udp_group(object group_bulk_writer, object group_collection, list
 
         if group.proto[0] != 0:
             group_doc['pr'] = ''
-            for j in range(0, proto_str_len):
+            for j in range(0, min(proto_str_len, len(group.proto))):
                 group_doc['pr'] += chr(group.proto[j])
 
         # Insert the new doc and record the objectid
@@ -1658,7 +1664,7 @@ cdef int generate_udp_group(GenericGroup* g_group, GenericSession* g_session, Ge
     group.cc2[1] = session.cc2[1] 
     group.asn2 = session.asn2
 
-    for j in range(0, proto_str_len):
+    for j in range(0, min(proto_str_len, len(session.proto))):
         group.proto[j] = session.proto[j]
 
     group.vlan_id = session.vlan_id

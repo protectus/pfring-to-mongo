@@ -231,6 +231,30 @@ class OtherPacket(EthernetPacket):
     p_ci=5
     p_vl=6
 
+    # TCP & UDP based protocols that should not appear in Other traffic
+    leaked_protos_to_ignore = [ 
+                                'BROWSER',
+                                'CLDAP',
+                                'DHCP',
+                                'DNS',
+                                'HTTP',
+                                'ICMP',
+                                'IPv4',
+                                'LLMNR',
+                                'MDNS',
+                                'NBNS',
+                                'NTP',
+                                'OCSP',
+                                'SSDP',
+                                'SSL',
+                                'SSLv2',
+                                'TCP',
+                                'TLSv1',
+                                'TLSv1.2',
+                                'UDP',
+                                'QUIC',
+                              ]
+
     @classmethod
     def parse(pc, pkt, doc):
         #
@@ -248,6 +272,7 @@ class OtherPacket(EthernetPacket):
         if pkt and not doc:
             # If no vlan id present
             if '.' in pkt[1] or ':' in pkt[1]:
+                if pkt[4] in pc.leaked_protos_to_ignore: return (), []
                 msg = pkt[5]
                 for i in range(6, len(pkt), 1):
                     msg = msg + " " + pkt[i]
@@ -265,6 +290,7 @@ class OtherPacket(EthernetPacket):
 
             # Vlan id is present - increment array indexes by one
             else:
+                if pkt[5] in pc.leaked_protos_to_ignore: return (), []
                 msg = pkt[6]
                 for i in range(7, len(pkt), 1):
                     msg = msg + " " + pkt[i]
@@ -308,7 +334,7 @@ class OtherPacket(EthernetPacket):
 
     @classmethod
     def startSniffer(pc):
-        filter = 'not ip6 and not tcp and not udp and not icmp ' + trafcap.cap_filter
+        filter = 'not ip proto (1 or 6 or 17 or 41) ' + trafcap.cap_filter
         proc = subprocess.Popen(['/usr/bin/tshark', 
                '-i', trafcap.sniff_interface, 
                '-te', '-n', '-l',

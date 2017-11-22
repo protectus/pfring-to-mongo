@@ -618,3 +618,18 @@ def ensureIndexes(collection_tuple):
             except KeyError:    
                 redoIndex(db, c_name, c_indxs)
             
+# Read-in port-to-protocol decodes from mongo collection
+tcp_port_to_proto_decodes = {} 
+udp_port_to_proto_decodes = {} 
+def initProtoDecodes():
+    db = mongoSetup()
+    # UDP port decodes
+    cursor = db['proto_decode'].find({'type':'udp.port'})
+    for doc in cursor:
+        udp_port_to_proto_decodes[doc['port']] = doc['name']
+
+    # TCP port decodes
+    cursor = db['proto_decode'].find({'type':'tcp.port'})
+    for doc in cursor:
+        tcp_port_to_proto_decodes[doc['port']] = doc['name']
+
