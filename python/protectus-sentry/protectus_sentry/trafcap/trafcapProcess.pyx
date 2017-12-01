@@ -1217,7 +1217,6 @@ def groupBookkeeper(group_buffer, group_locks,
                 # Iterate over all the slots scheduled to be dealt with this second, and deal with them.
                 #print "Initializing sessionGroup_bulk_writer..."
                 session_group_bulk_writer = session_group_coll.initialize_unordered_bulk_op()
-                #print "Starting loop..."
                 for i in range(schedule_sizes[schedule_row_number]):
                     #print "Reading",schedule_row_number,i,":",schedule[schedule_row_number][i]
                     slot = slots_to_write[i]
@@ -1304,7 +1303,6 @@ def groupBookkeeper(group_buffer, group_locks,
 
                 #print "Initializing sessionGroup_bulk_writer..."
                 capture_group_bulk_writer = capture_group_coll.initialize_unordered_bulk_op()
-                #print "Starting loop..."
                 for i in range(capture_schedule_sizes[capture_schedule_row_number]):
                     #print "Reading",schedule_row_number,i,":",schedule[schedule_row_number][i]
                     capture_slot = capture_slots_to_write[i]

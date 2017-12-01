@@ -108,6 +108,7 @@ def main():
         if coll_name == 'config': continue
         if coll_name == 'system.indexes': continue
         if "_injConfig" in coll_name: continue
+        if "proto_decode" in coll_name: continue
 
         if "Bytes" in coll_name:
             begin_name = 'sbm'
