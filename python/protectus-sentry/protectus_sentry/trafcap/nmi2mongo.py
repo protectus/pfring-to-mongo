@@ -171,7 +171,12 @@ def main():
                         continue
 
                     elif line[1] == "SMB_NETLOGON":
-                        #1351703867.702706 SMB_NETLOGON 192.168.253.49 00:19:D1:85:EF:E7 192.168.253.255  SAM LOGON request from client
+                        #1351703867.702706 SMB_NETLOGON 192.168.253.49 00:19:D1:85:EF:E7 
+                        #                               192.168.253.255  SAM LOGON request from client
+                        continue
+
+                    elif line[1] == "BOOTP":
+                        # By-product of capturing DHCP requests
                         continue
 
                     else:
