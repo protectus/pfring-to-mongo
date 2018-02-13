@@ -2,12 +2,12 @@
 #
 # Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
 #
-import lpj 
+from . import lpj 
 import threading
 from subprocess import Popen, PIPE
 import time
 import socket
-import trafcap
+from . import trafcap
 
 # Target class is created when user enteres new target in UI and
 # exists until user removes target from UI.  Target might have an
@@ -18,7 +18,7 @@ class LpjIpTarget(object):
     def checkDbForUpdates(cls, send_packet_flag):
         something_changed = False
         try:
-            if not trafcap.options.quiet: print ''
+            if not trafcap.options.quiet: print('')
             
             # Temporary list of targets from config file.  This list will
             # be edited as active targets are found.
@@ -41,24 +41,24 @@ class LpjIpTarget(object):
                     target_obj.stop()
 
                 if not trafcap.options.quiet: 
-                    print 'Removing: ', target_obj.target_info
+                    print('Removing: ', target_obj.target_info)
                 lpj.targets.remove(target_obj)
                 something_changed = True
 
             # If anything is left in the list, it is a new target 
             for target in targets_from_config:
                 if not trafcap.options.quiet: 
-                    print 'Adding: ', target
+                    print('Adding: ', target)
                 a_target_obj = lpj.createTarget(target, send_packet_flag) 
                 something_changed = True
                 if send_packet_flag:
                     a_target_obj.start()
 
             if not trafcap.options.quiet:
-                print ''
+                print('')
 
-        except Exception, e:
-            print e
+        except Exception as e:
+            print(e)
 
         return something_changed
 
@@ -77,17 +77,17 @@ class LpjIpTarget(object):
 
         try:
             ip_addr = socket.gethostbyname(item['target']),
-        except Exception,e:
+        except Exception as e:
             # This excpetion occurs if hostname cannot be resolved to IP
-            print e, ": ", item['target']
+            print(e, ": ", item['target'])
             return False
 
         if ip_addr[0] != self.target_info[lpj.t_ip]:
             if not trafcap.options.quiet:
-                print "Updating  ", self.target_info[lpj.t_target], \
+                print("Updating  ", self.target_info[lpj.t_target], \
                                     "  from  ", \
                                     self.target_info[lpj.t_ip], \
-                                    "  to  ", ip_addr[0]
+                                    "  to  ", ip_addr[0])
 
             # update mongo with IP
             criteria = {"_id":c_id}
@@ -115,17 +115,17 @@ class LpjIpTarget(object):
     def inConfig(self, targets_from_config):
         if self.target_info in targets_from_config:
            if not trafcap.options.quiet: 
-               print 'Found: ', self.target_info
+               print('Found: ', self.target_info)
            return True
         else:
            if not trafcap.options.quiet: 
-               print 'Did not find: ', self.target_info
+               print('Did not find: ', self.target_info)
            return False 
 
 
 class LpjIcmpTarget(LpjIpTarget):
     def start(self):
-        print 'Starting: ', self.target_info
+        print('Starting: ', self.target_info)
         ping_task = IcmpTaskThread(self.target_info)
         ping_task.start()
         self.task_thread = ping_task
@@ -139,7 +139,7 @@ class LpjIcmpTarget(LpjIpTarget):
 
 class LpjTcpTarget(LpjIpTarget):
     def start(self):
-        print 'Starting: ', self.target_info
+        print('Starting: ', self.target_info)
         syn_task = TcpTaskThread(self.target_info)
         syn_task.start()
         self.task_thread = syn_task
@@ -214,9 +214,9 @@ class IcmpTaskThread(LpjTaskThread):
             # exec is needed for proc.terminate() method to kill command
             self.proc = Popen('exec '+command, shell=True, stdout=PIPE, 
                                                            stderr=PIPE)
-        except Exception, e:
-            print 'Exception in IcmpTaskThread: ', e
-            print '       ', self.target
+        except Exception as e:
+            print('Exception in IcmpTaskThread: ', e)
+            print('       ', self.target)
 
 class TcpTaskThread(LpjTaskThread):
     def __init__(self, target):
@@ -229,9 +229,9 @@ class TcpTaskThread(LpjTaskThread):
             self.socket = socket.socket()
             self.socket.connect((self.dest,self.dport))
             self.socket.close()
-        except Exception, e:
-            print 'Exception in TcpTaskThread: ', e
-            print '       ', self.target
+        except Exception as e:
+            print('Exception in TcpTaskThread: ', e)
+            print('       ', self.target)
 
 class CheckDbThread(TaskThread):
     def __init__(self, interval, send_packets_flag):

@@ -5,7 +5,7 @@
 # Classes to help manage temporary storage of traffic in dictionaries
 # and writes to mongo
 import sys, time
-import trafcap
+from . import trafcap
 from datetime import datetime
 import traceback
 import pprint
@@ -24,7 +24,7 @@ class TrafcapContainer(object):
         return
 
     def updateDb():   
-        print 'Override TrafcapContainer.updateDb() in subclass'
+        print('Override TrafcapContainer.updateDb() in subclass')
         return
 
 
@@ -59,16 +59,16 @@ class TrafcapGroupContainer(TrafcapContainer):
             self.groups_dict[group_key] = a_group
 
             if trafcap.options.groups:
-                print "New session_group items for: ", group_key
+                print("New session_group items for: ", group_key)
         return
 
 
     def updateDb(self):
         pc = self.pc
         # Remove zero data elements from the session groups byte array
-        if not trafcap.options.quiet: print ""
+        if not trafcap.options.quiet: print("")
         if trafcap.options.groups: 
-            print "Writing groups dict with ", len(self.groups_dict), " entries."
+            print("Writing groups dict with ", len(self.groups_dict), " entries.")
         for k in self.groups_dict:
             a_group = self.groups_dict[k]
 
@@ -79,7 +79,7 @@ class TrafcapGroupContainer(TrafcapContainer):
                 #group_criteria, group_data = pc.buildGroupsDoc(a_group)
                 group_data = pc.buildGroupsDoc(a_group)
                 if trafcap.options.groups:
-                    print "Update db with data: ", group_data
+                    print("Update db with data: ", group_data)
 
                 try:
 
@@ -96,11 +96,11 @@ class TrafcapGroupContainer(TrafcapContainer):
                     if a_group[pc.g_id] == None:
                         a_group[pc.g_id] = _id
 
-                except Exception, e:
+                except Exception as e:
                     trafcap.logException(e, group_data=group_data)
     
                 if not trafcap.options.quiet:
-                    print "\033[31m", k, "\t", group_data ,"\033[0m"
+                    print("\033[31m", k, "\t", group_data ,"\033[0m")
         return
 
 class TrafcapEthPktContainer(TrafcapContainer):
@@ -189,8 +189,8 @@ class TrafcapEthPktContainer(TrafcapContainer):
                     new_seq_end = 0
 
                 if not trafcap.options.quiet:
-                    print "\rUi:", a_info
-                    print "\rUb:", a_bytes
+                    print("\rUi:", a_info)
+                    print("\rUb:", a_bytes)
 
                 # Prepare for write to the database if user specified option
                 if trafcap.options.mongo:
@@ -232,7 +232,7 @@ class TrafcapEthPktContainer(TrafcapContainer):
                         self.db_no_wc[self.bytes_collection].insert(session_bytes_doc,
                                                           manipulate=False)
 
-                    except Exception, e:
+                    except Exception as e:
                         trafcap.logException(e, a_info=a_info, a_bytes=a_bytes,
                                             session_info_doc=session_info_doc,
                                             session_bytes_doc=session_bytes_doc)
@@ -271,8 +271,8 @@ class TrafcapEthPktContainer(TrafcapContainer):
             except KeyError:
                 continue
             if not trafcap.options.quiet:
-                print "\rEi:", expired_session
-                print "\rEb", expired_bytes
+                print("\rEi:", expired_session)
+                print("\rEb", expired_bytes)
  
         return
 
@@ -305,7 +305,7 @@ class TrafcapEthPktContainer(TrafcapContainer):
                 a_info[pc.i_src][pc.i_bytes] += outbound_bytes 
 
             else:
-                print "Invalid container type...."
+                print("Invalid container type....")
 
         except KeyError:
             new_info = pc.buildInfoDictItem(key, data)
@@ -322,7 +322,7 @@ class TrafcapEthPktContainer(TrafcapContainer):
             src_bytes = in_bytes
             dst_bytes = out_bytes
         else:
-            print "Invalid container type..."
+            print("Invalid container type...")
 
         try:
             # Find dictionary entry with matching key if it exists
@@ -338,8 +338,8 @@ class TrafcapEthPktContainer(TrafcapContainer):
             # session was just written completely to db
             if a_bytes[pc.b_sb] == 0 and a_bytes[pc.b_se] == 0:
                 if len(a_bytes[pc.b_array]) != 1:             # error checking
-                    print "Error case 1 of session_bytes update"
-                    print a_bytes
+                    print("Error case 1 of session_bytes update")
+                    print(a_bytes)
                 a_bytes[pc.b_sb] = curr_seq
                 a_bytes[pc.b_se] = curr_seq
                 #a_bytes[pc.b_array][-1][pc.b_bytes1] += ip1_bytes
@@ -349,8 +349,8 @@ class TrafcapEthPktContainer(TrafcapContainer):
             # session was just partially written to db
             elif a_bytes[pc.b_sb] == a_bytes[pc.b_se]:
                 if len(a_bytes[pc.b_array]) != 1:     # error checking
-                    print "Error case 2 of session_bytes update"
-                    print a_bytes
+                    print("Error case 2 of session_bytes update")
+                    print(a_bytes)
                 if a_bytes[pc.b_se] == curr_seq:
                     #a_bytes[pc.b_array][-1][pc.b_bytes1] += ip1_bytes
                     #a_bytes[pc.b_array][-1][pc.b_bytes2] += ip2_bytes
@@ -365,8 +365,8 @@ class TrafcapEthPktContainer(TrafcapContainer):
             #  the session was not recently written to db
             elif a_bytes[pc.b_sb] < a_bytes[pc.b_se]:
                 if len(a_bytes[pc.b_array]) == 1:             # error checking
-                    print "Error case 3 of session_bytes update"
-                    print a_bytes
+                    print("Error case 3 of session_bytes update")
+                    print(a_bytes)
                 if a_bytes[pc.b_se] == curr_seq:
                     #a_bytes[pc.b_array][-1][pc.b_bytes1] += ip1_bytes
                     #a_bytes[pc.b_array][-1][pc.b_bytes2] += ip2_bytes
@@ -377,8 +377,8 @@ class TrafcapEthPktContainer(TrafcapContainer):
                                                 0, 0])
                                                 #ip1_bytes, ip2_bytes])
             else:
-                print "Error case 4 (undefined) of session_bytes update"
-                print a_bytes
+                print("Error case 4 (undefined) of session_bytes update")
+                print(a_bytes)
 
             a_bytes[pc.b_array][-1][pc.b_bytes1] += src_bytes
             a_bytes[pc.b_array][-1][pc.b_bytes2] += dst_bytes
@@ -429,7 +429,7 @@ class TrafcapIpPktContainer(TrafcapEthPktContainer):
                 a_info[pc.i_ip2][pc.i_bytes] += outbound_bytes 
 
             else:
-                print "Invalid container type...."
+                print("Invalid container type....")
 
         except KeyError:
             new_info = pc.buildInfoDictItem(key, data)
@@ -446,7 +446,7 @@ class TrafcapIpPktContainer(TrafcapEthPktContainer):
             ip1_bytes = in_bytes
             ip2_bytes = out_bytes
         else:
-            print "Invalid container type..."
+            print("Invalid container type...")
 
         try:
             # Find dictionary entry with matching key if it exists
@@ -462,8 +462,8 @@ class TrafcapIpPktContainer(TrafcapEthPktContainer):
             # session was just written completely to db
             if a_bytes[pc.b_sb] == 0 and a_bytes[pc.b_se] == 0:
                 if len(a_bytes[pc.b_array]) != 1:             # error checking
-                    print "Error case 1 of session_bytes update"
-                    print a_bytes
+                    print("Error case 1 of session_bytes update")
+                    print(a_bytes)
                 a_bytes[pc.b_sb] = curr_seq
                 a_bytes[pc.b_se] = curr_seq
                 #a_bytes[pc.b_array][-1][pc.b_bytes1] += ip1_bytes
@@ -473,7 +473,7 @@ class TrafcapIpPktContainer(TrafcapEthPktContainer):
             # session was just partially written to db
             elif a_bytes[pc.b_sb] == a_bytes[pc.b_se]:
                 if len(a_bytes[pc.b_array]) != 1:     # error checking
-                    print "Error case 2 of session_bytes update"
+                    print("Error case 2 of session_bytes update")
                 if a_bytes[pc.b_se] == curr_seq:
                     #a_bytes[pc.b_array][-1][pc.b_bytes1] += ip1_bytes
                     #a_bytes[pc.b_array][-1][pc.b_bytes2] += ip2_bytes
@@ -488,8 +488,8 @@ class TrafcapIpPktContainer(TrafcapEthPktContainer):
             #  the session was not recently written to db
             elif a_bytes[pc.b_sb] < a_bytes[pc.b_se]:
                 if len(a_bytes[pc.b_array]) == 1:             # error checking
-                    print "Error case 3 of session_bytes update"
-                    print a_bytes
+                    print("Error case 3 of session_bytes update")
+                    print(a_bytes)
                 if a_bytes[pc.b_se] == curr_seq:
                     #a_bytes[pc.b_array][-1][pc.b_bytes1] += ip1_bytes
                     #a_bytes[pc.b_array][-1][pc.b_bytes2] += ip2_bytes
@@ -500,8 +500,8 @@ class TrafcapIpPktContainer(TrafcapEthPktContainer):
                                                 0, 0])
                                                 #ip1_bytes, ip2_bytes])
             else:
-                print "Error case 4 (undefined) of session_bytes update"
-                print a_bytes
+                print("Error case 4 (undefined) of session_bytes update")
+                print(a_bytes)
 
             a_bytes[pc.b_array][-1][pc.b_bytes1] += ip1_bytes
             a_bytes[pc.b_array][-1][pc.b_bytes2] += ip2_bytes

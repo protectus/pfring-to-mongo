@@ -5,7 +5,7 @@
 # Classes to help pull data off the wire and update mongo
 import subprocess
 import time
-import trafcap
+from . import trafcap
 from datetime import datetime
 import traceback
 import sys
@@ -169,7 +169,7 @@ class EthernetPacket(object):
 
     @classmethod
     def updateInfoDict(pc, data, a_info):
-        print 'Override TrafcapEthernetPacket.updateInfoDict() in subclass'
+        print('Override TrafcapEthernetPacket.updateInfoDict() in subclass')
         return
 
     @classmethod

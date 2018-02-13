@@ -11,14 +11,14 @@ from datetime import datetime
 import subprocess
 from optparse import OptionParser
 import math
-import ConfigParser
+import configparser
 from datetime import timedelta
 from operator import itemgetter
 
 import locale
 locale.setlocale(locale.LC_ALL, 'en_US.utf8')
 
-import trafcap
+from . import trafcap
 import pymongo
 
 start_bold = "\033[1m"
@@ -144,15 +144,15 @@ def main():
         collections.append([coll_name, begin_name, 0, end_name, 0, 
                             0, 0, 0, 0, 0, 0, 0, 0, {}])
 
-    print ""
-    print time.asctime(time.localtime()).center(80)
+    print("")
+    print(time.asctime(time.localtime()).center(80))
 
 
     for coll in collections:
 
         collection_name = coll[c_name]
 
-        print "Checking.....", collection_name,".....begin time                \r",
+        print("Checking.....", collection_name,".....begin time                \r", end=' ')
         sys.stdout.flush()
 
         cursor = db[collection_name].find( \
@@ -176,7 +176,7 @@ def main():
         coll[c_begin_time] = cursor[0][coll[c_begin_name]]
 
         # Find begin time (oldest)
-        print "Checking.....", collection_name,".....end time                  \r",
+        print("Checking.....", collection_name,".....end time                  \r", end=' ')
         sys.stdout.flush()
 
         # Find end time (most recent)
@@ -196,7 +196,7 @@ def main():
         coll[c_days] = delta.days
 
 
-        print "Checking.....", collection_name,".....stats                     \r",
+        print("Checking.....", collection_name,".....stats                     \r", end=' ')
         sys.stdout.flush()
         stats = db.command('collstats', collection_name)
 
@@ -250,7 +250,7 @@ def main():
                     "End".center(11), '  ',
                     "dsiZe", ' sSize', " Aosiz", " Isize", "   Ndoc"]
         header = "".join(a_list)
-        print start_bold, header, end_bold
+        print(start_bold, header, end_bold)
 
         for coll in sorted_collections:
             a_list=[coll[c_name].ljust(19), ' ',
@@ -274,7 +274,7 @@ def main():
             if coll[c_end_time] == 0: a_list[6] = " ".rjust(11)
 
             txt_out = "".join(a_list)
-            print txt_out
+            print(txt_out)
             rows += 1
 
     else:
@@ -282,19 +282,19 @@ def main():
                     'Index'.center(34),
                     'Size'.center(5)]
         header = "".join(a_list)
-        print start_bold, header, end_bold
+        print(start_bold, header, end_bold)
 
         for coll in sorted_collections:
-            print coll[c_name].ljust(18),
+            print(coll[c_name].ljust(18), end=' ')
             rows = 1
             for key in coll[c_index]:
                 if rows > 1:
-                    print " ".rjust(18),
-                print key.rjust(34),  sizeof_readable_bytes(coll[c_index][key]).rjust(6)
+                    print(" ".rjust(18), end=' ')
+                print(key.rjust(34),  sizeof_readable_bytes(coll[c_index][key]).rjust(6))
                 rows +=1
 
             if len(coll[c_index]) == 0:
-                print ""
+                print("")
 
     if not options.index:
         total_size = 0
@@ -320,7 +320,7 @@ def main():
                   '   ',
                   '----']
         txt_out = "".join(a_list)
-        print txt_out
+        print(txt_out)
 
         a_list = ['                                                 ',
                   sizeof_readable_bytes(total_size),
@@ -333,7 +333,7 @@ def main():
                   '   ',
                   sizeof_readable(total_docs)]
         txt_out = "".join(a_list)
-        print txt_out
+        print(txt_out)
 
     sys.exit()
 

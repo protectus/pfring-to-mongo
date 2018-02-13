@@ -6,12 +6,12 @@
 import sys, time, os, signal
 import traceback
 from optparse import OptionParser
-import ConfigParser
+import configparser
 
 import locale
 locale.setlocale(locale.LC_ALL, 'en_US.utf8')
 
-import trafcap
+from . import trafcap
 import pymongo
 
 start_bold = "\033[1m"
@@ -168,12 +168,12 @@ def main():
     exp_time = int(time.time()) - ttl
 
     if options.verbose:
-        print "Current local time is: ", time.asctime(time.localtime())
-        print "TTL configured for: ", ttl, " seconds  == ", \
+        print("Current local time is: ", time.asctime(time.localtime()))
+        print("TTL configured for: ", ttl, " seconds  == ", \
                                       ttl/3600, " hours == ", \
-                                      ttl/3600/24, " days"
-        print "Expire data before: ", time.asctime(time.localtime(exp_time))
-        print ""
+                                      ttl/3600/24, " days")
+        print("Expire data before: ", time.asctime(time.localtime(exp_time)))
+        print("")
 
     yes = set(['yes','y',''])
     no = set(['no','n'])
@@ -183,7 +183,7 @@ def main():
     a_dict = db.current_op() 
     for operation in a_dict['inprog']:
         if operation['op'] == 'remove':
-            print 'Remove already in progress.....exiting.'
+            print('Remove already in progress.....exiting.')
             sys.exit()
 
     for coll in collections:
@@ -191,7 +191,7 @@ def main():
         collection_name = coll[c_name]
 
         if options.verbose:
-            print "Checking ", collection_name,"..... \r",
+            print("Checking ", collection_name,"..... \r", end=' ')
             sys.stdout.flush()
 
         if options.verbose or options.prompt:
@@ -210,17 +210,17 @@ def main():
                   " docs from " + collection_name + " ?   [Y/n]"
             answer = " "
             while answer not in yes and answer not in no:
-                answer = raw_input(question).lower()
+                answer = input(question).lower()
 
             if answer in no:
                 continue
 
         if options.verbose:
             if options.dryrun:
-                print "   Could remove ",
+                print("   Could remove ", end=' ')
             else:
-                print "   Removing ",
-            print coll[c_num_docs], " docs from ", collection_name 
+                print("   Removing ", end=' ')
+            print(coll[c_num_docs], " docs from ", collection_name) 
 
         if not options.dryrun:
             # First index in lpj collections is c_id, not time, so handle lpj differently

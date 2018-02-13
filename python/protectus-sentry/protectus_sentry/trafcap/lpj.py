@@ -2,11 +2,11 @@
 #
 # Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
 #
-import trafcap
+from . import trafcap
 import socket
 import signal
 import threading
-from lpjTarget import *
+from .lpjTarget import *
 
 
 t_target=0        # could be hostname or ip
@@ -42,7 +42,7 @@ def createTarget(target, send_packets_flag):
         a_target_obj = LpjTcpTarget(target, send_packets_flag)
 
     else:
-        print "Invalid target: ", target
+        print("Invalid target: ", target)
         a_target_obj = None
 
     if a_target_obj:
@@ -64,8 +64,8 @@ def readConfig():
         if item['doc_type'] == 'latency':
             try: 
                 ip_addr = item['ip']
-            except Exception,e:
-                print "Target without IP: ", item['target']
+            except Exception as e:
+                print("Target without IP: ", item['target'])
                 ip_addr = '0.1.2.3'
 
             if item['protocol'] == 'icmp':

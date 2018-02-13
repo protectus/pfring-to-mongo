@@ -5,11 +5,11 @@
 # Classes to help manage temporary storage of traffic in dictionaries
 # and writes to mongo
 import sys, time
-import trafcap
+from . import trafcap
 from datetime import datetime
 import traceback
 import pprint
-from lpjPacket import * 
+from .lpjPacket import * 
 
 class LpjContainer(object):
     """
@@ -57,7 +57,7 @@ class LpjGroupContainer(LpjContainer):
             self.groups_dict[group_key] = a_group
 
             if trafcap.options.groups:
-                print "New session_group items for: ", group_key
+                print("New session_group items for: ", group_key)
 
         a_group[pc.g_tem] = trafcap.secondsToMinute(a_data['se'])
         a_group[pc.g_lmin] = min(a_data['lmin'],  a_group[pc.g_lmin])
@@ -72,9 +72,9 @@ class LpjGroupContainer(LpjContainer):
     def updateDb(self):
 
         # Remove zero data elements from the session groups byte array
-        if not trafcap.options.quiet: print ""
+        if not trafcap.options.quiet: print("")
         if trafcap.options.groups:
-            print "Writing groups dict with ", len(self.groups_dict), " entries."
+            print("Writing groups dict with ", len(self.groups_dict), " entries.")
         for k in self.groups_dict:
             a_group = self.groups_dict[k]
             pc = eval(a_group[0].capitalize() + "LpjPacket") 
@@ -103,8 +103,8 @@ class LpjGroupContainer(LpjContainer):
                 group_data = pc.buildGroupsDoc(a_group, end_of_list)
 
                 if trafcap.options.groups:
-                    print "Update db, crit: ", group_criteria
-                    print "Update db, data: ", group_data
+                    print("Update db, crit: ", group_criteria)
+                    print("Update db, data: ", group_data)
 
                 try:
                     #if insert_flag:
@@ -124,7 +124,7 @@ class LpjGroupContainer(LpjContainer):
                     if a_group[pc.g_id] == None:
                         a_group[pc.g_id] = _id
 
-                except Exception, e:
+                except Exception as e:
                     # Something went wrong. Save for analysis
                     trafcap.logException(e, group_data=group_data)
 
@@ -250,12 +250,12 @@ class LpjIpPktContainer(LpjEthernetPktContainer):
 
         try:
             seq_begin_min = trafcap.secondsToMinute(int(req[pc.p_etime]))
-        except Exception, e:
+        except Exception as e:
             # for debug
-            print e
-            print "key = ", sess_key 
-            print "req = ", req
-            print "rply = ", rply
+            print(e)
+            print("key = ", sess_key) 
+            print("req = ", req)
+            print("rply = ", rply)
 
         sess_key_list = list(sess_key)
         sess_key_list.append(seq_begin_min)
@@ -280,9 +280,9 @@ class LpjIpPktContainer(LpjEthernetPktContainer):
                       True, c_id, None, 0]
             self.data_dict[sess_key_sbm] = a_data
             if not trafcap.options.quiet:  
-                print "Created new lpj data dict entry..."
-                print a_data
-                print ''
+                print("Created new lpj data dict entry...")
+                print(a_data)
+                print('')
 
         if req and not rply:
             a_data[pc.d_se] =  int(req[pc.p_etime])
@@ -389,14 +389,14 @@ class LpjIpPktContainer(LpjEthernetPktContainer):
         ci = 0; si = 1
         for key in info_keys_to_write: 
             a_info = self.info_dict[key]
-            if not trafcap.options.quiet: print "\rU:", a_info
+            if not trafcap.options.quiet: print("\rU:", a_info)
             # Build the query document
             #session_criteria = pc.buildCriteriaDoc(ci, si, a_info)
             session_info_doc = pc.buildInfoDoc(ci, si, a_info)
 
             #if not session_criteria or not session_info_doc:
             if not session_info_doc:
-                print "Matching target not found..."
+                print("Matching target not found...")
                 return 
  
             if self.db:
@@ -415,7 +415,7 @@ class LpjIpPktContainer(LpjEthernetPktContainer):
                     if a_info[pc.i_id] == None:
                         a_info[pc.i_id] = _id
     
-                except Exception, e:
+                except Exception as e:
                     # Something went wrong. Save for analysis
                     trafcap.logException(e, session_info_doc=session_info_doc,
                                             a_info=a_info)
@@ -425,12 +425,12 @@ class LpjIpPktContainer(LpjEthernetPktContainer):
          
         for key in data_keys_to_write:
             a_data = self.data_dict[key]
-            if not trafcap.options.quiet: print "\rUd:", a_data
+            if not trafcap.options.quiet: print("\rUd:", a_data)
             # Build the query document
             session_data_doc = pc.buildDataDoc(ci, si, a_data)
 
             if not session_data_doc:
-                print "Matching target not found..."
+                print("Matching target not found...")
                 return
 
             if not trafcap.options.quiet:
@@ -454,7 +454,7 @@ class LpjIpPktContainer(LpjEthernetPktContainer):
                     if a_data[pc.i_id] == None:
                         a_data[pc.i_id] = _id
     
-                except Exception, e:
+                except Exception as e:
                     # Something went wrong. Save for analysis
                     trafcap.logException(e, session_data_doc=session_data_doc,
                                             a_data=a_data)
@@ -470,11 +470,11 @@ class LpjIpPktContainer(LpjEthernetPktContainer):
         for key in info_keys_to_pop:
             expired_session = self.info_dict.pop(key)
             if not trafcap.options.quiet:
-                print "\rEi:", expired_session
+                print("\rEi:", expired_session)
 
         for key in data_keys_to_pop:
             expired_session = self.data_dict.pop(key)
             if not trafcap.options.quiet:
-                print "\rEd:", expired_session
+                print("\rEd:", expired_session)
 
         return

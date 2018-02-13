@@ -10,11 +10,11 @@ import subprocess
 from optparse import OptionParser
 import math
 import traceback
-import trafcap
-import lpj
-from lpjPacket import *
-from lpjContainer import *
-from lpjTarget import *
+from . import trafcap
+from . import lpj
+from .lpjPacket import *
+from .lpjContainer import *
+from .lpjTarget import *
 import copy
 import fcntl
 import threading
@@ -53,7 +53,7 @@ class Lpj2MongoThread(threading.Thread):
                 my_ips_cids.update(lpj.target_cids)
 
             if not options.quiet:
-                print "Injest: target_cids: ", my_ips_cids
+                print("Injest: target_cids: ", my_ips_cids)
 
         updateMyTargets()
 
@@ -74,9 +74,9 @@ class Lpj2MongoThread(threading.Thread):
         sniff_working = False
         while not sniff_working:
             try:
-                if not options.quiet: print 'Reading stderr for sniffer status...'
+                if not options.quiet: print('Reading stderr for sniffer status...')
                 std_err = proc.stderr.readline()
-                if not options.quiet: print '  std_err = ', std_err
+                if not options.quiet: print('  std_err = ', std_err)
                 if 'device is not up' in std_err:
                     # kill failed proc
                     if proc:
@@ -87,11 +87,11 @@ class Lpj2MongoThread(threading.Thread):
                     time.sleep(1)
                 elif 'verbose output' in std_err:
                     sniff_working = True
-                    if not options.quiet: print 'Sniffer started...good to go.'
+                    if not options.quiet: print('Sniffer started...good to go.')
                 else:
                     # Sometimes stderr is empty - not sure why.  
                     # Maybe interference from SIGURS1 
-                    if not options.quiet: print 'std_err is empty...'
+                    if not options.quiet: print('std_err is empty...')
                     # kill failed proc
                     if proc:
                         os.kill(proc.pid, signal.SIGTERM)
@@ -100,8 +100,8 @@ class Lpj2MongoThread(threading.Thread):
                     fd_out = setFileNonBlock(proc)
                     time.sleep(1) 
 
-            except Exception, e:
-                print e
+            except Exception as e:
+                print(e)
                 time.sleep(1)
 
         std_in = [fd_out]
@@ -123,7 +123,7 @@ class Lpj2MongoThread(threading.Thread):
             try:
                 # Timeout of 0.0 seconds here causes 100% CPU usage
                 inputready,outputready,exceptready = select(std_in,std_out,std_err,0.1)
-            except Exception, e:
+            except Exception as e:
                 # This code path is followed when a signal is caught
                 if e[0] != 4:        # Exception not caused by USR1 and USR2
                     trafcap.logException(e, inputready=inputready,
@@ -132,12 +132,12 @@ class Lpj2MongoThread(threading.Thread):
                     continue
 
             if exceptready:
-                print "Injest: Something in exceptready..."
-                print exceptready
+                print("Injest: Something in exceptready...")
+                print(exceptready)
 
             if std_err:
-                print "Injest: Something in std_err..."
-                print std_err
+                print("Injest: Something in std_err...")
+                print(std_err)
 
             if lpj.target_cids_changed.is_set():
                 lpj.target_cids_changed.clear()
@@ -153,7 +153,7 @@ class Lpj2MongoThread(threading.Thread):
                 # Process data waiting to be read 
                 try:
                    raw_data = os.read(std_in[0],trafcap.bytes_to_read)
-                except Exception, e:
+                except Exception as e:
                     continue
                 the_buffer += raw_data
                 if '\n' in raw_data:
@@ -197,12 +197,12 @@ class Lpj2MongoThread(threading.Thread):
                             pass
 
                         else:
-                            print "Injest: Invalid input..."
+                            print("Injest: Invalid input...")
                             raise Exception("Unexpected protocol.")
 
-                    except MtrPacketError, e:
+                    except MtrPacketError as e:
                         continue
-                    except Exception, e:
+                    except Exception as e:
                         # Something went wrong with parsing the line. Save for analysis
                         trafcap.logException(e, line=line, lines=lines,
                                                 the_buffer=the_buffer)

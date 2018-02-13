@@ -7,13 +7,13 @@ import sys, os, signal
 import random
 import threading
 import datetime
-import trafcap
+from . import trafcap
 from optparse import OptionParser
 import copy
-import lpj 
+from . import lpj 
 import time
-from lpjTarget import *
-from lpj2mongo import Lpj2MongoThread
+from .lpjTarget import *
+from .lpj2mongo import Lpj2MongoThread
 
 trafcap.checkIfRoot()
 check_db_task = None
@@ -48,9 +48,9 @@ def main():
     lpj.updateLpj2MongoData()
 
     def catchCntlC(signum, stack):
-        print "Terminating ", len(lpj.targets), " targets..."
+        print("Terminating ", len(lpj.targets), " targets...")
         for target in lpj.targets:
-            print "Stopping...", target.target_info
+            print("Stopping...", target.target_info)
             target.stop()
         if check_db_task:
            check_db_task.shutdown()
@@ -59,7 +59,7 @@ def main():
             lpj2Mongo_task.shutdown()
             lpj2Mongo_task.join()
 
-        print "Exiting..."
+        print("Exiting...")
         sys.exit()
 
     signal.signal(signal.SIGINT, catchCntlC)
@@ -73,7 +73,7 @@ def main():
 
     if not trafcap.options.quiet:
         # Subtract 1 for main thread, 1 for check_db thread, and 1 for injest.
-        print "Target count = ", threading.activeCount() - 3
+        print("Target count = ", threading.activeCount() - 3)
         #print "Threads info = ", threading.enumerate()
 
 
@@ -87,8 +87,8 @@ def main():
                     target.start()
                     lpj.updateLpj2MongoData()
 
-        except Exception, e:
-            print e         
+        except Exception as e:
+            print(e)         
 
         #except KeyboardInterrupt:
         #    break

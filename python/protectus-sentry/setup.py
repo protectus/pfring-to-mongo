@@ -37,7 +37,7 @@ if sys.argv[1] in ['bdist_egg', 'install']:
     ]
 
     #       library_dirs = ["/usr/local/lib", "/home/sentry/PF_RING/userland/lib"])
-    print isinstance(extensions[0], Extension)
+    print(isinstance(extensions[0], Extension))
     setup_settings = {
         'cmdclass': {'build_ext':build_ext},
         'ext_modules': cythonize(extensions) + cythonize(cythonize_glob) + cythonize(pyx_glob)
@@ -69,10 +69,10 @@ if sys.argv[1] == 'bdist_egg':
     if '--dist-dir' in sys.argv:
         dist_dir=sys.argv[sys.argv.index('--dist-dir')+1]
 
-    print "Stripping egg of proprietary source code... (hopefully)"
+    print("Stripping egg of proprietary source code... (hopefully)")
     filenames = glob.glob(dist_dir+'/protectus_sentry*.egg')
     if len(filenames) != 1:
-        print "Not sure which egg file to use! Tell Tim to fix his setup.py."
+        print("Not sure which egg file to use! Tell Tim to fix his setup.py.")
 
     # Move the original to make room for the new
     target_name = filenames[0]
@@ -85,7 +85,7 @@ if sys.argv[1] == 'bdist_egg':
     for item in egg.infolist():
         path = item.filename
         if path.endswith('.c'):
-            print "\tRemoving " + path
+            print("\tRemoving " + path)
         else:
             newegg.writestr(item, egg.read(path))
 
@@ -93,4 +93,4 @@ if sys.argv[1] == 'bdist_egg':
     newegg.close()
     os.remove(original)
 
-    print "Done removing proprietary source code"
+    print("Done removing proprietary source code")

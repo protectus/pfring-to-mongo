@@ -11,11 +11,11 @@ from datetime import datetime
 import subprocess
 from optparse import OptionParser
 import math
-import ConfigParser
-import trafcap
+import configparser
+from . import trafcap
 from trafcapIpPacket import *
-from trafcapEthernetPacket import *
-from trafcapContainer import *
+from .trafcapEthernetPacket import *
+from .trafcapContainer import *
 import pymongo
 
 # doc_win_start                   mbp
@@ -124,21 +124,21 @@ def main():
 
     def catchSignal1(signum, stack):
         num_sessions = len(session1.groups_dict)
-        print "\n", num_sessions, " active sessions_group entries:"
+        print("\n", num_sessions, " active sessions_group entries:")
         for k in session1.groups_dict:
-            print "   ",
-            print "\033[31m", k, "\t", session1.groups_dict[k], "\033[0m"
-        if num_sessions >= 1: print num_sessions, \
-                                    " active session_group entries displayed."
+            print("   ", end=' ')
+            print("\033[31m", k, "\t", session1.groups_dict[k], "\033[0m")
+        if num_sessions >= 1: print(num_sessions, \
+                                    " active session_group entries displayed.")
 
     def catchSignal2(signum, stack):
         num_sessions = len(session2.groups_dict)
-        print "\n", num_sessions, " active sessions_group entries:"
+        print("\n", num_sessions, " active sessions_group entries:")
         for k in session2.groups_dict:
-            print "   ",
-            print "\033[31m", k, "\t", session2.groups_dict[k], "\033[0m"
-        if num_sessions >= 1: print num_sessions, \
-                                    " active session_group entries displayed."
+            print("   ", end=' ')
+            print("\033[31m", k, "\t", session2.groups_dict[k], "\033[0m")
+        if num_sessions >= 1: print(num_sessions, \
+                                    " active session_group entries displayed.")
 
     def catchCntlC(signum, stack):
         sys.exit()
@@ -152,7 +152,7 @@ def main():
         sg = session.db[session.groups_collection].find_one()
         if not sg:
             if not options.quiet:
-                print "Session Groups collection not found..."
+                print("Session Groups collection not found...")
             # sessionGroups collection does not exist. Check for bytes collection 
             bytes_collection_exists = False
             sb_cursor = None
@@ -164,14 +164,14 @@ def main():
                 if sb_cursor.count() > 0:
                     bytes_collection_exists = True 
                 else:
-                    print "Session bytes collection not found. Sleeping..."
+                    print("Session bytes collection not found. Sleeping...")
                     time.sleep(2) 
         
             oldest_sessionBytes_sb = sb_cursor[0]['sb']
             result = oldest_sessionBytes_sb
         else:
             if not options.quiet:
-                print "Session groups collection found..."
+                print("Session groups collection found...")
             # sessionGroups exists, return most recent tbm in sessionGroups
             sg_cursor = session.db[session.groups_collection].find( \
                                    {}, projection = {'tbm':True}, 
@@ -182,7 +182,7 @@ def main():
     # Find the starting point for consolidating sessionInfo and sessionBytes
     # into sessionGroups
     #if not options.quiet:
-    print "Searching for starting time..."
+    print("Searching for starting time...")
 
     newest_group1_time = findStartingPoint(session1)
     newest_group2_time = findStartingPoint(session2)
@@ -194,8 +194,8 @@ def main():
     doc_win_start1 = trafcap.findWindowBoundary(newest_group1_time, window_size1)
     doc_win_start2 = trafcap.findWindowBoundary(newest_group2_time, window_size2)
     #if not options.quiet:
-    print "Most recent groups 1 doc window start time = ", doc_win_start1
-    print "Most recent groups 2 doc window start time = ", doc_win_start2
+    print("Most recent groups 1 doc window start time = ", doc_win_start1)
+    print("Most recent groups 2 doc window start time = ", doc_win_start2)
 
     mbp = min(doc_win_start1, doc_win_start2)
     doc_win_start1 = mbp
@@ -203,7 +203,7 @@ def main():
     max_doc_duration = 3600 * 24 * 5       # 5 days
 
     #if not options.quiet:
-    print "Minute being processed = ", mbp 
+    print("Minute being processed = ", mbp) 
 
     # Create dictionary with session byte history - used later to determine
     # if a session is new or existing.  Find all sessions from:
@@ -216,7 +216,7 @@ def main():
     h_sb=0; h_se=1; h_counted1=2; h_counted2=3
 
     if not options.quiet:
-        print "Building session_bytes history..."
+        print("Building session_bytes history...")
     session_history = {}
 
     sess_bytes = session1.db[session1.bytes_collection].find( \
@@ -248,17 +248,17 @@ def main():
 
         if mbp >= (trafcap.secondsToMinute(most_recent_doc[0]['se'] - 30) - 60):
             if not options.quiet:
-                print ""
-                print "\r\033[33m", "mbp: ", mbp, \
+                print("")
+                print("\r\033[33m", "mbp: ", mbp, \
                       " is close to most_recent_doc: ", most_recent_doc[0]['se'], \
-                      ",  sleeping.......", "\033[0m",
+                      ",  sleeping.......", "\033[0m", end=' ')
                 sys.stdout.flush()
             time.sleep(60)
             continue
 
         # Find all docs in sessionBytes with tb <= mbp <= te
         if options.bytes:
-            print "Querying sessionBytes for mbp = ", mbp
+            print("Querying sessionBytes for mbp = ", mbp)
 
         a_spec = {'sbm':{'$lte':mbp+59,'$gt':mbp - max_doc_duration},'sem':{'$gte':mbp, '$lt':mbp + max_doc_duration}}
         a_sort = [('sb',pymongo.ASCENDING)]
@@ -267,8 +267,8 @@ def main():
                                  #spec = a_spec, sort = a_sort)
 
         if options.bytes:
-            print "Found ", sess_bytes.count(),  \
-                  " matching sessionBytes documents in mbp ", mbp
+            print("Found ", sess_bytes.count(),  \
+                  " matching sessionBytes documents in mbp ", mbp)
 
         # For the sess_bytes array element with data, 
         # add data to the session_group arrays
@@ -343,10 +343,10 @@ def main():
                     session2.groups_dict[group_key][pc.g_b2] += item[2]
 
             if not options.quiet: 
-                print "\rmbp: ", mbp, ", ", \
+                print("\rmbp: ", mbp, ", ", \
                       "groups1: ", str(len(session1.groups_dict)).rjust(5), ", ",\
                       "groups2: ", str(len(session2.groups_dict)).rjust(5), "  ",\
-                      "(", time.asctime(time.gmtime(mbp)), ")\r",
+                      "(", time.asctime(time.gmtime(mbp)), ")\r", end=' ')
             sys.stdout.flush()
 
         # End looping through all sess_bytes documents in a chunck 
@@ -372,7 +372,7 @@ def main():
 
         # If on 15 min boundary, write to groups1 and clean-up dictionary
         if mbp == trafcap.secondsTo15Minute(mbp):
-            if options.groups: print "At 15 minute interval..."
+            if options.groups: print("At 15 minute interval...")
             #if options.mongo:
             #    if not insert_to_group1 and \
             #    trafcap.secondsTo15Minute(mbp-60) > newest_group1_time:
@@ -387,7 +387,7 @@ def main():
 
         # If on 3 hour boundary, write to groups2 and clean-up dictionary 
         if mbp == trafcap.secondsTo3Hour(mbp):
-            if options.groups: print "At 3 hour interval..."
+            if options.groups: print("At 3 hour interval...")
             #if options.mongo:
             #    if not insert_to_group2 and \
             #    trafcap.secondsTo3Hour(mbp-60) > newest_group2_time:

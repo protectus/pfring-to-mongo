@@ -3,7 +3,7 @@
 # Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
 #
 import time
-import ConfigParser
+import configparser
 import socket
 import struct
 import re
@@ -94,7 +94,7 @@ def refreshConfigVars():
     global packet_ring_buffer_size, saved_session_ring_buffer_size 
     global live_session_buffer_size, group_buffer_size, group2_buffer_size
     # Read settings from config file
-    config = ConfigParser.SafeConfigParser()
+    config = configparser.SafeConfigParser()
     config.optionxform = str  # Read config keys case sensitively.
     config.read(['/opt/sentry/etc/sentry.conf', '/opt/sentry/trafcap/trafcap.conf', '/opt/sentry/etc/custom_settings.conf'])
     error_log = config.get('trafcap', 'error_logfile')
@@ -113,12 +113,12 @@ def refreshConfigVars():
     # Entry in config file can be used to override hardware settings.
     try:
        network_interface = config.get('interface', 'network_interface')
-    except (ConfigParser.NoOptionError, ConfigParser.NoSectionError):
+    except (configparser.NoOptionError, configparser.NoSectionError):
        network_interface = sentryHardware.getNetworkInterface()
     #
     try:
        sniff_interface = config.get('interface', 'sniff_interface')
-    except (ConfigParser.NoOptionError, ConfigParser.NoSectionError):
+    except (configparser.NoOptionError, configparser.NoSectionError):
        sniff_interface = sentryHardware.getSniffInterface()
 
     lrs_min_duration = config.getint('trafcap', 'lrs_min_duration')
@@ -176,7 +176,7 @@ def tupleToInt(ip):
             ip_str[i] = "0" + ip_str[i]
     
     ip_int = int(ip_str[0]+ip_str[1]+ip_str[2]+ip_str[3], 16)
-    return long(ip_int)
+    return int(ip_int)
 
 def intToTuple(ip):
     return (int(ip >> 24& 0xFF),int(ip >> 16& 0xFF), 
@@ -187,7 +187,7 @@ def stringToInt(ip):
         ip_int = struct.unpack('<L',socket.inet_aton(ip)[::-1])[0]
     except socket.error:
         raise ValueError('Invalid value "' + ip + '" for IP')
-    return long(ip_int)
+    return int(ip_int)
 
 def intToString(ip):
     try:
@@ -389,7 +389,7 @@ def readAsnFile(asn_file):
             result[asn] = name
 
     if len(result) == 0:
-        print "Warning: No ASN names found to load in readAsnFile"
+        print("Warning: No ASN names found to load in readAsnFile")
 
     return result
     
@@ -457,14 +457,14 @@ def dnsMxRecLookup(domain_name):
 classification_config_dict = None
 
 def logException(exception, **kwargs):
-    arg_names = kwargs.keys()
+    arg_names = list(kwargs.keys())
     a_file = open(error_log,'a')
 
     if not options.quiet:
         print('\n=========== Logging Exception =================')
-        print (str(datetime.now())+'\n')
-        print exception
-        print traceback.format_exc()
+        print((str(datetime.now())+'\n'))
+        print(exception)
+        print(traceback.format_exc())
     a_file.write('\n=========== Logging Exception =================\n')
     a_file.write(str(datetime.now())+'\n')
     a_file.write(exception.__str__())
@@ -473,22 +473,22 @@ def logException(exception, **kwargs):
     for arg_name in arg_names:
         arg = kwargs[arg_name]
         if not options.quiet:
-            print '\n-------------' + arg_name + '------------------'
+            print('\n-------------' + arg_name + '------------------')
         a_file.write('\n-------------' + arg_name + '------------------\n')
 
         if type(arg) == str: 
-           if not options.quiet: print arg 
+           if not options.quiet: print(arg) 
            a_file.write(arg)
 
         elif type(arg) == list or type(arg) == tuple:
             for item in arg: 
-                if not options.quiet: print item 
+                if not options.quiet: print(item) 
                 a_file.write(item)
         else:
             a_type = type(arg)
             msg = 'Invalid parameter type  '+str(a_type)+'  passed to logException()'
             if not options.quiet:
-                print msg
+                print(msg)
             a_file.write(msg + '\n')
 
     sys.stdout.flush()
@@ -546,7 +546,7 @@ collection_info = (
 )
 
 def redoIndex(db, c_name, c_indxs):
-    print ' Redo index on ', c_name
+    print(' Redo index on ', c_name)
     db[c_name].drop_indexes()
     for a_index in c_indxs:
         if len(a_index) == 2:
@@ -563,7 +563,7 @@ def redoIndex(db, c_name, c_indxs):
 def ensureIndexes(collection_tuple):
     db = mongoSetup()
     index_info = None
-    print 'Checking indexes...'
+    print('Checking indexes...')
 
     coll_names = db.collection_names()
 

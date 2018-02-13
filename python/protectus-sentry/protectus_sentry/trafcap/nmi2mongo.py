@@ -12,8 +12,8 @@ from optparse import OptionParser
 import math
 import traceback
 
-import trafcap
-from nmiPacket import *
+from . import trafcap
+from .nmiPacket import *
 
 proc = None
 
@@ -33,7 +33,7 @@ def parseOptions():
  
 def exitNow(message):
     # Kill the childprocess sniffing packets
-    print "Exiting..."
+    print("Exiting...")
     if proc:
         os.kill(proc.pid, signal.SIGTERM)
     sys.exit(message)
@@ -54,12 +54,12 @@ def main():
 
     def catchSignal1(signum, stac):
         num_entries = len(nmi.dict)
-        print "\n", num_entries, " active nmi dict entries:"
+        print("\n", num_entries, " active nmi dict entries:")
         for k in nmi.dict:
-            print "   ",
-            print nmi.dict[k]
+            print("   ", end=' ')
+            print(nmi.dict[k])
         if num_entries >= 1:
-            print num_entries, " active nmi dict entries displayed."
+            print(num_entries, " active nmi dict entries displayed.")
 
     def catchCntlC(signum, stack):
         exitNow('')
@@ -94,7 +94,7 @@ def main():
         try:
             # Timeout of 0.0 seconds for non-blocking I/O causes 100% CPU usage
             inputready,outputready,exceptready = select(std_in,std_out,std_err,0.1)
-        except Exception, e:
+        except Exception as e:
             # This code path is followed when a signal is caught
             if e[0] != 4:        # Excetion not caused by USR1 and USR2 signals 
                 sys.stdout.write("Caught exception...")
@@ -116,12 +116,12 @@ def main():
                 continue
 
         if exceptready:
-            print "Something in exceptready..."
-            print exceptready
+            print("Something in exceptready...")
+            print(exceptready)
 
         if std_err:
-            print "Something in std_err..."
-            print std_err
+            print("Something in std_err...")
+            print(std_err)
      
         # No data to be read.  Use this time to update the database.
         if inputready:
@@ -180,21 +180,21 @@ def main():
                         continue
 
                     else:
-                        print "Invalid input..."
-                        print a_line
+                        print("Invalid input...")
+                        print(a_line)
                         raise Exception("Unexpected protocol.")
 
-                except Exception, e:
+                except Exception as e:
                     # Something went wrong with parsing the line. Save for analysis
                     if not options.quiet:
-                        print e
-                        print "\n-------------line------------------\n"
-                        print line
-                        print "\n-------------lines-----------------\n"
-                        print lines
-                        print "\n-------------buffer----------------\n"
-                        print buffer
-                        print traceback.format_exc()
+                        print(e)
+                        print("\n-------------line------------------\n")
+                        print(line)
+                        print("\n-------------lines-----------------\n")
+                        print(lines)
+                        print("\n-------------buffer----------------\n")
+                        print(buffer)
+                        print(traceback.format_exc())
        
                     file = open(trafcap.error_log,"a")
                     file.write("\n===========================================\n")
@@ -210,8 +210,8 @@ def main():
                     file.close()
       
             if not options.quiet: 
-                print "\rActive: ", len(nmi.dict), ", ", \
-                      len(nmi.dict), "\r",
+                print("\rActive: ", len(nmi.dict), ", ", \
+                      len(nmi.dict), "\r", end=' ')
        
             sys.stdout.flush()
 

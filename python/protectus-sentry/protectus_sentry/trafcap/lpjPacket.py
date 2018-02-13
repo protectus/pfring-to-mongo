@@ -5,11 +5,11 @@
 # Classes to aquire latetency, packet loss, jitter data 
 import subprocess
 import time
-import trafcap
+from . import trafcap
 from datetime import datetime
 import traceback
 import re
-import lpj
+from . import lpj
 import copy
 
 #global targets
@@ -50,7 +50,7 @@ class IpLpjPacket(object):
                     if pkt[pc.p_ip1][pc.p_type][0] == target_info[lpj.t_type]:
                         c_id = target_info[lpj.t_c_id] 
                 else:   
-                    print "Invalid protocol when building criteria..."
+                    print("Invalid protocol when building criteria...")
                     return None
         return c_id
 
@@ -161,8 +161,8 @@ class TcpLpjPacket(IpLpjPacket):
             else:
                 raise Exception("Syn or syn-ack not found in TCP traffic." )
 
-        except Exception, e:
-            print(e.__str__())
+        except Exception as e:
+            print((e.__str__()))
             raise Exception("Unable to parse TCP traffic." )
 
         data = [(src_ip, src_port, flags), (dst_ip, dst_port, '[]'), 
@@ -382,9 +382,9 @@ class IcmpLpjPacket(IpLpjPacket):
             else:
                 raise Exception("Request / reply not found in ICMP traffic.")
     
-        except MtrPacketError, e:
+        except MtrPacketError as e:
             raise MtrPacketError("Dropping mtr packet")
-        except Exception, e:
+        except Exception as e:
             raise Exception("Unable to parse ICMP traffic.")
             
         data = [(src_ip, i_type), (dst_ip, []), etime, iden, seq, proto,

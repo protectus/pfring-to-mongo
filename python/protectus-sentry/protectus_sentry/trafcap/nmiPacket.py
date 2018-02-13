@@ -5,7 +5,7 @@
 # Classes to help pull MAC, IP, Name, Geo data off the wire and update mongo
 import subprocess
 import time
-import trafcap
+from . import trafcap
 from datetime import datetime
 import traceback
 import sys
@@ -204,8 +204,8 @@ class DhcpNmiPacket(NmiPacket):
             for a_key in keys_to_pop:
                 pc.dhcp_req.pop(a_key)
 
-        except Exception, e:
-            print str(e)
+        except Exception as e:
+            print(str(e))
             traceback.print_exc()
             raise Exception("Unable to parse DHCP traffic." )
 
@@ -361,8 +361,8 @@ class DnsNmiPacket(NmiPacket):
             for a_key in keys_to_pop:
                 pc.dns_req.pop(a_key)
 
-        except Exception, e:
-            print str(e)
+        except Exception as e:
+            print(str(e))
             traceback.print_exc()
             raise Exception("Unable to parse DNS traffic." )
 
@@ -431,7 +431,7 @@ class NmiContainer(object):
             if pkt_time - last_time > trafcap.nmi_db_update_wait_time:
                 self.dict[key] = pkt_time
                 if not trafcap.options.quiet:
-                    print pkt_time, list  
+                    print(pkt_time, list)  
 
                 if trafcap.options.mongo:
                     self.db[self.collection].insert(nmi_doc, manipulate=False)
@@ -439,7 +439,7 @@ class NmiContainer(object):
         except KeyError:
             self.dict[key] = pkt_time
             if not trafcap.options.quiet:
-                print pkt_time, list 
+                print(pkt_time, list) 
 
             if trafcap.options.mongo:
                 self.db[self.collection].insert(nmi_doc, manipulate=False)
