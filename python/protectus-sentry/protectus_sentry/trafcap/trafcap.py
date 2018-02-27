@@ -76,7 +76,7 @@ def convertLocalSubnets(local_subnet_strings):
         if octets[0]>254 or octets[1]>254 or octets[2]>254 or octets[3]>254:
                     raise ValueError("Octet value greater than 254")
 
-        octets_masked = 4 - (subnet_mask_size / 8)
+        octets_masked = 4 - (subnet_mask_size // 8)
         octets[4-octets_masked:] = [0] * octets_masked
             
         local_subnets.append(tuple(octets))

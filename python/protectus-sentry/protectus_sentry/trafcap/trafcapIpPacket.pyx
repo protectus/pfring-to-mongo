@@ -12,7 +12,7 @@ import re
 from bisect import bisect_left, insort
 # for packet injection
 import socket
-from impacket import ImpactDecoder, ImpactPacket
+#from impacket import ImpactDecoder, ImpactPacket
 import os, sys
 from struct import unpack  # For IP Address parsing
 from ctypes import Structure, c_uint16, c_uint32, c_uint64, c_int16, c_uint8, c_double, c_char
@@ -3548,9 +3548,13 @@ class TcpInjPacket(IpPacket):
         #tcp.contains(ImpactPacket.Data( "lalala"))
         #tcp.auto_checksum=1
 
-        ip = ImpactPacket.IP()
-        tcp = ImpactPacket.TCP()
-        tcp.set_th_off(5)
+        #TODO
+        #ip = ImpactPacket.IP()
+        #tcp = ImpactPacket.TCP()
+        #tcp.set_th_off(5)
+
+        ip = None
+        tcp = None
  
         if 'S' in data[pc.p_flags]:
             ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][0]))
@@ -3614,9 +3618,13 @@ class TcpInjPacket(IpPacket):
         #tcp.contains(ImpactPacket.Data( "lalala"))
         #tcp.auto_checksum=1
  
-        ip = ImpactPacket.IP()
-        tcp = ImpactPacket.TCP()
-        tcp.set_th_off(5)
+        #TODO
+        #ip = ImpactPacket.IP()
+        #tcp = ImpactPacket.TCP()
+        #tcp.set_th_off(5)
+
+        ip = None
+        tcp = None
  
         if data[pc.p_flags] == 's':
             ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][1]))
@@ -3670,9 +3678,13 @@ class TcpInjPacket(IpPacket):
         # If all 4 are 0 (1/16 of the time), then a packet is sent.
         if data[pc.p_seq] and not bool(random.getrandbits(3)):   
             # Send RST packet to bad IP
-            ip = ImpactPacket.IP()
-            tcp = ImpactPacket.TCP()
-            tcp.set_th_off(5)
+            #TODO
+            #ip = ImpactPacket.IP()
+            #tcp = ImpactPacket.TCP()
+            #tcp.set_th_off(5)
+
+            ip = None
+            tcp = None
      
             ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][0]))
             ip.set_ip_dst(trafcap.tupleToString(data[pc.p_addr][1]))

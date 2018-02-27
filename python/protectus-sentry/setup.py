@@ -19,13 +19,13 @@ requires = [
     'GeoIP',
     'PyYAML',
     'passlib',
-    'impacket',
+    #'impacket',
     'dnspython',
-    'python2-pythondialog'
+    'pythondialog'
 ]
 
 setup_settings = {}
-if sys.argv[1] in ['bdist_egg', 'install']:
+if sys.argv[1] in ['bdist_wheel', 'install']:
 
     from Cython.Distutils import build_ext
     from Cython.Build import cythonize
@@ -36,6 +36,12 @@ if sys.argv[1] in ['bdist_egg', 'install']:
         library_dirs = ["/usr/local/lib"])
     ]
 
+    python2_directives = {"language_level":2}
+    python3_directives = {"language_level":3}
+
+    c1 = cythonize(extensions, compiler_directives=python2_directives)
+    c2 = cythonize(cythonize_glob, compiler_directives=python3_directives)
+    c3 = cythonize(pyx_glob, compiler_directives=python2_directives)
     #       library_dirs = ["/usr/local/lib", "/home/sentry/PF_RING/userland/lib"])
     print(isinstance(extensions[0], Extension))
     setup_settings = {
@@ -69,28 +75,28 @@ if sys.argv[1] == 'bdist_egg':
     if '--dist-dir' in sys.argv:
         dist_dir=sys.argv[sys.argv.index('--dist-dir')+1]
 
-    print("Stripping egg of proprietary source code... (hopefully)")
-    filenames = glob.glob(dist_dir+'/protectus_sentry*.egg')
+    print("Stripping wheel of proprietary source code... (hopefully)")
+    filenames = glob.glob(dist_dir+'/protectus_sentry*.wheel')
     if len(filenames) != 1:
-        print("Not sure which egg file to use! Tell Tim to fix his setup.py.")
+        print("Not sure which wheel file to use! Tell Tim to fix his setup.py.")
 
     # Move the original to make room for the new
     target_name = filenames[0]
     original = target_name + '.original'
     os.rename(target_name,original)
-    egg = ZipFile(original)
-    newegg = ZipFile(target_name,'w')
+    wheel = ZipFile(original)
+    newwheel = ZipFile(target_name,'w')
 
-    # Make a new egg file, and put everything except the .c files into it.
-    for item in egg.infolist():
+    # Make a new wheel file, and put everything except the .c files into it.
+    for item in wheel.infolist():
         path = item.filename
         if path.endswith('.c'):
             print("\tRemoving " + path)
         else:
-            newegg.writestr(item, egg.read(path))
+            newwheel.writestr(item, wheel.read(path))
 
-    egg.close()
-    newegg.close()
+    wheel.close()
+    newwheel.close()
     os.remove(original)
 
     print("Done removing proprietary source code")
