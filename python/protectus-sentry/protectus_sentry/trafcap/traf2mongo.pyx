@@ -11,13 +11,13 @@ from optparse import OptionParser
 import math
 import traceback
 import trafcap
-from trafcapIpPacket import *
-from trafcapEthernetPacket import *
-from trafcapContainer import *
+from protectus_sentry.trafcap.trafcapIpPacket import *
+from protectus_sentry.trafcap.trafcapEthernetPacket import *
+from protectus_sentry.trafcap.trafcapContainer import *
 
-from trafcapProcess import *
+from protectus_sentry.trafcap.trafcapProcess import *
 import multiprocessing
-import Queue
+#import queue
 from collections import deque
 from pymongo.bulk import InvalidOperation
 import operator
@@ -243,7 +243,7 @@ def main():
         live_session_buffer = multiprocessing.RawArray(session_class, trafcap.live_session_buffer_size)
         live_session_alloc_pipe = multiprocessing.Pipe(False)
         live_session_dealloc_pipe = multiprocessing.Pipe(False)
-        live_session_locks = tuple((multiprocessing.Lock() for i in xrange(trafcap.live_session_buffer_size/SESSIONS_PER_LOCK)))
+        live_session_locks = tuple((multiprocessing.Lock() for i in xrange(trafcap.live_session_buffer_size//SESSIONS_PER_LOCK)))
 
         saved_session_cursor_pipe = multiprocessing.Pipe(False)
         saved_session2_cursor_pipe = multiprocessing.Pipe(False)
@@ -268,10 +268,10 @@ def main():
         group2_dealloc_pipe = multiprocessing.Pipe(False)
         capture_group2_alloc_pipe = multiprocessing.Pipe(False)
         capture_group2_dealloc_pipe = multiprocessing.Pipe(False)
-        group_locks = tuple((multiprocessing.Lock() for i in xrange(trafcap.group_buffer_size/GROUPS_PER_LOCK)))
-        capture_group_locks = tuple((multiprocessing.Lock() for i in xrange(CAPTURE_GROUP_BUFFER_SIZE/CAPTURE_GROUPS_PER_LOCK)))
-        group2_locks = tuple((multiprocessing.Lock() for i in xrange(trafcap.group2_buffer_size/GROUPS_PER_LOCK)))
-        capture_group2_locks = tuple((multiprocessing.Lock() for i in xrange(CAPTURE_GROUP_BUFFER_SIZE/CAPTURE_GROUPS_PER_LOCK)))
+        group_locks = tuple((multiprocessing.Lock() for i in xrange(trafcap.group_buffer_size//GROUPS_PER_LOCK)))
+        capture_group_locks = tuple((multiprocessing.Lock() for i in xrange(CAPTURE_GROUP_BUFFER_SIZE//CAPTURE_GROUPS_PER_LOCK)))
+        group2_locks = tuple((multiprocessing.Lock() for i in xrange(trafcap.group2_buffer_size//GROUPS_PER_LOCK)))
+        capture_group2_locks = tuple((multiprocessing.Lock() for i in xrange(CAPTURE_GROUP_BUFFER_SIZE//CAPTURE_GROUPS_PER_LOCK)))
 
         group_updater_group_alloc_count = multiprocessing.Value(ctypes.c_uint64)
         group_updater_group_alloc_count.value = 0
@@ -431,7 +431,7 @@ def main():
                     '- -g2Updtr:',group2_updater.pid,
                     '-  -g2Kpr:', group2_keeper.pid)
                 else:
-                    print str(datetime.today().strftime("%a %m/%d/%y %H:%M:%S"))+' - - - - - d:h:m:s '+str(loop_count/86400)+':'+str((loop_count/3600)%24)+':'+str((loop_count/60)%60)+':'+str(loop_count%60)+' - - - - - gUpdtrSessHist: '+str(gushc)+' - - - - - g2UpdtrSessHist: '+str(g2ushc)
+                    print str(datetime.today().strftime("%a %m/%d/%y %H:%M:%S"))+' - - - - - d:h:m:s '+str(loop_count//86400)+':'+str((loop_count//3600)%24)+':'+str((loop_count//60)%60)+':'+str(loop_count%60)+' - - - - - gUpdtrSessHist: '+str(gushc)+' - - - - - g2UpdtrSessHist: '+str(g2ushc)
                 print start_bold,
                 #print '{0:>8} {1:>6} {2:^4}  {3:>7}  {4:^4}__{5:^4}  {6:>7} {7:^4}  {8:>7} {9:^4}  {10:^4} {11:>8} {12:>7} {13:^4}  {14:^4} {15:>8}'.format(
                 #      'drop', 'pps',   ' ', 'lsps',   '',    ' ', 'liveSns', ' ',  'ssps',  ' ',    ' ', 'liveGrps', 'ss2ps', ' ', ' ', 'liveGrps2'),
@@ -645,7 +645,8 @@ def main():
             else:
                 # Process data waiting to be read 
                 try:
-                    raw_data = os.read(std_in[0],trafcap.bytes_to_read)
+                    # Explicitly cohersing to string, was implicit in python2
+                    raw_data = str(os.read(std_in[0],trafcap.bytes_to_read))
                 except OSError:
                     # This exception occurs if signal handled during read
                     continue

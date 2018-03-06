@@ -9,7 +9,7 @@ from . import trafcap
 from datetime import datetime
 import traceback
 import pprint
-from trafcapIpPacket import * 
+from protectus_sentry.trafcap.trafcapIpPacket import * 
 
 class TrafcapContainer(object):
     """

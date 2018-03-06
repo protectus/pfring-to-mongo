@@ -16,13 +16,13 @@ from trafcapIpPacket cimport *
 from trafcapEthernetPacket import *
 from trafcapContainer import *
 import multiprocessing
-import Queue
+#import queue
 from collections import deque
 from pymongo.bulk import InvalidOperation
 import random
 import operator
 import gc
-from sets import Set
+#from sets import Set
 
 #CYTHON
 from cpython cimport array
