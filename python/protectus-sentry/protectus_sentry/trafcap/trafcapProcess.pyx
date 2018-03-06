@@ -70,13 +70,16 @@ def packetParser(packet_cursor_pipe, parsed_packet_count, packet_ring_buffer,
 
     cdef pfring *pd
     cdef uint32_t flags = 0
-    cdef char* device = trafcap.sniff_interface 
+    # Needed to avoid 'Storing unsafe C derivative of temporary Python reference' cython compile error
+    sniff_interface = trafcap.sniff_interface.encode('ascii')
+    cdef char* device = sniff_interface
     cdef int snaplen = 128
     flags |= PF_RING_LONG_HEADER
     cdef int wait_for_packet = 1
     pd = pfring_open(device, snaplen, flags)
  
-    pfring_set_bpf_filter(pd, proto_opts['bpf_filter'] + ' ' + trafcap.cap_filter)
+    pfring_filter = proto_opts['bpf_filter'].encode('ascii') + ' '.encode('ascii') + trafcap.cap_filter.encode('ascii')
+    pfring_set_bpf_filter(pd, pfring_filter)
     pfring_enable_ring(pd)
 
     cdef int last_pkt_time_sec = 0
