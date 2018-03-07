@@ -460,7 +460,7 @@ def main():
         time.sleep(1)
         if packet_parser.is_alive(): 
             print 'parser still alive...';sys.stdout.flush()
-            #packet_parser.terminate()
+            packet_parser.terminate()
         if session_updater.is_alive(): 
             print 'updater still alive...';sys.stdout.flush()
             #session_updater.terminate()

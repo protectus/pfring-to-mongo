@@ -35,7 +35,9 @@ from cpf_ring cimport *
 
 # Hack to bypass error when importing macro from pfring.h
 DEF PF_RING_LONG_HEADER = 4
-DEF NO_ZC_BUFFER_LEN = 256 
+DEF PF_RING_PROMISC = 8
+DEF DEFAULT_SNAPLEN = 1536 
+DEF NO_ZC_BUFFER_LEN = 9000
 
 cdef bint packetParser_running = True 
 def packetParser(packet_cursor_pipe, parsed_packet_count, packet_ring_buffer, 
@@ -73,10 +75,10 @@ def packetParser(packet_cursor_pipe, parsed_packet_count, packet_ring_buffer,
     # Needed to avoid 'Storing unsafe C derivative of temporary Python reference' cython compile error
     sniff_interface = trafcap.sniff_interface.encode('ascii')
     cdef char* device = sniff_interface
-    cdef int snaplen = 128
     flags |= PF_RING_LONG_HEADER
+    flags |= PF_RING_PROMISC
     cdef int wait_for_packet = 1
-    pd = pfring_open(device, snaplen, flags)
+    pd = pfring_open(device, DEFAULT_SNAPLEN, flags)
  
     pfring_filter = proto_opts['bpf_filter'].encode('ascii') + ' '.encode('ascii') + trafcap.cap_filter.encode('ascii')
     pfring_set_bpf_filter(pd, pfring_filter)
@@ -94,13 +96,15 @@ def packetParser(packet_cursor_pipe, parsed_packet_count, packet_ring_buffer,
             pfring_recv(pd, &buffer_p, NO_ZC_BUFFER_LEN, &hdr, wait_for_packet)
     
             #if packet_cursor_p[0] == 0:
-                #print "clen:", hdr.caplen, ", ", hdr.ts.tv_sec, ".", hdr.ts.tv_usec,
-                #print ",tns:", eh.timestamp_ns,
-                #print ",smac:", hex(pp.smac[0])[2:], hex(pp.smac[1])[2:], hex(pp.smac[2])[2:],
-                #print ",dmac:", hex(pp.dmac[0])[2:], hex(pp.dmac[1])[2:], hex(pp.dmac[2])[2:],
-                #print ",et:", pp.eth_type, ",vl:", pp.vlan_id, ",ipv:", pp.ip_version
-                #print "if_index:", eh.if_index
+            #    print "clen:", hdr.caplen, ", ", hdr.ts.tv_sec, ".", hdr.ts.tv_usec,
+            #    print ",tns:", eh.timestamp_ns,
+            #    print ",smac:", hex(pp.smac[0])[2:], hex(pp.smac[1])[2:], hex(pp.smac[2])[2:],
+            #    print ",dmac:", hex(pp.dmac[0])[2:], hex(pp.dmac[1])[2:], hex(pp.dmac[2])[2:],
+            #    print ",et:", pp.eth_type, ",vl:", pp.vlan_id, ",ipv:", pp.ip_version
+            #    print "if_index:", eh.if_index
                 #pass
+            #pfring_stats(pd, &ringstats)
+            #print(eh.timestamp_ns, ringstats.recv, "ipv:", pp.ip_version)
     
             # Update dropped packet counter approx every second
             if hdr.ts.tv_sec - last_pkt_time_sec > 1:
@@ -200,6 +204,7 @@ def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_bu
     #     phase" tell us when it's done with a connection.
     try:
         while sessionUpdater_running:
+            print('poll:',packet_cursor_pipe.poll(), type(py_packet_cursor_pipeable))
             packet_cursor_pipe.recv_bytes_into(py_packet_cursor_pipeable)
             session_updater_pkt_count.value += 1
     
@@ -575,14 +580,14 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
                     #print "Doing sessionInfo_bulk_write..."
                     info_bulk_writer.execute()
                 except InvalidOperation as e:
-                    if e.message != "No operations to execute":
+                    if e.args[0] != "No operations to execute":
                         raise e
     
                 try:
                     #print "Doing sessionBytes_bulk_write..."
                     bytes_bulk_writer.execute()
                 except InvalidOperation as e:
-                    if e.message != "No operations to execute":
+                    if e.args[0] != "No operations to execute":
                         raise e
     
     
@@ -613,14 +618,14 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
                         #print "Doing captureInfo_bulk_write..."
                         info_bulk_writer.execute()
                     except InvalidOperation as e:
-                        if e.message != "No operations to execute":
+                        if e.args[0] != "No operations to execute":
                             raise e
     
                     try:
                         #print "Doing captureBytes_bulk_write..."
                         bytes_bulk_writer.execute()
                     except InvalidOperation as e:
-                        if e.message != "No operations to execute":
+                        if e.args[0] != "No operations to execute":
                             raise e
                     
     
@@ -1297,7 +1302,7 @@ def groupBookkeeper(group_buffer, group_locks,
                     #print "Doing sessionInfo_bulk_write..."
                     session_group_bulk_writer.execute()
                 except InvalidOperation as e:
-                    if e.message != "No operations to execute":
+                    if e.args[0] != "No operations to execute":
                         raise e
     
                 # Repeat for capture_schedule slots.  Maybe add new function instead of code duplication.
@@ -1379,13 +1384,13 @@ def groupBookkeeper(group_buffer, group_locks,
                     #print "Doing sessionInfo_bulk_write..."
                     capture_group_bulk_writer.execute()
                 except InvalidOperation as e:
-                    if e.message != "No operations to execute":
+                    if e.args[0] != "No operations to execute":
                         raise e
                 #try:
                 #    #print "Doing sessionBytes_bulk_write..."
                 #    bytes_bulk_writer.execute()
                 #except InvalidOperation as e:
-                #    if e.message != "No operations to execute":
+                #    if e.args[0] != "No operations to execute":
                 #        raise e
     
                 #print mongo_capture_writes, "capture, ", mongo_session_writes, "session writes covering"
