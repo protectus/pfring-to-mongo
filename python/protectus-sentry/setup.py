@@ -39,7 +39,7 @@ if sys.argv[1] in ['bdist_wheel', 'install']:
     python2_directives = {"language_level":2}
     python3_directives = {"language_level":3}
 
-    c1 = cythonize(extensions, compiler_directives=python2_directives)
+    #c1 = cythonize(extensions, compiler_directives=python2_directives)
     c2 = cythonize(cythonize_glob, compiler_directives=python3_directives)
     c3 = cythonize(pyx_glob, compiler_directives=python2_directives)
     #       library_dirs = ["/usr/local/lib", "/home/sentry/PF_RING/userland/lib"])
