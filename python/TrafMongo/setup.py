@@ -72,10 +72,10 @@ if sys.argv[1] == 'bdist_egg':
     if '--dist-dir' in sys.argv:
         dist_dir=sys.argv[sys.argv.index('--dist-dir')+1]
 
-    print "Stripping egg of proprietary source code... (hopefully)"
+    print("Stripping egg of proprietary source code... (hopefully)")
     filenames = glob.glob(dist_dir+'/TrafMongo*.egg')
     if len(filenames) != 1:
-        print "Not sure which egg file to use! Tell Tim to fix his setup.py."
+        print("Not sure which egg file to use! Tell Tim to fix his setup.py.")
 
     # Move the original to make room for the new
     target_name = filenames[0]
