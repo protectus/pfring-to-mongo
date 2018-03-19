@@ -241,8 +241,8 @@ def main():
         session_keeper_saved_session2_count.value = 0
 
         live_session_buffer = multiprocessing.RawArray(session_class, trafcap.live_session_buffer_size)
-        live_session_alloc_pipe = multiprocessing.Pipe(False)
-        live_session_dealloc_pipe = multiprocessing.Pipe(False)
+        live_session_slot_alloc_pipe = multiprocessing.Pipe(False)
+        live_session_slot_dealloc_pipe = multiprocessing.Pipe(False)
         live_session_locks = tuple((multiprocessing.Lock() for i in xrange(trafcap.live_session_buffer_size//SESSIONS_PER_LOCK)))
 
         saved_session_cursor_pipe = multiprocessing.Pipe(False)
@@ -260,12 +260,12 @@ def main():
         capture_group_buffer = multiprocessing.RawArray(group_class, CAPTURE_GROUP_BUFFER_SIZE)
         capture_group2_buffer = multiprocessing.RawArray(group_class, CAPTURE_GROUP_BUFFER_SIZE)
 
-        group_alloc_pipe = multiprocessing.Pipe(False)
-        group_dealloc_pipe = multiprocessing.Pipe(False)
+        session_group_alloc_pipe = multiprocessing.Pipe(False)
+        session_group_dealloc_pipe = multiprocessing.Pipe(False)
         capture_group_alloc_pipe = multiprocessing.Pipe(False)
         capture_group_dealloc_pipe = multiprocessing.Pipe(False)
-        group2_alloc_pipe = multiprocessing.Pipe(False)
-        group2_dealloc_pipe = multiprocessing.Pipe(False)
+        session_group2_alloc_pipe = multiprocessing.Pipe(False)
+        session_group2_dealloc_pipe = multiprocessing.Pipe(False)
         capture_group2_alloc_pipe = multiprocessing.Pipe(False)
         capture_group2_dealloc_pipe = multiprocessing.Pipe(False)
         group_locks = tuple((multiprocessing.Lock() for i in xrange(trafcap.group_buffer_size//GROUPS_PER_LOCK)))
@@ -303,12 +303,12 @@ def main():
         session_updater = multiprocessing.Process(target = sessionUpdater, 
             args=(packet_cursor_pipe[0], session_updater_packet_count, 
                   packet_ring_buffer, live_session_buffer, live_session_locks, 
-                  live_session_alloc_pipe[1],  live_session_dealloc_pipe[0], 
+                  live_session_slot_alloc_pipe[1],  live_session_slot_dealloc_pipe[0], 
                   session_updater_live_session_alloc_count, session_updater_live_session_dealloc_count, 
                   proto_opts))
         session_keeper = multiprocessing.Process(target = sessionBookkeeper,
             args=(live_session_buffer, live_session_locks, 
-                  live_session_alloc_pipe[0], live_session_dealloc_pipe[1], 
+                  live_session_slot_alloc_pipe[0], live_session_slot_dealloc_pipe[1], 
                   session_keeper_live_session_alloc_count, session_keeper_live_session_dealloc_count, 
                   saved_session_cursor_pipe[1], saved_session_ring_buffer, 
                   saved_session2_cursor_pipe[1], saved_session2_ring_buffer, 
@@ -319,7 +319,7 @@ def main():
             args=(saved_session_cursor_pipe[0], group_updater_saved_session_count, 
                   saved_session_ring_buffer, 
                   group_buffer, group_locks, 
-                  group_alloc_pipe[1],  group_dealloc_pipe[0], 
+                  session_group_alloc_pipe[1],  session_group_dealloc_pipe[0], 
                   group_updater_group_alloc_count, group_updater_group_dealloc_count, 
                   group_updater_session_history_count, 
                   capture_group_buffer, capture_group_locks, 
@@ -327,7 +327,7 @@ def main():
                   proto_opts, <uint8_t>0))
         group_keeper = multiprocessing.Process(target = groupBookkeeper,
             args=(group_buffer, group_locks, 
-                  group_alloc_pipe[0], group_dealloc_pipe[1], 
+                  session_group_alloc_pipe[0], session_group_dealloc_pipe[1], 
                   group_keeper_group_alloc_count, group_keeper_group_dealloc_count, 
                   capture_group_buffer, capture_group_locks, 
                   capture_group_alloc_pipe[0], capture_group_dealloc_pipe[1], 
@@ -337,7 +337,7 @@ def main():
             args=(saved_session2_cursor_pipe[0], group2_updater_saved_session_count, 
                   saved_session2_ring_buffer, 
                   group2_buffer, group2_locks, 
-                  group2_alloc_pipe[1],  group2_dealloc_pipe[0], 
+                  session_group2_alloc_pipe[1],  session_group2_dealloc_pipe[0], 
                   group2_updater_group_alloc_count, group2_updater_group_dealloc_count, 
                   group2_updater_session_history_count, 
                   capture_group2_buffer, capture_group2_locks, 
@@ -345,7 +345,7 @@ def main():
                   proto_opts, <uint8_t>1))
         group2_keeper = multiprocessing.Process(target = groupBookkeeper,
             args=(group2_buffer, group2_locks, 
-                  group2_alloc_pipe[0], group2_dealloc_pipe[1], 
+                  session_group2_alloc_pipe[0], session_group2_dealloc_pipe[1], 
                   group2_keeper_group_alloc_count, group2_keeper_group_dealloc_count, 
                   capture_group2_buffer, capture_group2_locks, 
                   capture_group2_alloc_pipe[0], capture_group2_dealloc_pipe[1], 

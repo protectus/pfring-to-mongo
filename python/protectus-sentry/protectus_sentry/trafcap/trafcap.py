@@ -319,7 +319,9 @@ def mongoSetup(**kwargs):
 
 def chkUtf8(a_string):
     # If string is not None, ensure it is in UTF8 format; else return None
-    return a_string.decode('utf8', 'ignore') if a_string else a_string
+    #return a_string.decode('utf8', 'ignore') if a_string else a_string
+    # Python3 strings are UFT-8 by default.  Not sure what GeoIP API returns.
+    return a_string if a_string else a_string 
 
 gi = GeoIP.open("/opt/sentry/geoip/GeoLiteCity.dat",GeoIP.GEOIP_STANDARD)
 def geoIpLookup(ip_addr):

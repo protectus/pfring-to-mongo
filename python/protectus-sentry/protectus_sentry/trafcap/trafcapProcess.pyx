@@ -59,8 +59,8 @@ def packetParser(packet_cursor_pipe, parsed_packet_count, packet_ring_buffer,
     cdef GenericPacketHeaders* current_pkt
 
     # Make the pipe data a raw buffer.  Enables cython later>
-    py_packet_cursor_pipeable = ctypes.c_uint32()
-    cdef long packet_cursor_addr = ctypes.addressof(py_packet_cursor_pipeable)
+    py_packet_cursor_pipeable = array.array("I", [0])
+    cdef long packet_cursor_addr = py_packet_cursor_pipeable.buffer_info()[0]
     cdef uint32_t* packet_cursor_p = <uint32_t*>packet_cursor_addr
 
     cdef char a_buffer[NO_ZC_BUFFER_LEN]
@@ -129,7 +129,7 @@ def packetParser(packet_cursor_pipe, parsed_packet_count, packet_ring_buffer,
 
 
 cdef bint sessionUpdater_running = True
-def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_buffer, live_session_buffer, live_session_locks, session_alloc_pipe, live_session_dealloc_pipe, session_updater_live_session_alloc_count, session_updater_live_session_dealloc_count, proto_opts):
+def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_buffer, live_session_buffer, live_session_locks, session_alloc_pipe, live_session_slot_dealloc_pipe, session_updater_live_session_alloc_count, session_updater_live_session_dealloc_count, proto_opts):
 
     # Signal Handling
     def sessionUpdaterCatchCntlC(signum, stack):
@@ -152,15 +152,15 @@ def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_bu
     cdef int session_struct_size = ctypes.sizeof(live_session_buffer) / len(live_session_buffer)
     #print "Session struct is of size", session_struct_size
 
-    # Make the outgoing pipe data a raw buffer.  Enables cython later>
-    new_slot_number_pipeable = ctypes.c_uint32()
-    cdef long new_slot_number_address = ctypes.addressof(new_slot_number_pipeable)
-    cdef uint32_t* new_slot_number_p = <uint32_t*>new_slot_number_address
-
     # Make the incoming pipe data a raw buffer.  Enables cython later>
-    py_packet_cursor_pipeable = ctypes.c_uint32()
-    cdef long packet_cursor_addr = ctypes.addressof(py_packet_cursor_pipeable)
+    py_packet_cursor_pipeable = array.array("I", [0])
+    cdef long packet_cursor_addr = py_packet_cursor_pipeable.buffer_info()[0]
     cdef uint32_t* packet_cursor_p = <uint32_t*>packet_cursor_addr
+
+    # Make the outgoing pipe data a raw buffer.  Enables cython later>
+    py_live_session_slot_pipeable = array.array("I", [0])
+    cdef long live_session_slot_addr = py_live_session_slot_pipeable.buffer_info()[0] 
+    cdef uint32_t* live_session_slot_p = <uint32_t*>live_session_slot_addr
 
     available_live_session_slots = deque(xrange(trafcap.live_session_buffer_size))
     cdef dict live_session_slot_map = {}
@@ -204,7 +204,6 @@ def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_bu
     #     phase" tell us when it's done with a connection.
     try:
         while sessionUpdater_running:
-            print('poll:',packet_cursor_pipe.poll(), type(py_packet_cursor_pipeable))
             packet_cursor_pipe.recv_bytes_into(py_packet_cursor_pipeable)
             session_updater_pkt_count.value += 1
     
@@ -222,19 +221,19 @@ def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_bu
             # If no session existed already, we need to make one.
             if (live_session_slot == -1):
                 # Create new session from packet
-                # This is linked to new_slot_number_pipeable!
-                new_slot_number_p[0] = available_live_session_slots.popleft()
+                # This is linked to py_live_session_slot_number_pipeable!
+                live_session_slot_p[0] = available_live_session_slots.popleft()
                 # Since session_buffer is now generic, we need to do memory addresses ourselves.
-                live_session = <GenericSession *>(live_session_buffer_addr + (new_slot_number_p[0] * session_struct_size))
+                live_session = <GenericSession *>(live_session_buffer_addr + (live_session_slot_p[0] * session_struct_size))
                 # Put pkt data into shared memory space for the new session
                 (generate_session_function[0])(live_session, packet)
     
                 # Map the key to the new session
-                live_session_slot_map[session_key] = new_slot_number_p[0]
+                live_session_slot_map[session_key] = live_session_slot_p[0]
                 
                 # Tell next phase about the new session
-                session_alloc_pipe.send_bytes(new_slot_number_pipeable)
-                #print "Created new session at slot", new_slot_number_p[0]
+                session_alloc_pipe.send_bytes(py_live_session_slot_pipeable)
+                #print "Created new session at slot", live_session_slot_p[0]
                 session_updater_live_session_alloc_count.value += 1
             else:
                 # Update existing session
@@ -246,13 +245,13 @@ def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_bu
                 lock.release()
     
             # Get released slots from next phase
-            if live_session_dealloc_pipe.poll():
-                live_session_dealloc_pipe.recv_bytes_into(new_slot_number_pipeable)
+            if live_session_slot_dealloc_pipe.poll():
+                live_session_slot_dealloc_pipe.recv_bytes_into(py_live_session_slot_pipeable)
                 session_updater_live_session_dealloc_count.value += 1
-                available_live_session_slots.append(new_slot_number_pipeable.value)
+                available_live_session_slots.append(py_live_session_slot_pipeable.value)
                 # Generate a key so we can delete it from the dictionary
-                del live_session_slot_map[(generate_session_key_from_session_function[0])(<GenericSession *>(live_session_buffer_addr + (new_slot_number_p[0] * session_struct_size)))]
-                #print "De-dictionary-ing session at slot", new_slot_number_p[0]
+                del live_session_slot_map[(generate_session_key_from_session_function[0])(<GenericSession *>(live_session_buffer_addr + (live_session_slot_p[0] * session_struct_size)))]
+                #print "De-dictionary-ing session at slot", live_session_slot_p[0]
 
                 if session_updater_live_session_dealloc_count.value % 1000 == 0:
                     gc.collect()
@@ -263,7 +262,7 @@ def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_bu
 
 cdef bint sessionBookkeeper_running = True
 def sessionBookkeeper(live_session_buffer, live_session_locks, 
-                      live_session_alloc_pipe, live_session_dealloc_pipe, 
+                      live_session_slot_alloc_pipe, live_session_slot_dealloc_pipe, 
                       session_keeper_live_session_alloc_count, session_keeper_live_session_dealloc_count, 
                       saved_session_cursor_pipe, saved_session_ring_buffer, 
                       saved_session2_cursor_pipe, saved_session2_ring_buffer, 
@@ -326,19 +325,19 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
 
     # Cythonize the current slot number for live_session_buffer
     # These slots are allocated by sessionUpdater and deallocated by sessionBookkeeper
-    py_current_session_slot = ctypes.c_uint32()
-    cdef long session_slot_address = ctypes.addressof(py_current_session_slot)
-    cdef uint32_t* session_slot_p = <uint32_t*>session_slot_address
+    py_live_session_slot_pipeable = array.array("I", [0])
+    cdef long live_session_slot_addr = py_live_session_slot_pipeable.buffer_info()[0]
+    cdef uint32_t* live_session_slot_p = <uint32_t*>live_session_slot_addr
 
     # Cythonize the current slot number for saved_session_ring_buffer
     # These slots are incrementing and loop around back to zero when last slot is reached 
-    py_current_saved_session_cursor = ctypes.c_uint32()
-    cdef long saved_session_cursor_address = ctypes.addressof(py_current_saved_session_cursor)
-    cdef uint32_t* saved_session_cursor_p = <uint32_t*>saved_session_cursor_address
+    py_saved_session_cursor_pipeable = array.array("I", [0])
+    cdef long saved_session_cursor_addr = py_saved_session_cursor_pipeable.buffer_info()[0]
+    cdef uint32_t* saved_session_cursor_p = <uint32_t*>saved_session_cursor_addr
 
-    py_current_saved_session2_cursor = ctypes.c_uint32()
-    cdef long saved_session2_cursor_address = ctypes.addressof(py_current_saved_session2_cursor)
-    cdef uint32_t* saved_session2_cursor_p = <uint32_t*>saved_session2_cursor_address
+    py_saved_session2_cursor_pipeable = array.array("I", [0])
+    cdef long saved_session2_cursor_addr = py_saved_session2_cursor_pipeable.buffer_info()[0]
+    cdef uint32_t* saved_session2_cursor_p = <uint32_t*>saved_session2_cursor_addr
 
     cdef GenericSession* session
     cdef GenericSession* session_copy = <GenericSession*>malloc(session_struct_size)
@@ -391,20 +390,20 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
         while sessionBookkeeper_running:
             # Always check for new data.  If there is none, check the time
             # TODO: Better time/loop management
-            if not live_session_alloc_pipe.poll(0.02):
+            if not live_session_slot_alloc_pipe.poll(0.02):
                 current_second = max(current_second, int(time.time()-2))
                 #print 'Updating session_keeper current_second: ', current_second
                 #time.sleep(0.02)
             
-            while live_session_alloc_pipe.poll():
+            while live_session_slot_alloc_pipe.poll():
                 # Read data from the pipe into a ctype, which is pointed to by
                 # cython.  No type cohersion or translation required.
                 # SIDE EFFECT: population of current_session_slot
-                live_session_alloc_pipe.recv_bytes_into(py_current_session_slot)
+                live_session_slot_alloc_pipe.recv_bytes_into(py_live_session_slot_pipeable)
                 session_keeper_live_session_alloc_count.value += 1
     
                 # Since session_buffer is now generic, we need to do memory addresses ourselves.
-                session = <GenericSession *>(live_session_buffer_addr + (session_slot_p[0] * session_struct_size))
+                session = <GenericSession *>(live_session_buffer_addr + (live_session_slot_p[0] * session_struct_size))
     
                 # This is this session's first check-in.  We need to schedule the first check-up.
     
@@ -415,10 +414,10 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
                 # Place into session slot 20 seconds in the future
                 schedule_number = (session_start_second + BYTES_DOC_SIZE) % BYTES_RING_SIZE
                 
-                #print "Scheduling",session_slot_p[0],"in",schedule_number,",",schedule_sizes[schedule_number], "( tb is ", int(session.tb),")"
+                #print "Scheduling",live_session_slot_p[0],"in",schedule_number,",",schedule_sizes[schedule_number], "( tb is ", int(session.tb),")"
                 # schedule_number = row in the schedule
                 # schedule_sizes[schedule_number] = first empty slot in the row
-                schedule[schedule_number][schedule_sizes[schedule_number]] = session_slot_p[0]
+                schedule[schedule_number][schedule_sizes[schedule_number]] = live_session_slot_p[0]
                 schedule_sizes[schedule_number] += 1
     
                 #session_count += 1
@@ -431,8 +430,8 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
     
                 ## Connection-Tracking Debug ##
                 #if len(tracked_slots) < 1:
-                #    print "Tracking slot", session_slot_p[0]
-                #    tracked_slots.add(session_slot_p[0])
+                #    print "Tracking slot", live_session_slot_p[0]
+                #    tracked_slots.add(live_session_slot_p[0])
     
             # Check for data to be written to the database
             # We want to write the seconds up to but not including the current second.
@@ -525,8 +524,8 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
     
                         # Send saved_session_cursor to groupsUpdater if groups processing is enabled at startup
                         if trafcap.options.group:
-                            saved_session_cursor_pipe.send_bytes(py_current_saved_session_cursor)
-                            saved_session2_cursor_pipe.send_bytes(py_current_saved_session2_cursor)
+                            saved_session_cursor_pipe.send_bytes(py_saved_session_cursor_pipeable)
+                            saved_session2_cursor_pipe.send_bytes(py_saved_session2_cursor_pipeable)
                             session_keeper_saved_session_count.value += 1
                             session_keeper_saved_session2_count.value += 1
                         # Increment saved_session_cursor
@@ -565,8 +564,8 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
     
                         # We're still linking to a python struct to get raw bytes
                         # into a python Pipe.
-                        session_slot_p[0] = slot  # Linked to py_current_session_slot!
-                        live_session_dealloc_pipe.send_bytes(py_current_session_slot)
+                        live_session_slot_p[0] = slot  # Linked to py_current_session_slot!
+                        live_session_slot_dealloc_pipe.send_bytes(py_live_session_slot_pipeable)
                         session_keeper_live_session_dealloc_count.value += 1
     
                         ## Connection-Tracking Debug ##
@@ -643,7 +642,7 @@ cdef bint groupUpdater_running = True
 def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count, 
                  saved_session_ring_buffer, 
                  group_buffer, group_locks, 
-                 group_alloc_pipe,  group_dealloc_pipe, 
+                 session_group_alloc_pipe,  session_group_dealloc_pipe, 
                  group_updater_group_alloc_count, group_updater_group_dealloc_count, 
                  group_updater_session_history_count, 
                  capture_group_buffer, capture_group_locks, 
@@ -670,18 +669,18 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
 
     # Make the incoming pipe data a raw buffer.
     # These slots are incrementing and loop around back to zero when last slot is reached 
-    py_current_saved_session_cursor = ctypes.c_uint32()
-    cdef long saved_session_cursor_address = ctypes.addressof(py_current_saved_session_cursor)
-    cdef uint32_t* saved_session_cursor_p = <uint32_t*>saved_session_cursor_address
+    py_saved_session_cursor_pipeable = array.array("I", [0])
+    cdef long saved_session_cursor_addr = py_saved_session_cursor_pipeable.buffer_info()[0]
+    cdef uint32_t* saved_session_cursor_p = <uint32_t*>saved_session_cursor_addr
 
     # Make the outgoing pipe data a raw buffer.  Enables cython later>
-    new_slot_number_pipeable = ctypes.c_uint32()
-    cdef long new_slot_number_address = ctypes.addressof(new_slot_number_pipeable)
-    cdef uint32_t* new_slot_number_p = <uint32_t*>new_slot_number_address
+    py_session_group_slot_pipeable = array.array("I", [0])
+    cdef long session_group_slot_addr = py_session_group_slot_pipeable.buffer_info()[0]
+    cdef uint32_t* session_group_slot_p = <uint32_t*>session_group_slot_addr
 
-    new_capture_slot_number_pipeable = ctypes.c_uint32()
-    cdef long new_capture_slot_number_address = ctypes.addressof(new_capture_slot_number_pipeable)
-    cdef uint32_t* new_capture_slot_number_p = <uint32_t*>new_capture_slot_number_address
+    py_capture_group_slot_pipeable = array.array("I", [0])
+    cdef long capture_group_slot_addr = py_capture_group_slot_pipeable.buffer_info()[0]
+    cdef uint32_t* capture_group_slot_p = <uint32_t*>capture_group_slot_addr
 
     cdef generate_session_key_from_session* generate_session_key_from_session_function
     cdef long generate_session_key_from_session_address
@@ -772,7 +771,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     # over a group boundary and is stil being processed, then skip steps in this if
                     # clause and jump down to get new group_key and group_slot and finish processing
                     # the previous saved_session.
-                    saved_session_cursor_pipe.recv_bytes_into(py_current_saved_session_cursor)
+                    saved_session_cursor_pipe.recv_bytes_into(py_saved_session_cursor_pipeable)
                     group_updater_saved_session_count.value += 1
         
                     # Find memory addresses in shared space
@@ -802,23 +801,23 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     
                 capture_group_slot = capture_group_slot_map.get(capture_group_key, -1)
                 if capture_group_slot == -1:
-                    new_capture_slot_number_p[0] = available_capture_group_slots.popleft()
+                    capture_group_slot_p[0] = available_capture_group_slots.popleft()
                     capture_group = <GenericGroup *>(capture_group_buffer_addr + 
-                                                     (new_capture_slot_number_p[0] * capture_group_struct_size))
+                                                     (capture_group_slot_p[0] * capture_group_struct_size))
     
-                    print group_type, '   Allocated capture_group_slot', new_capture_slot_number_p[0], ', key:',capture_group_key, ' qlen:', len(available_capture_group_slots)
+                    print group_type, '   Allocated capture_group_slot', capture_group_slot_p[0], ', key:',capture_group_key, ' qlen:', len(available_capture_group_slots)
                     # No need to lock group yet - it is only known about here until sent over pipe
                     init_capture_group_function[0](capture_group, group_type, <uint64_t>saved_session.tb)
     
                     # Map slot for future reference
-                    capture_group_slot_map[capture_group_key] = new_capture_slot_number_p[0]  
+                    capture_group_slot_map[capture_group_key] = capture_group_slot_p[0]  
     
                     # For debug
                     #for key in capture_group_slot_map:
                     #    print group_type, '     capture_group_slot_map[', key, '] = ', capture_group_slot_map[key]
 
                     # Tell the next phase about the new capture group
-                    capture_group_alloc_pipe.send_bytes(new_capture_slot_number_pipeable)
+                    capture_group_alloc_pipe.send_bytes(py_capture_group_slot_pipeable)
     
                     # Create a set to manage session_history for this group time window
                     session_history[capture_group_key] = set()
@@ -830,8 +829,8 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                 if (group_slot == -1):
                     # Create new group from session 
                     # This is linked to py_current_saved_session_cursor!
-                    new_slot_number_p[0] = available_group_slots.popleft()
-                    group = <GenericGroup*>(group_buffer_addr + (new_slot_number_p[0] * group_struct_size))
+                    session_group_slot_p[0] = available_group_slots.popleft()
+                    group = <GenericGroup*>(group_buffer_addr + (session_group_slot_p[0] * group_struct_size))
         
                     # Session may fit into one group(status=0) or may flow into a second group(status=-1).
                     # saved_session only changed by groupUpdater so no lock required when reading from it.
@@ -848,14 +847,14 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     # debug
                     #tcp_group = <TCPGroup *>group
                     #if tcp_group.port2 == 37 and group_type == 0:
-                    #   print group_type, 'p2=37: ', 'ne:',group.ne, 'ns:',group.ns, 'slot:',new_slot_number_p[0], 'ss:',session_status
+                    #   print group_type, 'p2=37: ', 'ne:',group.ne, 'ns:',group.ns, 'slot:',session_group_slot_p[0], 'ss:',session_status
 
                     # Map the key to the new group 
-                    group_slot_map[group_key] = new_slot_number_p[0] 
+                    group_slot_map[group_key] = session_group_slot_p[0] 
                     
                     # Tell next phase about the new groups 
-                    group_alloc_pipe.send_bytes(new_slot_number_pipeable)
-                    #print "Created new session at slot", new_slot_number_p[0]
+                    session_group_alloc_pipe.send_bytes(py_session_group_slot_pipeable)
+                    #print "Created new session at slot", session_group_slot_p[0]
                     group_updater_group_alloc_count.value += 1
                 else:
                     # Update existing session
@@ -908,7 +907,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
             #if len(tracked_slots) < 1:
             #    if session_status == -1:
             #        if group_slot == -1:
-            #            group_slot = new_slot_number_p[0] 
+            #            group_slot = session_group_slot_p[0] 
             #        print "groupUpdater tracking slot", group_slot
             #        tracked_slots.add(group_slot)
             #        tracked_group_slot = group_slot
@@ -918,13 +917,13 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
             #    tcp_group = <TCPGroup *>group
             #    if tcp_group.port2 == 3389:
             #        if group_slot == -1:
-            #            group_slot = new_slot_number_p[0] 
+            #            group_slot = session_group_slot_p[0] 
             #        print "groupUpdater tracking slot", group_slot
             #        tracked_slots.add(group_slot)
             #        tracked_group_slot = group_slot
 
             # for debug
-            #if group_slot == -1: group_slot = new_slot_number_p[0]
+            #if group_slot == -1: group_slot = session_group_slot_p[0]
             #if group_slot == tracked_group_slot:
             #    print "Showing results for group slot ", group_slot, "=============="
             #    print_tcp_session(saved_session, 0)
@@ -945,23 +944,23 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
             # groupBookkeeper decides when to expire session_groups.
             # Get released slots from next groupBookkeeper and deallocate slots 
 
-            if group_dealloc_pipe.poll():
-                group_dealloc_pipe.recv_bytes_into(new_slot_number_pipeable)
+            if session_group_dealloc_pipe.poll():
+                session_group_dealloc_pipe.recv_bytes_into(py_session_group_slot_pipeable)
                 group_updater_group_dealloc_count.value += 1
-                available_group_slots.append(new_slot_number_pipeable.value)
+                available_group_slots.append(py_session_group_slot_pipeable.value)
                 # Generate a key so we can delete it from the dictionary
                 del group_slot_map[generate_group_key_from_group_function[0](<GenericGroup *>(group_buffer_addr + 
-                                                                             (new_slot_number_p[0] * group_struct_size)))]
-                #print "De-dictionary-ing session at slot", new_slot_number_p[0]
+                                                                             (session_group_slot_p[0] * group_struct_size)))]
+                #print "De-dictionary-ing session at slot", session_group_slot_p[0]
 
             if capture_group_dealloc_pipe.poll():
-                capture_group_dealloc_pipe.recv_bytes_into(new_capture_slot_number_pipeable)
+                capture_group_dealloc_pipe.recv_bytes_into(py_capture_group_slot_pipeable)
                 # Recycle the slot
-                available_capture_group_slots.append(new_capture_slot_number_pipeable.value)
+                available_capture_group_slots.append(py_capture_group_slot_pipeable.value)
                 # Generate a key so we can delete it from the dictionary
                 capture_group = <GenericGroup *>(capture_group_buffer_addr + 
-                                                        (new_capture_slot_number_p[0] * capture_group_struct_size))
-                print group_type, " Deallocated capture_group_slot", new_capture_slot_number_p[0], ', key:', capture_group.tbm, ', qlen:', len(available_capture_group_slots)
+                                                        (capture_group_slot_p[0] * capture_group_struct_size))
+                print group_type, " Deallocated capture_group_slot", capture_group_slot_p[0], ', key:', capture_group.tbm, ', qlen:', len(available_capture_group_slots)
                 del capture_group_slot_map[capture_group.tbm]
 
                 # For debug
@@ -992,7 +991,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
 
 cdef bint groupBookkeeper_running = True
 def groupBookkeeper(group_buffer, group_locks, 
-                    group_alloc_pipe, group_dealloc_pipe, 
+                    session_group_alloc_pipe, session_group_dealloc_pipe, 
                     group_keeper_group_alloc_count, group_keeper_group_dealloc_count, 
                     capture_group_buffer, capture_group_locks, 
                     capture_group_alloc_pipe, capture_group_dealloc_pipe, 
@@ -1035,13 +1034,13 @@ def groupBookkeeper(group_buffer, group_locks,
 
     # Cythonize the current slot number for group_buffer
     # These slots are allocated by groupUpdater and deallocated by groupBookkeeper
-    py_current_group_slot = ctypes.c_uint32()
-    cdef long group_slot_address = ctypes.addressof(py_current_group_slot)
-    cdef uint32_t* group_slot_p = <uint32_t*>group_slot_address
+    py_session_group_slot_pipeable = array.array("I", [0])
+    cdef long session_group_slot_addr = py_session_group_slot_pipeable.buffer_info()[0]
+    cdef uint32_t* group_slot_p = <uint32_t*>session_group_slot_addr
 
-    py_current_capture_group_slot = ctypes.c_uint32()
-    cdef long capture_group_slot_address = ctypes.addressof(py_current_capture_group_slot)
-    cdef uint32_t* capture_group_slot_p = <uint32_t*>capture_group_slot_address
+    py_capture_group_slot_pipeable = array.array("I", [0])
+    cdef long capture_group_slot_addr = py_capture_group_slot_pipeable.buffer_info()[0]
+    cdef uint32_t* capture_group_slot_p = <uint32_t*>capture_group_slot_addr
 
     cdef GenericGroup* group 
     cdef GenericGroup* capture_group
@@ -1109,16 +1108,16 @@ def groupBookkeeper(group_buffer, group_locks,
         while groupBookkeeper_running:
             # Always check for new data.  If there is none, check the time
             # TODO: Better time/loop management
-            if not group_alloc_pipe.poll(0.02):
+            if not session_group_alloc_pipe.poll(0.02):
                 current_second = max(current_second, int(time.time()-2))
                 #print 'Updating session_keeper current_second: ', current_second
                 #time.sleep(0.02)
             
-            while group_alloc_pipe.poll():
+            while session_group_alloc_pipe.poll():
                 # Read data from the pipe into a ctype, which is pointed to by
                 # cython.  No type cohersion or translation required.
                 # SIDE EFFECT: population of current_group_slot
-                group_alloc_pipe.recv_bytes_into(py_current_group_slot)
+                session_group_alloc_pipe.recv_bytes_into(py_session_group_slot_pipeable)
                 group_keeper_group_alloc_count.value += 1
 
                 # Since session_buffer is now generic, we need to do memory addresses ourselves.
@@ -1165,7 +1164,7 @@ def groupBookkeeper(group_buffer, group_locks,
                 # Read data from the pipe into a ctype, which is pointed to by
                 # cython.  No type cohersion or translation required.
                 # SIDE EFFECT: population of current_group_slot
-                capture_group_alloc_pipe.recv_bytes_into(py_current_capture_group_slot)
+                capture_group_alloc_pipe.recv_bytes_into(py_capture_group_slot_pipeable)
 
                 # Since session_buffer is now generic, we need to do memory addresses ourselves.
                 capture_group = <GenericGroup *>(capture_group_buffer_addr + 
@@ -1273,8 +1272,8 @@ def groupBookkeeper(group_buffer, group_locks,
     
                             # We're still linking to a python struct to get raw bytes
                             # into a python Pipe.
-                            group_slot_p[0] = slot  # Linked to py_current_group_slot!
-                            group_dealloc_pipe.send_bytes(py_current_group_slot)
+                            group_slot_p[0] = slot  # Linked to py_session_group_slot_pipeable!
+                            session_group_dealloc_pipe.send_bytes(py_session_group_slot_pipeable)
                             group_keeper_group_dealloc_count.value += 1
                             next_scheduled_checkup_time = 0 
                         else:
@@ -1355,9 +1354,9 @@ def groupBookkeeper(group_buffer, group_locks,
     
                             # We're still linking to a python struct to get raw bytes
                             # into a python Pipe.
-                            capture_group_slot_p[0] = capture_slot  # Linked to py_current_group_slot!
+                            capture_group_slot_p[0] = capture_slot  # Linked to py_capture_group_slot_pipeable!
                             #print group_type, 'Deallocating capture_group_slot', capture_group_slot_p[0], '      ', capture_group_copy.tbm, 'in groupBookkeeper'
-                            capture_group_dealloc_pipe.send_bytes(py_current_capture_group_slot)
+                            capture_group_dealloc_pipe.send_bytes(py_capture_group_slot_pipeable)
                             next_scheduled_checkup_time = 0 
                         else:
                             # Otherwise reschedule the group
