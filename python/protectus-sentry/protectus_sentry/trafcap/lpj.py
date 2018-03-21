@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
 #
-from . import trafcap
+from protectus_sentry.trafcap import trafcap
 import socket
 import signal
 import threading

@@ -2,12 +2,12 @@
 #
 # Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
 #
-from . import lpj 
+import protectus_sentry.trafcap.lpj as lpj
 import threading
 from subprocess import Popen, PIPE
 import time
 import socket
-from . import trafcap
+from protectus_sentry.trafcap import trafcap
 
 # Target class is created when user enteres new target in UI and
 # exists until user removes target from UI.  Target might have an
