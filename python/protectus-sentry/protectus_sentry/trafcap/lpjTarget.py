@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
 #
-import protectus_sentry.trafcap.lpj as lpj
+from protectus_sentry.trafcap import lpj
 import threading
 from subprocess import Popen, PIPE
 import time

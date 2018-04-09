@@ -646,7 +646,7 @@ def main():
                 # Process data waiting to be read 
                 try:
                     # Explicitly cohersing to string, was implicit in python2
-                    raw_data = str(os.read(std_in[0],trafcap.bytes_to_read))
+                    raw_data = (os.read(std_in[0],trafcap.bytes_to_read)).decode('ascii')
                 except OSError:
                     # This exception occurs if signal handled during read
                     continue
