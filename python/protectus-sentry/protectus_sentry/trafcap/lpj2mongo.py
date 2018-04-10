@@ -10,11 +10,11 @@ import subprocess
 from optparse import OptionParser
 import math
 import traceback
-from . import trafcap
-from . import lpj
-from .lpjPacket import *
-from .lpjContainer import *
-from .lpjTarget import *
+from protectus_sentry.trafcap import trafcap
+from protectus_sentry.trafcap import lpj
+from protectus_sentry.trafcap.lpjPacket import *
+from protectus_sentry.trafcap.lpjContainer import *
+from protectus_sentry.trafcap.lpjTarget import *
 import copy
 import fcntl
 import threading
@@ -75,7 +75,7 @@ class Lpj2MongoThread(threading.Thread):
         while not sniff_working:
             try:
                 if not options.quiet: print('Reading stderr for sniffer status...')
-                std_err = proc.stderr.readline()
+                std_err = proc.stderr.readline().decode('ascii')
                 if not options.quiet: print('  std_err = ', std_err)
                 if 'device is not up' in std_err:
                     # kill failed proc

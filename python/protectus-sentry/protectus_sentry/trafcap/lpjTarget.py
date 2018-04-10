@@ -2,12 +2,12 @@
 #
 # Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
 #
-from protectus_sentry.trafcap import lpj
 import threading
 from subprocess import Popen, PIPE
 import time
 import socket
 from protectus_sentry.trafcap import trafcap
+import signal
 
 # Target class is created when user enteres new target in UI and
 # exists until user removes target from UI.  Target might have an
@@ -22,10 +22,10 @@ class LpjIpTarget(object):
             
             # Temporary list of targets from config file.  This list will
             # be edited as active targets are found.
-            targets_from_config = lpj.readConfig()
+            targets_from_config = readConfig()
 
             targets_to_pop = []
-            for target_obj in lpj.targets:
+            for target_obj in targets:
                 target_in_config = target_obj.inConfig(targets_from_config)
 
                 # Not in list anymore. If target has task, kill it.
@@ -42,14 +42,14 @@ class LpjIpTarget(object):
 
                 if not trafcap.options.quiet: 
                     print('Removing: ', target_obj.target_info)
-                lpj.targets.remove(target_obj)
+                targets.remove(target_obj)
                 something_changed = True
 
             # If anything is left in the list, it is a new target 
             for target in targets_from_config:
                 if not trafcap.options.quiet: 
                     print('Adding: ', target)
-                a_target_obj = lpj.createTarget(target, send_packet_flag) 
+                a_target_obj = createTarget(target, send_packet_flag) 
                 something_changed = True
                 if send_packet_flag:
                     a_target_obj.start()
@@ -71,8 +71,8 @@ class LpjIpTarget(object):
     # This method only called by lpjSend.  lpj2mongo reads config collection
     # from mongo to know if IP addresses have changed
     def updateIp(self):
-        c_id = self.target_info[lpj.t_c_id]
-        cursor = lpj.db[lpj.config_collection_name].find({"_id":c_id})
+        c_id = self.target_info[t_c_id]
+        cursor = db[config_collection_name].find({"_id":c_id})
         item = cursor[0]
 
         try:
@@ -82,23 +82,23 @@ class LpjIpTarget(object):
             print(e, ": ", item['target'])
             return False
 
-        if ip_addr[0] != self.target_info[lpj.t_ip]:
+        if ip_addr[0] != self.target_info[t_ip]:
             if not trafcap.options.quiet:
-                print("Updating  ", self.target_info[lpj.t_target], \
+                print("Updating  ", self.target_info[t_target], \
                                     "  from  ", \
-                                    self.target_info[lpj.t_ip], \
+                                    self.target_info[t_ip], \
                                     "  to  ", ip_addr[0])
 
             # update mongo with IP
             criteria = {"_id":c_id}
             new_ip = ip_addr[0]
-            old_ip = self.target_info[lpj.t_ip]
+            old_ip = self.target_info[t_ip]
             new_cr = {'ip':new_ip}
             old_cr = {'prev_ip':old_ip}
-            lpj.db[lpj.config_collection_name].update(criteria, {"$set":old_cr})
-            lpj.db[lpj.config_collection_name].update(criteria, {"$set":new_cr})
-            self.target_info[lpj.t_prev_ip] = old_ip 
-            self.target_info[lpj.t_ip] = new_ip 
+            db[config_collection_name].update(criteria, {"$set":old_cr})
+            db[config_collection_name].update(criteria, {"$set":new_cr})
+            self.target_info[t_prev_ip] = old_ip 
+            self.target_info[t_ip] = new_ip 
 
             return True
 
@@ -131,10 +131,10 @@ class LpjIcmpTarget(LpjIpTarget):
         self.task_thread = ping_task
 
     def getTargetString(self):
-        return self.target_info[lpj.t_ip]
+        return self.target_info[t_ip]
 
     def getPrevTargetString(self):
-        return self.target_info[lpj.t_prev_ip]
+        return self.target_info[t_prev_ip]
 
 
 class LpjTcpTarget(LpjIpTarget):
@@ -145,12 +145,12 @@ class LpjTcpTarget(LpjIpTarget):
         self.task_thread = syn_task
 
     def getTargetString(self):
-        return self.target_info[lpj.t_ip] + "." + \
-               str(self.target_info[lpj.t_port]) 
+        return self.target_info[t_ip] + "." + \
+               str(self.target_info[t_port]) 
 
     def getPrevTargetString(self):
-        return self.target_info[lpj.t_prev_ip] + "." + \
-               str(self.target_info[lpj.t_port]) 
+        return self.target_info[t_prev_ip] + "." + \
+               str(self.target_info[t_port]) 
 
 class TaskThread(threading.Thread):
     def __init__(self):
@@ -177,14 +177,14 @@ class LpjTaskThread(TaskThread):
     def __init__(self, target):
         TaskThread.__init__(self)
         self.target = target
-        self.dest = target[lpj.t_ip]
-        self.interval = target[lpj.t_interval]
+        self.dest = target[t_ip]
+        self.interval = target[t_interval]
 
 class IcmpTaskThread(LpjTaskThread):
     def __init__(self, target):
         LpjTaskThread.__init__(self, target)
-        self._type = target[lpj.t_type]
-        self.length = target[lpj.t_length] + 8
+        self._type = target[t_type]
+        self.length = target[t_length] + 8
         self.code = 0
         self.out = ''
         self.err = ''
@@ -221,7 +221,7 @@ class IcmpTaskThread(LpjTaskThread):
 class TcpTaskThread(LpjTaskThread):
     def __init__(self, target):
         LpjTaskThread.__init__(self, target)
-        self.dport = target[lpj.t_port]
+        self.dport = target[t_port]
         socket.setdefaulttimeout(1.0)
 
     def task(self):
@@ -241,5 +241,102 @@ class CheckDbThread(TaskThread):
 
     def task(self):
         if LpjIpTarget.checkDbForUpdates(self.send_packets):
-            lpj.updateLpj2MongoData()
+            updateLpj2MongoData()
 
+#
+# Code below previously contained in lpj.py and consolidated
+# here to eliminate circular import.
+#
+# Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
+#
+
+t_target=0        # could be hostname or ip
+t_ip=1; t_prev_ip=2; t_c_id=3; t_title=4; t_interval=5; t_protocol=6
+#icmp
+t_type=7; t_length=8
+#tcp
+t_port=7
+
+targets = []     # list of target objects
+
+### Thread-safe deaddrop ###
+target_cids_changed = threading.Event()
+target_cids_lock = threading.Lock()
+target_cids = {}
+
+def updateLpj2MongoData():
+    with target_cids_lock:
+        target_cids.clear()
+        for target in targets:
+            c_id = target.target_info[t_c_id]
+            target_cids[target.getTargetString()] = c_id
+            if target.getPrevTargetString():
+                target_cids[target.getPrevTargetString()] = c_id
+
+    target_cids_changed.set()
+        
+def createTarget(target, send_packets_flag):
+    if target[t_protocol] == 'icmp':
+        a_target_obj = LpjIcmpTarget(target, send_packets_flag)
+
+    elif target[t_protocol] == 'tcp':
+        a_target_obj = LpjTcpTarget(target, send_packets_flag)
+
+    else:
+        print("Invalid target: ", target)
+        a_target_obj = None
+
+    if a_target_obj:
+        #LpjIpTarget.target_ips.append(a_target_obj.getTargetString())
+        #a_target_obj.updateIp()
+        targets.append(a_target_obj)
+
+    return a_target_obj
+
+
+config_collection_name = 'config'
+db = trafcap.mongoSetup()
+
+def readConfig():
+    targets = []
+    cursor = db[config_collection_name].find()
+
+    for item in cursor:
+        if item['doc_type'] == 'latency':
+            try: 
+                ip_addr = item['ip']
+            except Exception as e:
+                print("Target without IP: ", item['target'])
+                ip_addr = '0.1.2.3'
+
+            if item['protocol'] == 'icmp':
+                target = [item['target'], 
+                          ip_addr,
+                          item['prev_ip'],
+                          item['_id'],
+                          item['title'],
+                          item['interval'],
+                          item['protocol'], 
+                          item['protocolOptions']['type'],
+                          item['protocolOptions']['length']]
+
+            if item['protocol'] == 'tcp':
+                target = [item['target'], 
+                          ip_addr,
+                          item['prev_ip'],
+                          item['_id'],
+                          item['title'],
+                          item['interval'],
+                          item['protocol'], 
+                          item['protocolOptions']['port']]
+            #print target
+            targets.append(target)
+
+    return targets
+
+collection_info = (
+('lpj_data',    [[[('c_id',1),('sem',1),('sbm',1)]]]),
+('lpj_info',    [[[('c_id',1)]]]),
+('lpj_groups',  [[[('c_id',1),('tem',1)]]]),
+('lpj_groups2', [[[('c_id',1),('tem',1)]]])
+)

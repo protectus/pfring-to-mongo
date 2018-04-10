@@ -7,13 +7,12 @@ import sys, os, signal
 import random
 import threading
 import datetime
-from . import trafcap
+from protectus_sentry.trafcap import trafcap
 from optparse import OptionParser
 import copy
-from . import lpj 
 import time
-from .lpjTarget import *
-from .lpj2mongo import Lpj2MongoThread
+from protectus_sentry.trafcap import lpjTarget 
+from protectus_sentry.trafcap.lpj2mongo import Lpj2MongoThread
 
 trafcap.checkIfRoot()
 check_db_task = None
@@ -37,19 +36,19 @@ def main():
     db = trafcap.mongoSetup()
 
     # get the list of targets
-    targets_from_config = lpj.readConfig()
+    targets_from_config = lpjTarget.readConfig()
 
     for target in targets_from_config:
-        a_target_obj = lpj.createTarget(target, True)
+        a_target_obj = lpjTarget.createTarget(target, True)
         a_target_obj.updateIp()
         a_target_obj.start()
 
     # Signal ingest to capture any/all IP changes during startup above
-    lpj.updateLpj2MongoData()
+    lpjTarget.updateLpj2MongoData()
 
     def catchCntlC(signum, stack):
-        print("Terminating ", len(lpj.targets), " targets...")
-        for target in lpj.targets:
+        print("Terminating ", len(lpjTarget.targets), " targets...")
+        for target in lpjTarget.targets:
             print("Stopping...", target.target_info)
             target.stop()
         if check_db_task:
@@ -65,7 +64,7 @@ def main():
     signal.signal(signal.SIGINT, catchCntlC)
     signal.signal(signal.SIGTERM, catchCntlC)
 
-    check_db_task = CheckDbThread(15, True)
+    check_db_task = lpjTarget.CheckDbThread(15, True)
     check_db_task.start()
 
     lpj2Mongo_task = Lpj2MongoThread()
@@ -80,12 +79,12 @@ def main():
     while True:
         time.sleep(60)
         try:
-            for target in lpj.targets:
+            for target in lpjTarget.targets:
                 if target.updateIp():
                     #if target.send_packets:
                     target.stop()
                     target.start()
-                    lpj.updateLpj2MongoData()
+                    lpjTarget.updateLpj2MongoData()
 
         except Exception as e:
             print(e)         
