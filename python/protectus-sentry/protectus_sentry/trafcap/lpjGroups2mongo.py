@@ -12,9 +12,9 @@ import subprocess
 from optparse import OptionParser
 import math
 import configparser
-from . import trafcap
-from .lpjPacket import *
-from .lpjContainer import *
+from protectus_sentry.trafcap import trafcap
+from protectus_sentry.trafcap.lpjPacket import IpLpjPacket, IcmpLpjPacket
+from protectus_sentry.trafcap import lpjContainer 
 import pymongo
 
 def parseOptions():
@@ -58,10 +58,10 @@ def main():
     groups2_collection_name = collection_prefix + "groups2"
 
     # Holds the group data
-    session1 = LpjGroupContainer(pc, data_collection_name, groups1_collection_name)
+    session1 = lpjContainer.LpjGroupContainer(pc, data_collection_name, groups1_collection_name)
 
     # Holds the groups2 data
-    session2 = LpjGroupContainer(pc, data_collection_name, groups2_collection_name)
+    session2 = lpjContainer.LpjGroupContainer(pc, data_collection_name, groups2_collection_name)
 
     def catchSignal1(signum, stack):
         num_sessions = len(session1.groups_dict)
@@ -218,13 +218,13 @@ def main():
                 data_time = a_data['sb'] + item[pc.d_offset]
                 if data_time >= mbp and data_time <= mbp+59: 
                     chunck_start1 = trafcap.secondsTo10Seconds(data_time)
-                    rtl_offset1 = ( chunck_start1 - doc_win_start1) / chunck_size1 
+                    rtl_offset1 = int((chunck_start1 - doc_win_start1) / chunck_size1)
                     rtl_list1[rtl_offset1][pc.g_rtl] += item[pc.d_rtl]
                     rtl_list1[rtl_offset1][pc.g_count] += 1 
                     pl_list1[rtl_offset1][pc.g_count] += 1 
 
                     chunck_start2 = trafcap.secondsTo2Minute(data_time)
-                    rtl_offset2 = (chunck_start2 - doc_win_start2) / chunck_size2 
+                    rtl_offset2 = int((chunck_start2 - doc_win_start2) / chunck_size2)
                     rtl_list2[rtl_offset2][pc.g_rtl] += item[pc.d_rtl]
                     rtl_list2[rtl_offset2][pc.g_count] += 1 
                     pl_list2[rtl_offset2][pc.g_count] += 1 
@@ -233,11 +233,11 @@ def main():
                 data_time = a_data['sb'] + item[pc.d_offset]
                 if data_time >= mbp and data_time <= mbp+59: 
                     chunck_start1 = trafcap.secondsTo10Seconds(data_time)
-                    pl_offset1 = ( chunck_start1 - doc_win_start1) / chunck_size1 
+                    pl_offset1 = int((chunck_start1 - doc_win_start1) / chunck_size1)
                     pl_list1[pl_offset1][pc.g_pl] += item[pc.d_pl]
                 
                     chunck_start2 = trafcap.secondsTo2Minute(data_time)
-                    pl_offset2 = (chunck_start2 - doc_win_start2) / chunck_size2 
+                    pl_offset2 = int((chunck_start2 - doc_win_start2) / chunck_size2)
                     pl_list2[pl_offset2][pc.g_pl] += item[pc.d_pl]
 
         # End looping through all sess_data documents in a chunck 
@@ -251,7 +251,7 @@ def main():
 
             # average data for six new, 10 second entries in groups1
             a_group1 = session1.groups_dict[group_key]
-            grp_offset1 = (mbp - a_group1[pc.g_tbm]) / chunck_size1
+            grp_offset1 = int((mbp - a_group1[pc.g_tbm]) / chunck_size1)
             for i in range(grp_offset1, grp_offset1+6):
                 rtl_total = rtl_list1[i][pc.g_rtl] 
                 rtl_count = rtl_list1[i][pc.g_count] 
@@ -272,7 +272,7 @@ def main():
 
             # if mbp in second half of two minute groups2 chunck, average data
             a_group2 = session2.groups_dict[group_key]
-            grp_offset2 = (mbp - a_group2[pc.g_tbm]) / chunck_size2
+            grp_offset2 = int((mbp - a_group2[pc.g_tbm]) / chunck_size2)
             if a_group2[pc.g_tbm] + \
                a_group2[pc.g_rtl_list][grp_offset2][pc.g_offset] + 60 == mbp:
                 rtl_total = rtl_list2[grp_offset2][pc.g_rtl] 

@@ -271,14 +271,14 @@ class OtherPacket(EthernetPacket):
          
         if pkt and not doc:
             # If no vlan id present
-            if '.' in pkt[1] or ':' in pkt[1]:
+            if b'.' in pkt[1] or b':' in pkt[1]:
                 if pkt[4] in pc.leaked_protos_to_ignore: return (), []
                 msg = pkt[5]
                 for i in range(6, len(pkt), 1):
-                    msg = msg + " " + pkt[i]
+                    msg = msg + b" " + pkt[i]
                     # Ensure msg length does not exceed Mongo's Index Key Limit
                     if len(msg) > 512: 
-                        msg = msg[:512] + '...'
+                        msg = msg[:512] + b'...'
                         break
     
                 data = [(pkt[1], int(pkt[2]), 1), (pkt[3], 0, 0), pkt[0], pkt[4], msg]
@@ -293,10 +293,10 @@ class OtherPacket(EthernetPacket):
                 if pkt[5] in pc.leaked_protos_to_ignore: return (), []
                 msg = pkt[6]
                 for i in range(7, len(pkt), 1):
-                    msg = msg + " " + pkt[i]
+                    msg = msg + b" " + pkt[i]
                     # Ensure msg length does not exceed Mongo's Index Key Limit
                     if len(msg) > 512:
-                        msg = msg[:512] + '...'
+                        msg = msg[:512] + b'...'
                         break
     
                 vlan_id = int(pkt[1]) if trafcap.ingest_vlan_id else 0

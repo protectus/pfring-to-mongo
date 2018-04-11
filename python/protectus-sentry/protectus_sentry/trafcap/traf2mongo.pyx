@@ -593,7 +593,7 @@ def main():
         std_out = []
         std_err = []
 
-        the_buffer=''                        # stores partial lines between reads  
+        the_buffer=b''                        # stores partial lines between reads  
         inputready = None
         outputready = None
         exceptready = None
@@ -646,13 +646,15 @@ def main():
                 # Process data waiting to be read 
                 try:
                     # Explicitly cohersing to string, was implicit in python2
-                    raw_data = (os.read(std_in[0],trafcap.bytes_to_read)).decode('ascii')
+                    #raw_data = (os.read(std_in[0],trafcap.bytes_to_read)).decode('ascii')
+                    raw_data = os.read(std_in[0],trafcap.bytes_to_read)
                 except OSError:
                     # This exception occurs if signal handled during read
                     continue
                 the_buffer += raw_data
-                if '\n' in raw_data:
-                    tmp = the_buffer.split('\n')
+                if b'\n' in raw_data:
+                #if raw_data.__contains__(b'\n'):
+                    tmp = the_buffer.split(b'\n')
                     lines, the_buffer = tmp[:-1], tmp[-1] 
                 else:
                     # not enough data has been read yet to make a full line 
@@ -699,7 +701,7 @@ def main():
                         continue     
           
                     # timestamp is always first item in the list
-                    curr_seq = int(data[pc.p_etime].split(".")[0])
+                    curr_seq = int(data[pc.p_etime].split(b".")[0])
                     trafcap.last_seq_off_the_wire = curr_seq
 
                     # For session dicts, last two params are 0

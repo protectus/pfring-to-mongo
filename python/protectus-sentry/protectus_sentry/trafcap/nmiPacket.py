@@ -13,6 +13,7 @@ import socket
 import struct
 import re
 
+ip4_ptrn = re.compile("^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
 
 # Legend for how data is temporarily stored in the python dictionary
 #
@@ -252,6 +253,7 @@ class DnsNmiPacket(NmiPacket):
         name_list = []     # Hostnames 
 
         try:
+            print('pkt:',pkt)
             # Handle this case:
             #  1375454775.464517 DNS 216.21.236.249 54:75:d0:3e:55:fb 10.200.129.202 
             #  0x8a71 Standard query response 0x8a71  
@@ -284,7 +286,7 @@ class DnsNmiPacket(NmiPacket):
                     # Response with no corresponsing request - ignore
                     return 0,[] 
                   
-                fqhn_or_ip = dns_request[1]
+                fqhn_or_ip_from_req = dns_request[1]
                 first_reply_type = pkt[10]
                 if first_reply_type == 'CNAME':  first_reply_type = 'CNM'
                 reply_type = pkt[10]
@@ -292,9 +294,17 @@ class DnsNmiPacket(NmiPacket):
                 while len(pkt) > 10 and reply_type in ['A', 'CNAME', 'PTR', 'RRSIG']:
                     if reply_type == 'A':
                         pkt.pop(10)  # throw away the 'A' 
-                        ip_list.append(pkt.pop(10))
-                        if fqhn_or_ip not in name_list:
-                            name_list.append(fqhn_or_ip)
+                        # Item at pkt[10] could be hostname or IP addr
+                        fqhn_or_ip_from_resp = pkt.pop(10)
+                        is_ip4_addr = ip4_ptrn.match(fqhn_or_ip_from_resp)
+                        if is_ip4_addr:
+                            ip_list.append(fqhn_or_ip_from_resp)
+                        else:
+                            if fqhn_or_ip_from_resp not in name_list:
+                                name_list.append(fqhn_or_ip_from_resp)
+
+                        if fqhn_or_ip_from_req not in name_list:
+                            name_list.append(fqhn_or_ip_from_req)
                     elif reply_type == 'CNAME':
                         pkt.pop(10)  # throw away the 'CNAME'
                         cname_val = pkt.pop(10)
@@ -304,13 +314,13 @@ class DnsNmiPacket(NmiPacket):
                         #    # be thrown next time through loop
                         #    throw_away = pkt.pop(10) 
                         name_list.append(cname_val)
-                        if fqhn_or_ip not in name_list:
-                            name_list.append(fqhn_or_ip)
+                        if fqhn_or_ip_from_req not in name_list:
+                            name_list.append(fqhn_or_ip_from_req)
                     elif reply_type == 'PTR':
                         pkt.pop(10)  # throw away the 'PTR'
                         name_list.append(pkt.pop(10))
-                        if fqhn_or_ip not in ip_list:
-                            ip_list.append(fqhn_or_ip)
+                        if fqhn_or_ip_from_req not in ip_list:
+                            ip_list.append(fqhn_or_ip_from_req )
                     elif reply_type == 'RRSIG':
                         pkt.pop(10)  # throw away the 'RRSIG'
                     else:

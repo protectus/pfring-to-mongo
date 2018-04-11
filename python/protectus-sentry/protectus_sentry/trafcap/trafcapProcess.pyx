@@ -248,7 +248,7 @@ def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_bu
             if live_session_slot_dealloc_pipe.poll():
                 live_session_slot_dealloc_pipe.recv_bytes_into(py_live_session_slot_pipeable)
                 session_updater_live_session_dealloc_count.value += 1
-                available_live_session_slots.append(py_live_session_slot_pipeable.value)
+                available_live_session_slots.append(py_live_session_slot_pipeable[0])
                 # Generate a key so we can delete it from the dictionary
                 del live_session_slot_map[(generate_session_key_from_session_function[0])(<GenericSession *>(live_session_buffer_addr + (live_session_slot_p[0] * session_struct_size)))]
                 #print "De-dictionary-ing session at slot", live_session_slot_p[0]
@@ -947,7 +947,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
             if session_group_dealloc_pipe.poll():
                 session_group_dealloc_pipe.recv_bytes_into(py_session_group_slot_pipeable)
                 group_updater_group_dealloc_count.value += 1
-                available_group_slots.append(py_session_group_slot_pipeable.value)
+                available_group_slots.append(py_session_group_slot_pipeable[0])
                 # Generate a key so we can delete it from the dictionary
                 del group_slot_map[generate_group_key_from_group_function[0](<GenericGroup *>(group_buffer_addr + 
                                                                              (session_group_slot_p[0] * group_struct_size)))]
@@ -956,7 +956,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
             if capture_group_dealloc_pipe.poll():
                 capture_group_dealloc_pipe.recv_bytes_into(py_capture_group_slot_pipeable)
                 # Recycle the slot
-                available_capture_group_slots.append(py_capture_group_slot_pipeable.value)
+                available_capture_group_slots.append(py_capture_group_slot_pipeable[0])
                 # Generate a key so we can delete it from the dictionary
                 capture_group = <GenericGroup *>(capture_group_buffer_addr + 
                                                         (capture_group_slot_p[0] * capture_group_struct_size))

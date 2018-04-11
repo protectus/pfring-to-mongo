@@ -12,10 +12,10 @@ import subprocess
 from optparse import OptionParser
 import math
 import configparser
-from . import trafcap
-from trafcapIpPacket import *
-from .trafcapEthernetPacket import *
-from .trafcapContainer import *
+from protectus_sentry.trafcap import trafcap
+from protectus_sentry.trafcap.trafcapIpPacket import *
+from protectus_sentry.trafcap.trafcapEthernetPacket import *
+from protectus_sentry.trafcap.trafcapContainer import *
 import pymongo
 
 # doc_win_start                   mbp
@@ -326,7 +326,7 @@ def main():
                 # Sum sessionBytes into groups1 
                 byte_time = a_bytes['sb'] + item[0]
                 if byte_time >= mbp and byte_time <= mbp+59: 
-                    offset = (byte_time - doc_win_start1) / 10
+                    offset = int((byte_time - doc_win_start1) / 10)
                     session1.groups_dict[group_key][pc.g_b][offset][pc.g_1] \
                                                                    += item[1] 
                     session1.groups_dict[group_key][pc.g_b][offset][pc.g_2] \
@@ -334,7 +334,7 @@ def main():
                     session1.groups_dict[group_key][pc.g_b1] += item[1]
                     session1.groups_dict[group_key][pc.g_b2] += item[2]
 
-                    offset = (byte_time - doc_win_start2) / 120
+                    offset = int((byte_time - doc_win_start2) / 120)
                     session2.groups_dict[group_key][pc.g_b][offset][pc.g_1] \
                                                                    += item[1] 
                     session2.groups_dict[group_key][pc.g_b][offset][pc.g_2] \

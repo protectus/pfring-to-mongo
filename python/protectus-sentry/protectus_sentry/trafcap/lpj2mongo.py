@@ -11,7 +11,6 @@ from optparse import OptionParser
 import math
 import traceback
 from protectus_sentry.trafcap import trafcap
-from protectus_sentry.trafcap import lpj
 from protectus_sentry.trafcap.lpjPacket import *
 from protectus_sentry.trafcap.lpjContainer import *
 from protectus_sentry.trafcap.lpjTarget import *
@@ -49,8 +48,8 @@ class Lpj2MongoThread(threading.Thread):
         def updateMyTargets():
             my_ips_cids.clear()
             # We take a copy so we can quickly drop the lock.
-            with lpj.target_cids_lock:
-                my_ips_cids.update(lpj.target_cids)
+            with lpjTarget.target_cids_lock:
+                my_ips_cids.update(lpjTarget.target_cids)
 
             if not options.quiet:
                 print("Injest: target_cids: ", my_ips_cids)
@@ -139,8 +138,8 @@ class Lpj2MongoThread(threading.Thread):
                 print("Injest: Something in std_err...")
                 print(std_err)
 
-            if lpj.target_cids_changed.is_set():
-                lpj.target_cids_changed.clear()
+            if lpjTarget.target_cids_changed.is_set():
+                lpjTarget.target_cids_changed.clear()
                 updateMyTargets()
 
             # No data to be read.  Use this time to update the database.
@@ -152,7 +151,7 @@ class Lpj2MongoThread(threading.Thread):
             else:
                 # Process data waiting to be read 
                 try:
-                   raw_data = os.read(std_in[0],trafcap.bytes_to_read)
+                    raw_data = os.read(std_in[0],trafcap.bytes_to_read).decode('ascii')
                 except Exception as e:
                     continue
                 the_buffer += raw_data

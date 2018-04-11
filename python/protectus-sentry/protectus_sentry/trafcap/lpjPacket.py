@@ -5,11 +5,11 @@
 # Classes to aquire latetency, packet loss, jitter data 
 import subprocess
 import time
-from . import trafcap
+from protectus_sentry.trafcap import trafcap
 from datetime import datetime
 import traceback
 import re
-from . import lpj
+from protectus_sentry.trafcap import lpjTarget
 import copy
 
 #global targets
@@ -38,17 +38,17 @@ class IpLpjPacket(object):
         addr_str = str(a[0])+"."+str(a[1])+"."+str(a[2])+"."+str(a[3])
         proto = pkt[pc.p_proto]
 
-        for target_obj in lpj.targets:
+        for target_obj in lpjTarget.targets:
             target_info = target_obj.target_info
-            if (addr_str == target_info[lpj.t_ip] or \
-                addr_str == target_info[lpj.t_prev_ip]) and \
-               proto == target_info[lpj.t_protocol]:
+            if (addr_str == target_info[lpjTarget.t_ip] or \
+                addr_str == target_info[lpjTarget.t_prev_ip]) and \
+               proto == target_info[lpjTarget.t_protocol]:
                 if proto == 'tcp':
-                    if int(pkt[pc.p_ip2][pc.p_port]) == target_info[lpj.t_port]:
-                        c_id = target_info[lpj.t_c_id] 
+                    if int(pkt[pc.p_ip2][pc.p_port]) == target_info[lpjTarget.t_port]:
+                        c_id = target_info[lpjTarget.t_c_id] 
                 elif proto == 'icmp':
-                    if pkt[pc.p_ip1][pc.p_type][0] == target_info[lpj.t_type]:
-                        c_id = target_info[lpj.t_c_id] 
+                    if pkt[pc.p_ip1][pc.p_type][0] == target_info[lpjTarget.t_type]:
+                        c_id = target_info[lpjTarget.t_c_id] 
                 else:   
                     print("Invalid protocol when building criteria...")
                     return None
