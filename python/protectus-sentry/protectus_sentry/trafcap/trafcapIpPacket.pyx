@@ -2604,38 +2604,38 @@ class IcmpPacket(IpPacket):
             #if len(pkt) == 6:
             #    pkt.append(0)
 
-            a1_1,a1_2,a1_3,a1_4 = pkt[1].split(".")
-            a2_1,a2_2,a2_3,a2_4 = pkt[3].split(".")
+            a1_1,a1_2,a1_3,a1_4 = pkt[1].split(b".")
+            a2_1,a2_2,a2_3,a2_4 = pkt[3].split(b".")
     
             # Represent IP addresses as tuples instead of strings
             addr1 = (int(a1_1), int(a1_2), int(a1_3), int(a1_4))
             addr2 = (int(a2_1), int(a2_2), int(a2_3), int(a2_4))
             
             # handle various formats of type and code
-            i_type = ""
-            i_code = ""
+            i_type = b""
+            i_code = b""
     
             # type
-            if ',' in pkt[4]:
-                i_type = pkt[4].split(',')[0]
+            if b',' in pkt[4]:
+                i_type = pkt[4].split(b',')[0]
             else:
                 i_type = pkt[4]
     
             # code
-            if ',' in pkt[5]:
-                i_code = pkt[5].split(',')[0]
-            elif 'x' in pkt[5]:
+            if b',' in pkt[5]:
+                i_code = pkt[5].split(b',')[0]
+            elif b'x' in pkt[5]:
                 i_code = str(int(pkt[5], 16))
             else:
                 i_code = pkt[5]
     
             addrs = [addr1, addr2]
-            type_and_code = [[i_type+"."+i_code], []]
+            type_and_code = [[i_type+b"."+i_code], []]
     
             # handle case of bytes with comma
             byts = pkt[2]
-            if ',' in byts: 
-                byts = pkt[2].split(',')[0]
+            if b',' in byts: 
+                byts = pkt[2].split(b',')[0]
             byts = [int(byts), 0]
             pkts = [1, 0]
     
@@ -2646,9 +2646,9 @@ class IcmpPacket(IpPacket):
 
             # ICMP types 8 (ping req), 0 (ping rply), 13,14, 17,18 have seq numbers.
             # If other types have a pkt[6], then it must be a vlan_id
-            if ('8' in pkt[4] or '0' in pkt[4]) or\
-               ('13' in pkt[4] or '14' in pkt[4]) or\
-               ('17' in pkt[4] or '18' in pkt[4]):
+            if (b'8' in pkt[4] or b'0' in pkt[4]) or\
+               (b'13' in pkt[4] or b'14' in pkt[4]) or\
+               (b'17' in pkt[4] or b'18' in pkt[4]):
                 # seq in decimal = pkt[6], seq in hex = pkt[7], vlan_id = pkt[8]
                 seq = pkt[6]
                 if len(pkt) == 9:

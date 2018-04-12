@@ -485,7 +485,13 @@ def logException(exception, **kwargs):
         elif type(arg) == list or type(arg) == tuple:
             for item in arg: 
                 if not options.quiet: print(item) 
+                if type(item) == bytes: item = item.decode('utf8')
                 a_file.write(item)
+                
+        elif type(arg) == bytes:
+            if not options.quiet: print(arg) 
+            a_file.write(arg.decode('utf8'))
+
         else:
             a_type = type(arg)
             msg = 'Invalid parameter type  '+str(a_type)+'  passed to logException()'
