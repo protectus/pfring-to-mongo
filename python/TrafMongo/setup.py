@@ -9,7 +9,6 @@ from setuptools import setup, find_packages
 cythonize_glob1 = 'trafmongo/**/parse.py'
 cythonize_glob2 = 'trafmongo/**/resources.py'
 cythonize_glob3 = 'trafmongo/**/tests.py'
-cythonize_glob4 = 'trafmongo/**/ujson_renderer.py'
 
 # "VERSION" is a keyword that the build system will look for.  Feel free to
 # change, but know that the build system is running sed, looking for
@@ -17,26 +16,25 @@ cythonize_glob4 = 'trafmongo/**/ujson_renderer.py'
 VERSION = '0.1'
 
 requires = [
-    'pyramid == 1.2',
-    'ujson',
+    'pyramid',
+    'pyramid_mako',
     'pymongo >= 3.2',
-    'WebError',
     'pygeoip',
     'protectus-sentry'
 ]
 
 setup_settings = {}
-if sys.argv[1] in ['bdist_egg', 'install']:
+if sys.argv[1] in ['bdist_egg', 'bdist_wheel', 'install']:
     from Cython.Distutils import build_ext
     from Cython.Build import cythonize
 
     setup_settings = {
         'cmdclass': {'build_ext':build_ext},
         'ext_modules': cythonize(cythonize_glob1) + cythonize(cythonize_glob2) +\
-                       cythonize(cythonize_glob3) + cythonize(cythonize_glob4)
+                       cythonize(cythonize_glob3)
     }
 elif sys.argv[1] == "develop":
-    requires.append("pyramid-debugtoolbar==1.0.7")
+    requires.append("pyramid-debugtoolbar")
 
 setup(name='TrafMongo',
       version=VERSION,
@@ -88,7 +86,7 @@ if sys.argv[1] == 'bdist_egg':
     for item in egg.infolist():
         path = item.filename
         if path.endswith('.c'):
-            print "\tRemoving " + path
+            print("\tRemoving " + path)
         else:
             newegg.writestr(item, egg.read(path))
 
@@ -96,4 +94,4 @@ if sys.argv[1] == 'bdist_egg':
     newegg.close()
     os.remove(original)
 
-    print "Done removing proprietary source code"
+    print("Done removing proprietary source code")
