@@ -190,9 +190,14 @@ def main():
         #delta = coll[c_end_time] - coll[c_begin_time]
         #coll[c_days] = int(round(delta/(60*60*24)))
 
-        begin = datetime.fromtimestamp(coll[c_begin_time])
-        end = datetime.fromtimestamp(coll[c_end_time])
-        delta = end - begin
+        try:
+            begin = datetime.fromtimestamp(coll[c_begin_time])
+            end = datetime.fromtimestamp(coll[c_end_time])
+            delta = end - begin
+        except ValueError:
+            print('')
+            print('Time error in: ',coll)
+
         coll[c_days] = delta.days
 
 
