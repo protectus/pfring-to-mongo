@@ -404,7 +404,7 @@ def initAsnNames():
         # Nothing to do
         return
 
-    with open(ga_filename) as asn_file:
+    with open(ga_filename, encoding='ISO-8859-1') as asn_file:
         asn_names = readAsnFile(asn_file)
 
 
