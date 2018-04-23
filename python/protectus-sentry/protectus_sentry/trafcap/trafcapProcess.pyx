@@ -638,6 +638,9 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
     except IOError: # Handle signal during pipe access
         if not trafcap.options.quiet: print 'sessionBookkeeper handled IOError....'
 
+# Performance profiling - 1 of 3
+#import cProfile, pstats, io
+
 cdef bint groupUpdater_running = True
 def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count, 
                  saved_session_ring_buffer, 
@@ -763,9 +766,14 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
     #
     #   - We don't keep track of when session_groups or capture_groups expire.  
     #     Let the "database #     phase" tell us when it's done with a session_group.
+
+    # Performance profiling - 2 of 3
+    #pr = cProfile.Profile()
+    #pr.enable()
+
     try:
         while groupUpdater_running:
-            if saved_session_cursor_pipe.poll(0.001):
+            if saved_session_cursor_pipe.poll(0.01):
                 if session_status == 0:
                     # Get and process a new saved_session.  If the previous saved_session flowed
                     # over a group boundary and is stil being processed, then skip steps in this if
@@ -987,7 +995,14 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
 
     except IOError: # Handle signal during pipe access
         if not trafcap.options.quiet: print 'groupUpdater handled IOError....'
-
+ 
+    # Performance profiling - 3 of 3
+    #pr.disable()
+    #s = io.StringIO()
+    #sortby = 'cumulative'
+    #ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+    #ps.print_stats()
+    #print(s.getvalue())
 
 cdef bint groupBookkeeper_running = True
 def groupBookkeeper(group_buffer, group_locks, 
