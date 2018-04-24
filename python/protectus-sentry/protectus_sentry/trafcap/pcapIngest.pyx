@@ -157,7 +157,7 @@ def main():
     cdef PcapPktHeader* pcap_ph = <PcapPktHeader*>malloc(sizeof(PcapPktHeader))
     
     # Setup the tap interface for writing output
-    tpap_py_file_obj = open("/dev/net/tun", "w+b", buffering=0)   # returns a file object
+    tap_py_file_obj = open("/dev/net/tun", "w+b", buffering=0)   # returns a file object
     name = str.encode(args.interface)   # do some error checking on this arg
     ifreq = struct.pack("16sH", name, IFF_TAP | IFF_NO_PI) 
     fcntl.ioctl(tap_py_file_obj.fileno(), TUNSETIFF, ifreq)
