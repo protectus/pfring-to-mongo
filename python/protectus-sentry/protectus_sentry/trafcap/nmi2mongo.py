@@ -127,7 +127,7 @@ def main():
         if inputready:
             # Process data waiting to be read 
             try:
-                raw_data = (os.read(std_in[0],trafcap.bytes_to_read)).decode('ascii')
+                raw_data = (os.read(std_in[0],trafcap.bytes_to_read)).decode('ascii', 'ignore')
             except OSError:
                 # This exception occurs if signal handled during read
                 continue

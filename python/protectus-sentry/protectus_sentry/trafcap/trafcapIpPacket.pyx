@@ -1272,6 +1272,11 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
 
     cdef int second, i
     cdef uint32_t* bytes_subarray
+
+    # Set se default in case range in for statement below is empty
+    #se = <uint64_t>session.base.te
+    se = second_to_write_from
+
     # Generate the bytes array.  Write all non-zero sub-arrays from the second
     # to write up to the end of the data we have, inclusive.
     for second in range(second_to_write_from, min(second_to_write_to, <uint64_t>session.base.te + 1)):
@@ -1298,8 +1303,9 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
     # Update capture_session timestamp
     capture_session.base.te = max(capture_session.base.te, session.base.te)
 
-    # add to writes
-    if trafcap.options.mongo:
+    # add to writes if the bytes array is not empty
+    # Performance improvement todo - don't build bytes_doc if no bytes_to_write
+    if trafcap.options.mongo and bytes_to_write:
         try:
             bytes_bulk_writer.insert(bytes_doc)
         except Exception, e:

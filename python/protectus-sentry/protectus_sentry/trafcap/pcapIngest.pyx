@@ -74,7 +74,7 @@ signal.signal(signal.SIGTERM, catchCntlC)
 
 def decBinHexPrint(hint, val):
     # For debug - prints in decimal, binary, and hex
-    print hint, ':', val, format(val, '032b'), format(val, '08x')
+    print(hint, ':', val, format(val, '032b'), format(val, '08x'))
 
 cdef bint pcapAquired(int debug_flag, uint32_t micr_sec, int capt_len, 
                       int wire_len):
@@ -122,6 +122,16 @@ def parseArgs():
                         help='show verbose output with pkt count')
     args = parser.parse_args()
     if args.file_input == '-': args.file_input = sys.stdin.fileno()
+
+    # Input validation 
+    print('Python version: ', sys.version)
+    print 'Python version: ', sys.version
+    a_path='/sys/class/net/'+args.interface
+    if not os.path.isdir(a_path):
+        print '\nSpecified interface does not exist: ', args.interface
+        print 'Exiting.......try again.'
+        sys.exit()
+    
     return args
 
 cdef struct PcapData:
