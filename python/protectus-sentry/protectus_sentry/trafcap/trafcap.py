@@ -317,11 +317,11 @@ def mongoSetup(**kwargs):
         db['config'].delete_one({'x': 1})
     return db
 
-def chkUtf8(a_string):
-    # If string is not None, ensure it is in UTF8 format; else return None
-    #return a_string.decode('utf8', 'ignore') if a_string else a_string
-    # Python3 strings are UFT-8 by default.  Not sure what GeoIP API returns.
-    return a_string if a_string else a_string 
+#def chkUtf8(a_string):
+#    # If string is not None, ensure it is in UTF8 format; else return None
+#    #return a_string.decode('utf8', 'ignore') if a_string else a_string
+#    # Python3 strings are UFT-8 by default.  Not sure what GeoIP API returns.
+#    return a_string if a_string else a_string 
 
 gi = GeoIP.open("/opt/sentry/geoip/GeoLiteCity.dat",GeoIP.GEOIP_STANDARD)
 def geoIpLookup(ip_addr):
@@ -334,12 +334,12 @@ def geoIpLookup(ip_addr):
         addr_city = None
         addr_region = None
     else:
-        # Fields could be non-UTF8 or could be None
-        addr_cc = chkUtf8(g_addr['country_code'])
-        addr_name = chkUtf8(g_addr['country_name'])
+        # Fields should be UTF8 or could be None
+        addr_cc = g_addr['country_code']
+        addr_name = g_addr['country_name']
         addr_loc = [g_addr['longitude'], g_addr['latitude']]
-        addr_city = chkUtf8(g_addr['city'])
-        addr_region = chkUtf8(g_addr['region_name'])
+        addr_city = g_addr['city']
+        addr_region = g_addr['region_name']
     return addr_cc, addr_name, addr_loc, addr_city, addr_region
 
 def geoIpLookupTpl(ip_addr):
@@ -365,7 +365,7 @@ def geoIpAsnLookup(ip_addr):
             # Returned format:  AS15457
             org_asn = g_org.strip()
             org_name = None
-    return org_asn, chkUtf8(org_name)
+    return org_asn, org_name
 
 def geoIpAsnLookupTpl(ip_addr):
     return geoIpAsnLookup(tupleToString(ip_addr))
@@ -485,12 +485,12 @@ def logException(exception, **kwargs):
         elif type(arg) == list or type(arg) == tuple:
             for item in arg: 
                 if not options.quiet: print(item) 
-                if type(item) == bytes: item = item.decode('utf8')
+                if type(item) == bytes: item = item.decode('utf8','backslashreplace')
                 a_file.write(item)
                 
         elif type(arg) == bytes:
             if not options.quiet: print(arg) 
-            a_file.write(arg.decode('utf8'))
+            a_file.write(arg.decode('utf8', 'backslashreplace'))
 
         else:
             a_type = type(arg)

@@ -647,6 +647,7 @@ def main():
                 try:
                     # Explicitly cohersing to string, was implicit in python2
                     #raw_data = (os.read(std_in[0],trafcap.bytes_to_read)).decode('ascii')
+                    # Instead of decoding to ascii, prepend a 'b' to strings defined below...
                     raw_data = os.read(std_in[0],trafcap.bytes_to_read)
                 except OSError:
                     # This exception occurs if signal handled during read

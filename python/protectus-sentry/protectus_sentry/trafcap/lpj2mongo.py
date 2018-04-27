@@ -74,7 +74,7 @@ class Lpj2MongoThread(threading.Thread):
         while not sniff_working:
             try:
                 if not options.quiet: print('Reading stderr for sniffer status...')
-                std_err = proc.stderr.readline().decode('ascii', 'ignore')
+                std_err = proc.stderr.readline().decode('ascii', 'backslashreplace')
                 if not options.quiet: print('  std_err = ', std_err)
                 if 'device is not up' in std_err:
                     # kill failed proc
@@ -151,7 +151,7 @@ class Lpj2MongoThread(threading.Thread):
             else:
                 # Process data waiting to be read 
                 try:
-                    raw_data = os.read(std_in[0],trafcap.bytes_to_read).decode('ascii', 'ignore')
+                    raw_data = os.read(std_in[0],trafcap.bytes_to_read).decode('ascii', 'backslashreplace')
                 except Exception as e:
                     continue
                 the_buffer += raw_data

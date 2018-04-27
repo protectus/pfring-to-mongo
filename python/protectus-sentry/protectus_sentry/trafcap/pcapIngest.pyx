@@ -168,7 +168,7 @@ def main():
     
     # Setup the tap interface for writing output
     tap_py_file_obj = open("/dev/net/tun", "w+b", buffering=0)   # returns a file object
-    name = str.encode(args.interface)   # do some error checking on this arg
+    name = str.encode(args.interface)   # Input validation done in parseArgs() 
     ifreq = struct.pack("16sH", name, IFF_TAP | IFF_NO_PI) 
     fcntl.ioctl(tap_py_file_obj.fileno(), TUNSETIFF, ifreq)
     fcntl.ioctl(tap_py_file_obj.fileno(), TUNSETNOCSUM, 1)
