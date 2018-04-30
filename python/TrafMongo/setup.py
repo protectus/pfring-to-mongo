@@ -18,9 +18,9 @@ VERSION = '0.1'
 requires = [
     'pyramid',
     'pyramid_mako',
-    'pymongo >= 3.2',
-    'pygeoip',
-    'protectus-sentry'
+    'pymongo == 3.6',
+    'pygeoip'
+#    'protectus-sentry'
 ]
 
 setup_settings = {}
