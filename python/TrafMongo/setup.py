@@ -35,6 +35,7 @@ if sys.argv[1] in ['bdist_egg', 'bdist_wheel', 'install']:
     }
 elif sys.argv[1] == "develop":
     requires.append("pyramid-debugtoolbar")
+    requires.append("waitress")
 
 setup(name='TrafMongo',
       version=VERSION,

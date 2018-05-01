@@ -5,7 +5,7 @@
 # Classes to help pull data off the wire and update mongo
 import subprocess
 import time
-from . import trafcap
+from protectus_sentry.trafcap import trafcap
 from datetime import datetime
 import traceback
 import sys
@@ -42,7 +42,8 @@ class EthernetPacket(object):
     b_ldwt=5      # last_db_write_time
     b_csldw=6     # changed_since_last_db_write
 
-    capture_dict_key = ('0', '0', '', None)
+    #                   src,  dst, msg,  ??
+    capture_dict_key = ('0', b'0', b'', None)
 
     # Legend for Group dictionary data structure:
     g_src=0; g_b1=1
@@ -71,15 +72,15 @@ class EthernetPacket(object):
 
     @classmethod
     def buildBytesDoc(pc, ci, si, a_info, a_bytes):
-        session_bytes = {"s":a_info[ci][pc.i_addr],
-                         "d":a_info[si][pc.i_addr],
-                         "m":a_info[pc.i_msg],
+        session_bytes = {"s":a_info[ci][pc.i_addr].decode('ascii', 'ignore'),
+                         "d":a_info[si][pc.i_addr].decode('ascii', 'ignore'),
+                         "m":a_info[pc.i_msg].decode('ascii', 'ignore'),
                          "sb":a_bytes[pc.b_sb],
                          "se":a_bytes[pc.b_se],
                          "sbm":trafcap.secondsToMinute(a_bytes[pc.b_sb]),
                          "sem":trafcap.secondsToMinute(a_bytes[pc.b_se]),
                          #"pk":a_bytes[pc.b_pkts],
-                         "pr":a_info[pc.i_proto],
+                         "pr":a_info[pc.i_proto].decode('ascii','ignore'),
                          "b":a_bytes[pc.b_array]}
         if a_info[pc.i_vl]: session_bytes['vl'] = a_info[pc.i_vl]
         return session_bytes
@@ -88,11 +89,11 @@ class EthernetPacket(object):
     def buildInfoDoc(pc, ci, si, a_info):
         tbm=trafcap.secondsToMinute(a_info[pc.i_tb])
         tem=trafcap.secondsToMinute(a_info[pc.i_te])
-        info_doc = {"s":a_info[ci][pc.i_addr],
+        info_doc = {"s":a_info[ci][pc.i_addr].decode('ascii', 'ignore'),
                     "b1":a_info[ci][pc.i_bytes],
-                    "d":a_info[si][pc.i_addr],
+                    "d":a_info[si][pc.i_addr].decode('ascii', 'ignore'),
                     "b2":a_info[si][pc.i_bytes],
-                    "m":a_info[pc.i_msg],
+                    "m":a_info[pc.i_msg].decode('ascii', 'ignore'),
                     "bt":a_info[si][pc.i_bytes]+a_info[ci][pc.i_bytes],
                     "tbm":tbm,
                     "tem":tem,
@@ -101,7 +102,7 @@ class EthernetPacket(object):
                     "pk":a_info[pc.i_pkts],
                     "pk1":a_info[ci][pc.i_pkt],
                     "pk2":a_info[si][pc.i_pkt],
-                    "pr":a_info[pc.i_proto]}
+                    "pr":a_info[pc.i_proto].decode('ascii', 'ignore')}
         tdm = tem-tbm
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
         if a_info[pc.i_vl]: info_doc['vl'] = a_info[pc.i_vl]
@@ -175,9 +176,9 @@ class EthernetPacket(object):
     @classmethod
     def buildInfoDictItem(pc, key, data):
         if key == pc.capture_dict_key:
-            new_info = [[0,0,0], [0,0,0], 
+            new_info = [[b'0',0,0], [b'0',0,0], 
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
-                        1, 0, '', '',
+                        1, 0, b'', b'',
                         float(data[pc.p_etime]), True, None, None] 
         else:
             # Create new dictionary entry.

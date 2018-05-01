@@ -2780,16 +2780,17 @@ class IcmpPacket(IpPacket):
         if len(a_info[ci][pc.i_type]) == 1:
             ty1 = a_info[ci][pc.i_type][0]
         else:
-            ty1 = ""
+            ty1 = b""
             
         tbm=trafcap.secondsToMinute(a_info[pc.i_tb])
         tem=trafcap.secondsToMinute(a_info[pc.i_te])
         info_doc = {"ip1":trafcap.tupleToInt(a_info[ci][pc.i_addr]),
                     "b1":a_info[ci][pc.i_bytes],
-                    "ty1":ty1,
+                    "ty1":ty1.decode('ascii','ignore'),
                     "ip2":trafcap.tupleToInt(a_info[si][pc.i_addr]),
                     "b2":a_info[si][pc.i_bytes],
-                    "ty2":a_info[si][pc.i_type],
+                    # ty2 is a list of bytes objects, convert to string
+                    "ty2":b''.join(a_info[si][pc.i_type]).decode('ascii','ignore'),
                     "bt":a_info[si][pc.i_bytes]+a_info[ci][pc.i_bytes], 
                     "tbm":tbm,
                     "tem":tem,
@@ -2816,12 +2817,13 @@ class IcmpPacket(IpPacket):
         if len(a_info[ci][pc.i_type]) == 1:
             ty1 = a_info[ci][pc.i_type][0]
         else:
-            ty1 = ""
+            ty1 = b""
 
         session_bytes = {"ip1":trafcap.tupleToInt(a_info[ci][pc.i_addr]),
-                         "ty1":ty1,
+                         "ty1":ty1.decode('ascii','ignore'),
                          "ip2":trafcap.tupleToInt(a_info[si][pc.i_addr]),
-                         "ty2":a_info[si][pc.i_type],
+                         # ty2 is a list of bytes objects, convert to string
+                         "ty2":b''.join(a_info[si][pc.i_type]).decode('ascii','ignore'),
                          "sb":a_bytes[pc.b_sb],
                          "se":a_bytes[pc.b_se],
                          "sbm":trafcap.secondsToMinute(a_bytes[pc.b_sb]),
