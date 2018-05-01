@@ -74,7 +74,7 @@ class EthernetPacket(object):
     def buildBytesDoc(pc, ci, si, a_info, a_bytes):
         session_bytes = {"s":a_info[ci][pc.i_addr].decode('ascii', 'ignore'),
                          "d":a_info[si][pc.i_addr].decode('ascii', 'ignore'),
-                         "m":a_info[pc.i_msg].decode('ascii', 'ignore'),
+                         "m":a_info[pc.i_msg].decode('utf-8', 'backslashreplace'),
                          "sb":a_bytes[pc.b_sb],
                          "se":a_bytes[pc.b_se],
                          "sbm":trafcap.secondsToMinute(a_bytes[pc.b_sb]),
@@ -93,7 +93,7 @@ class EthernetPacket(object):
                     "b1":a_info[ci][pc.i_bytes],
                     "d":a_info[si][pc.i_addr].decode('ascii', 'ignore'),
                     "b2":a_info[si][pc.i_bytes],
-                    "m":a_info[pc.i_msg].decode('ascii', 'ignore'),
+                    "m":a_info[pc.i_msg].decode('utf-8', 'backslashreplace'),
                     "bt":a_info[si][pc.i_bytes]+a_info[ci][pc.i_bytes],
                     "tbm":tbm,
                     "tem":tem,
@@ -335,7 +335,9 @@ class OtherPacket(EthernetPacket):
 
     @classmethod
     def startSniffer(pc):
-        filter = 'not ip proto (1 or 6 or 17 or 41) ' + trafcap.cap_filter
+        # ether proto ox86dd == IPv6
+        filter = 'not ip proto (1 or 6 or 17 or 41) and not ether proto 0x86dd' +\
+                  trafcap.cap_filter
         proc = subprocess.Popen(['/usr/bin/tshark', 
                '-i', trafcap.sniff_interface, 
                '-te', '-n', '-l',
