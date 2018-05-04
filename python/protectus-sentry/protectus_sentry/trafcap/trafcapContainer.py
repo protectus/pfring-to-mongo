@@ -5,7 +5,7 @@
 # Classes to help manage temporary storage of traffic in dictionaries
 # and writes to mongo
 import sys, time
-from . import trafcap
+from protectus_sentry.trafcap import trafcap
 from datetime import datetime
 import traceback
 import pprint
