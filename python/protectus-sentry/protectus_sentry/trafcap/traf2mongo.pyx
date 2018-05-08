@@ -10,7 +10,7 @@ import subprocess
 from optparse import OptionParser
 import math
 import traceback
-import trafcap
+import protectus_sentry.trafcap
 from protectus_sentry.trafcap.trafcapIpPacket import *
 from protectus_sentry.trafcap.trafcapEthernetPacket import *
 from protectus_sentry.trafcap.trafcapContainer import *
@@ -28,8 +28,8 @@ from libc.stdint cimport uint64_t, uint32_t, uint16_t, uint8_t, int64_t
 from libc.string cimport memcpy, memset
 from libc.stdlib cimport malloc
 import ctypes
-from cpf_ring cimport * 
-from trafcapIpPacket cimport * 
+from protectus_sentry.trafcap.cpf_ring cimport * 
+from protectus_sentry.trafcap.trafcapIpPacket cimport * 
 
 proc = None
 
@@ -70,7 +70,7 @@ def parseOptions():
 
 def exitNowUni(message):
     # Kill the childprocess sniffing packets
-    print "Exiting..."
+    print("Exiting...")
     if proc:
         os.kill(proc.pid, signal.SIGTERM)
     sys.exit(message)
@@ -78,7 +78,7 @@ def exitNowUni(message):
 # This is not being used - maybe delete
 def exitNowMulti(message):
     # Kill the childprocess sniffing packets
-    print "Exiting now...", message
+    print("Exiting now...", message)
     global main_running
     main_running = False
     global packetParser_running
@@ -190,13 +190,13 @@ def main():
         group_class = eval(proto_opts['group_class_name'])
 
         def catchSignal1(signum, stac):
-            print 'Caught Signal1 in main....'
+            print('Caught Signal1 in main....')
 
         def catchSignal2(signum, stack):
-            print 'Caught Signal2 in main....'
+            print('Caught Signal2 in main....')
 
         def catchCntlC(signum, stack):
-            print 'Caught CntlC in main....'
+            print('Caught CntlC in main....')
             global main_running
             main_running = False
 
@@ -422,27 +422,27 @@ def main():
 
             if loop_count % 10 == 0:
                 if loop_count % 20 != 0:
-                    print '{0:>10}{1:>5}{2:>14}{3:>5}{4:>14}{5:>5}{6:>11}{7:>5}{8:>10}{9:>5}{10:>11}{11:>5}{12:>10}{13:>5}'.format(
+                    print('{0:>10}{1:>5}{2:>14}{3:>5}{4:>14}{5:>5}{6:>11}{7:>5}{8:>10}{9:>5}{10:>11}{11:>5}{12:>10}{13:>5}'.format(
                     '---parser:', packet_parser.pid, 
                     '--     -updtr:', session_updater.pid, 
                     '-        --kpr:', session_keeper.pid,
                     '-  -gUpdtr:',group_updater.pid,
                     '-   -gKpr:', group_keeper.pid,
                     '- -g2Updtr:',group2_updater.pid,
-                    '-  -g2Kpr:', group2_keeper.pid)
+                    '-  -g2Kpr:', group2_keeper.pid))
                 else:
-                    print str(datetime.today().strftime("%a %m/%d/%y %H:%M:%S"))+' - - - - - d:h:m:s '+str(loop_count//86400)+':'+str((loop_count//3600)%24)+':'+str((loop_count//60)%60)+':'+str(loop_count%60)+' - - - - - gUpdtrSessHist: '+str(gushc)+' - - - - - g2UpdtrSessHist: '+str(g2ushc)
-                print start_bold,
+                    print(str(datetime.today().strftime("%a %m/%d/%y %H:%M:%S"))+' - - - - - d:h:m:s '+str(loop_count//86400)+':'+str((loop_count//3600)%24)+':'+str((loop_count//60)%60)+':'+str(loop_count%60)+' - - - - - gUpdtrSessHist: '+str(gushc)+' - - - - - g2UpdtrSessHist: '+str(g2ushc))
+                print(start_bold, end="")
                 #print '{0:>8} {1:>6} {2:^4}  {3:>7}  {4:^4}__{5:^4}  {6:>7} {7:^4}  {8:>7} {9:^4}  {10:^4} {11:>8} {12:>7} {13:^4}  {14:^4} {15:>8}'.format(
                 #      'drop', 'pps',   ' ', 'lsps',   '',    ' ', 'liveSns', ' ',  'ssps',  ' ',    ' ', 'liveGrps', 'ss2ps', ' ', ' ', 'liveGrps2'),
 
                     #       0  55114  422>     669  426>     0<  769487    0>    2783    0>    0<   42088     839    0>    0<   87193
                 hdr='    drop    pps .....    lsps ............ liveSns .....    ssps ...........  lvGrps   ss2ps ........... lvGrps2'
-                print hdr,
-                print end_bold
+                print(hdr,end="")
+                print(end_bold,"")
 
-            print '{0:9d} {1:6d} {2:4d}> {3:7d} {4:4d}>  {5:4d}< {6:7d} {7:4d}> {8:7d} {9:4d}> {10:4d}< {11:7d} {12:7d} {13:4d}> {14:4d}< {15:7d}'.format(
-                    rsd,   pps,   ppql,  ulsps,  saql,    sdql,   klsc,  ssql,   ssps,  gaql,    gdql,   gklgc, ss2ps, g2aql, g2dql, g2klgc)
+            print('{0:9d} {1:6d} {2:4d}> {3:7d} {4:4d}>  {5:4d}< {6:7d} {7:4d}> {8:7d} {9:4d}> {10:4d}< {11:7d} {12:7d} {13:4d}> {14:4d}< {15:7d}'.format(
+                    rsd,   pps,   ppql,  ulsps,  saql,    sdql,   klsc,  ssql,   ssps,  gaql,    gdql,   gklgc, ss2ps, g2aql, g2dql, g2klgc))
 
             loop_count += 1
             sys.stdout.flush()
@@ -459,25 +459,25 @@ def main():
         # Just in case...
         time.sleep(1)
         if packet_parser.is_alive(): 
-            print 'parser still alive...';sys.stdout.flush()
+            print('parser still alive...');sys.stdout.flush()
             packet_parser.terminate()
         if session_updater.is_alive(): 
-            print 'updater still alive...';sys.stdout.flush()
+            print('updater still alive...');sys.stdout.flush()
             #session_updater.terminate()
         if session_keeper.is_alive(): 
-            print 'keeper still alive...';sys.stdout.flush()
+            print('keeper still alive...');sys.stdout.flush()
             #session_keeper.terminate()
         if group_updater.is_alive(): 
-            print 'group_updater still alive...';sys.stdout.flush()
+            print('group_updater still alive...');sys.stdout.flush()
             #group_updater.terminate()
         if group_keeper.is_alive(): 
-            print 'group_keeper still alive...';sys.stdout.flush()
+            print('group_keeper still alive...');sys.stdout.flush()
             #group_keeper.terminate()
         if group2_updater.is_alive(): 
-            print 'group2_updater still alive...';sys.stdout.flush()
+            print('group2_updater still alive...');sys.stdout.flush()
             #group2_updater.terminate()
-        if group2_keeper.is_alive(): 
-            print 'group2_keeper still alive...';sys.stdout.flush()
+        if group2_keeper.is_alive():
+            print('group2_keeper still alive...');sys.stdout.flush()
             #group2_keeper.terminate()
 
     else:
@@ -535,25 +535,25 @@ def main():
 
         def catchSignal1(signum, stac):
             num_sessions = len(session.info_dict)
-            print "\n", num_sessions, " active sessions_info entries:"
+            print("\n", num_sessions, " active sessions_info entries:")
             for k in session.info_dict:
-                print "   ",
-                print session.info_dict[k]
-            print " "
-            print capture.info_dict[pc.capture_dict_key]
+                print("   ", end="")
+                print(session.info_dict[k])
+            print(" ")
+            print(capture.info_dict[pc.capture_dict_key])
             if num_sessions >= 1:
-                print num_sessions, " active session_info entries displayed."
+                print(num_sessions, " active session_info entries displayed.")
 
         def catchSignal2(signum, stack):
             num_sessions = len(session.bytes_dict)
-            print "\n", num_sessions, " active sessions byte entries:"
+            print("\n", num_sessions, " active sessions byte entries:")
             for k in session.bytes_dict:
-                print "   ",
-                print session.bytes_dict[k]
-            print " "
-            print capture.bytes_dict[pc.capture_dict_key]
+                print("   ", end="")
+                print(session.bytes_dict[k])
+            print(" ")
+            print(capture.bytes_dict[pc.capture_dict_key])
             if num_sessions >= 1:
-                print num_sessions, " active session_byte entries displayed."
+                print(num_sessions, " active session_byte entries displayed.")
 
         def catchCntlC(signum, stack):
             exitNowUni('')
@@ -564,7 +564,7 @@ def main():
         signal.signal(signal.SIGTERM, catchCntlC)
 
         # Pre-build the sessionInfo dictionary for more more efficient db writes
-        print "Pre-building dictionaries..."
+        print("Pre-building dictionaries...")
         oldest_session_time = int(time.time()) - trafcap.session_expire_timeout
 
         # sessionInfo dictionary
@@ -617,12 +617,12 @@ def main():
                     continue
 
             if exceptready:
-                print "Something in exceptready..."
-                print exceptready
+                print("Something in exceptready...")
+                print(exceptready)
 
             if std_err:
-                print "Something in std_err..."
-                print std_err
+                print("Something in std_err...")
+                print(std_err)
 
             # Update current_time approx once per second.  Current_time used to decide
             # when to write dictionary items to db so high precision not needed.
@@ -638,8 +638,8 @@ def main():
                 
                 capture.updateDb()
 
-                if not options.quiet: print "\rActive: ", len(session.info_dict), \
-                                            ", ", len(session.bytes_dict), "\r",
+                if not options.quiet: print("\rActive: ", len(session.info_dict), \
+                                            ", ", len(session.bytes_dict), "\r", end="")
                 sys.stdout.flush()
            
             else:
@@ -688,14 +688,14 @@ def main():
                     except Exception, e:
                         # Something went wrong with parsing the line. Save for analysis
                         if not options.quiet:
-                            print e
-                            print "\n-------------line------------------\n"
-                            print line
-                            print "\n-------------lines------------------\n"
-                            print lines
-                            print "\n-------------buffer------------------\n"
-                            print the_buffer
-                            print traceback.format_exc()
+                            print(e)
+                            print("\n-------------line------------------\n")
+                            print(line)
+                            print("\n-------------lines------------------\n")
+                            print(lines)
+                            print("\n-------------buffer------------------\n")
+                            print(the_buffer)
+                            print(traceback.format_exc())
            
                         trafcap.logException(e, line=line, lines=lines, 
                                                 the_buffer=the_buffer)
@@ -738,8 +738,8 @@ def main():
                     #continue
 
                 if not options.quiet: 
-                    print "\rActive: ", len(session.info_dict), ", ", \
-                          len(session.bytes_dict), "\r",
+                    print("\rActive: ", len(session.info_dict), ", ", \
+                          len(session.bytes_dict), "\r", end="")
                 sys.stdout.flush()
 
         exitNowUni('')

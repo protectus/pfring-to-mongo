@@ -125,11 +125,11 @@ def parseArgs():
 
     # Input validation 
     print('Python version: ', sys.version)
-    print 'Python version: ', sys.version
+    print('Python version: ', sys.version)
     a_path='/sys/class/net/'+args.interface
     if not os.path.isdir(a_path):
-        print '\nSpecified interface does not exist: ', args.interface
-        print 'Exiting.......try again.'
+        print('\nSpecified interface does not exist: ', args.interface)
+        print('Exiting.......try again.')
         sys.exit()
     
     return args
@@ -239,7 +239,7 @@ def main():
                     # Create packet padding if needed
                     pad_len = pcap_ph.wire_len - pcap_ph.capt_len
                     if pad_len >= 0 and pad_len < 65535:
-                        memset(pcap_pkt_bytes + pcap_ph.capt_len, 'x', pad_len)
+                        memset(pcap_pkt_bytes + pcap_ph.capt_len, b'x', pad_len)
                     else:
                         # Assume aquisition lost if problem with pad calculation
                         pcap_aquired = False

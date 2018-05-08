@@ -10,11 +10,11 @@ import subprocess
 from optparse import OptionParser
 import math
 import traceback
-import trafcap
-from trafcapIpPacket import *
-from trafcapIpPacket cimport * 
-from trafcapEthernetPacket import *
-from trafcapContainer import *
+import protectus_sentry.trafcap
+from protectus_sentry.trafcap.trafcapIpPacket import *
+from protectus_sentry.trafcap.trafcapIpPacket cimport * 
+from protectus_sentry.trafcap.trafcapEthernetPacket import *
+from protectus_sentry.trafcap.trafcapContainer import *
 import multiprocessing
 #import queue
 from collections import deque
@@ -30,7 +30,7 @@ from libc.stdint cimport uint64_t, uint32_t, uint16_t, uint8_t, int64_t
 from libc.string cimport memcpy, memset
 from libc.stdlib cimport malloc
 import ctypes
-from cpf_ring cimport * 
+from protectus_sentry.trafcap.cpf_ring cimport * 
 
 
 # Hack to bypass error when importing macro from pfring.h
@@ -45,7 +45,7 @@ def packetParser(packet_cursor_pipe, parsed_packet_count, packet_ring_buffer,
 
     # First, setup signal handling
     def packetParserCatchCntlC(signum, stack):
-        print 'Caught CntlC in packetParser...'
+        print('Caught CntlC in packetParser...')
         global packetParser_running
         packetParser_running = False
         #pfring_breakloop(pd)
@@ -122,7 +122,7 @@ def packetParser(packet_cursor_pipe, parsed_packet_count, packet_ring_buffer,
             packet_cursor_p[0] = (packet_cursor_p[0] + 1) % trafcap.packet_ring_buffer_size 
 
     except IOError: # Handle signal during pipe access
-        if not trafcap.options.quiet: print 'packetParser handled IOError....'
+        if not trafcap.options.quiet: print('packetParser handled IOError....')
 
     time.sleep(1)   # sample code included this - not sure if necessary
     pfring_close(pd)
@@ -133,7 +133,7 @@ def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_bu
 
     # Signal Handling
     def sessionUpdaterCatchCntlC(signum, stack):
-        print 'Caught CntlC in sessionUpdater...'
+        print('Caught CntlC in sessionUpdater...')
         global sessionUpdater_running
         sessionUpdater_running = False
 
@@ -257,7 +257,7 @@ def sessionUpdater(packet_cursor_pipe, session_updater_pkt_count, packet_ring_bu
                     gc.collect()
 
     except IOError: # Handle signal during pipe access
-        if not trafcap.options.quiet: print 'sessionUpdater handled IOError....'
+        if not trafcap.options.quiet: print('sessionUpdater handled IOError....')
                    
 
 cdef bint sessionBookkeeper_running = True
@@ -272,7 +272,7 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
 
     # Signal Handling
     def sessionBookkeeperCatchCntlC(signum, stack):
-        print 'Caught CntlC in sessionBookkeeper...'
+        print('Caught CntlC in sessionBookkeeper...')
         global sessionBookkeeper_running
         sessionBookkeeper_running = False
 
@@ -605,12 +605,12 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
                     # update CC or vlanId
                     (write_session_function[0])(info_bulk_writer, bytes_bulk_writer, capture_info_coll, 
                                                 capture_object_ids, capture_session, 0, 
-                                                capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE / 2), 
+                                                capture_scheduled_checkup_time - BYTES_DOC_SIZE - (BYTES_DOC_SIZE // 2), 
                                                 capture_scheduled_checkup_time - BYTES_DOC_SIZE, dummy_session,
                                                 session, None, live_session_locks_len)
     
                     mongo_capture_writes += 2
-                    capture_scheduled_checkup_time = second_to_write + (BYTES_DOC_SIZE / 2)
+                    capture_scheduled_checkup_time = second_to_write + (BYTES_DOC_SIZE // 2)
     
                     # Write pending bulk operations to mongo
                     try:
@@ -636,7 +636,7 @@ def sessionBookkeeper(live_session_buffer, live_session_locks,
                 last_second_written += 1
 
     except IOError: # Handle signal during pipe access
-        if not trafcap.options.quiet: print 'sessionBookkeeper handled IOError....'
+        if not trafcap.options.quiet: print('sessionBookkeeper handled IOError....')
 
 # Performance profiling - 1 of 3
 #import cProfile, pstats, io
@@ -655,7 +655,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
     # Signal Handling
     def groupUpdaterCatchCntlC(signum, stack):
         msg_str = 'Caught CntlC in group' + str(group_type+1) + 'Updater...'
-        print msg_str 
+        print(msg_str) 
         global groupUpdater_running
         groupUpdater_running = False
 
@@ -813,7 +813,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                     capture_group = <GenericGroup *>(capture_group_buffer_addr + 
                                                      (capture_group_slot_p[0] * capture_group_struct_size))
     
-                    print group_type, '   Allocated capture_group_slot', capture_group_slot_p[0], ', key:',capture_group_key, ' qlen:', len(available_capture_group_slots)
+                    print(group_type, '   Allocated capture_group_slot', capture_group_slot_p[0], ', key:',capture_group_key, ' qlen:', len(available_capture_group_slots))
                     # No need to lock group yet - it is only known about here until sent over pipe
                     init_capture_group_function[0](capture_group, group_type, <uint64_t>saved_session.tb)
     
@@ -968,7 +968,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                 # Generate a key so we can delete it from the dictionary
                 capture_group = <GenericGroup *>(capture_group_buffer_addr + 
                                                         (capture_group_slot_p[0] * capture_group_struct_size))
-                print group_type, " Deallocated capture_group_slot", capture_group_slot_p[0], ', key:', capture_group.tbm, ', qlen:', len(available_capture_group_slots)
+                print(group_type, " Deallocated capture_group_slot", capture_group_slot_p[0], ', key:', capture_group.tbm, ', qlen:', len(available_capture_group_slots))
                 del capture_group_slot_map[capture_group.tbm]
 
                 # For debug
@@ -994,7 +994,7 @@ def groupUpdater(saved_session_cursor_pipe, group_updater_saved_session_count,
                 gc.collect()
 
     except IOError: # Handle signal during pipe access
-        if not trafcap.options.quiet: print 'groupUpdater handled IOError....'
+        if not trafcap.options.quiet: print('groupUpdater handled IOError....')
  
     # Performance profiling - 3 of 3
     #pr.disable()
@@ -1015,7 +1015,7 @@ def groupBookkeeper(group_buffer, group_locks,
     # Signal Handling
     def groupBookkeeperCatchCntlC(signum, stack):
         msg_str = 'Caught CntlC in group' + str(group_type+1) + 'Bookkeeper...'
-        print msg_str 
+        print(msg_str)
         global groupBookkeeper_running
         groupBookkeeper_running = False
 
@@ -1416,5 +1416,5 @@ def groupBookkeeper(group_buffer, group_locks,
                 last_second_written += 1
 
     except IOError: # Handle signal during pipe access
-        if not trafcap.options.quiet: print 'groupBookkeeper handled IOError....'
+        if not trafcap.options.quiet: print('groupBookkeeper handled IOError....')
 

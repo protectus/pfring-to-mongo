@@ -5,7 +5,7 @@
 # Classes to help pull data off the wire and update mongo
 import subprocess
 import time
-import trafcap
+from protectus_sentry.trafcap import trafcap
 from datetime import datetime
 import traceback
 import re
@@ -18,11 +18,11 @@ from struct import unpack  # For IP Address parsing
 from ctypes import Structure, c_uint16, c_uint32, c_uint64, c_int16, c_uint8, c_double, c_char
 
 # CYTHON
-from trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, TCPPacketHeaders, TCPSession
+from protectus_sentry.trafcap.trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, TCPPacketHeaders, TCPSession
 from libc.stdint cimport uint64_t, uint32_t, uint16_t, int16_t
 from libc.string cimport memset
 from libc.stdlib cimport malloc
-from cpf_ring cimport *
+from protectus_sentry.trafcap.cpf_ring cimport *
 import random
 
 class IpPacket(object):
@@ -190,7 +190,7 @@ class IpPacket(object):
 
     @classmethod
     def updateInfoDict(pc, data, a_info):
-        print 'Override IpPacket.updateInfoDict() in subclass'
+        print('Override IpPacket.updateInfoDict() in subclass')
         return
 
     @classmethod
@@ -231,7 +231,7 @@ class IpPacket(object):
         
     @classmethod
     def buildInfoDictItem(pc, key, data):
-        print 'Override IpPacket.buildInfoDictItem() in subclass'
+        print('Override IpPacket.buildInfoDictItem() in subclass')
 
     @classmethod
     def buildBytesDictItem(pc, key, data, curr_seq, ip1_bytes, ip2_bytes):
@@ -430,62 +430,62 @@ cdef int parse_udp_packet(GenericPacketHeaders* g_pkt, pfring_pkthdr* hdr) excep
 cdef int print_tcp_packet(GenericPacketHeaders* g_packet) except -1:
     cdef TCPPacketHeaders* packet = <TCPPacketHeaders*>g_packet
 
-    print "IP1: ", str(packet.ip1)
-    print "port1: ", str( packet.port1)
-    print ""
-    print "IP2: ", str( packet.ip2)
-    print "port2: ", str( packet.port2)
-    print ""
-    print "bytes: ", str( packet.bytes)
-    print "flags: ", str( packet.flags)
-    print "vlanid: ", str( packet.vlan_id)
-    print "timestamp: ", str( packet.base.timestamp)
+    print("IP1: ", str(packet.ip1))
+    print("port1: ", str( packet.port1))
+    print("")
+    print("IP2: ", str( packet.ip2))
+    print("port2: ", str( packet.port2))
+    print("")
+    print("bytes: ", str( packet.bytes))
+    print("flags: ", str( packet.flags))
+    print("vlanid: ", str( packet.vlan_id))
+    print("timestamp: ", str( packet.base.timestamp))
 
 cdef int print_tcp_session(GenericSession* g_session, uint64_t time_marker) except -1:
     cdef TCPSession* session = <TCPSession*>g_session
 
-    print "IP1: ", str(session.ip1),
-    print "port1: ", str( session.port1),
-    print "bytes1: ", str( session.bytes1),
-    print "pkts1: ", str( session.pkts1),
-    print "flags1: ", str( session.flags1)
-    print "IP2: ", str( session.ip2),
-    print "port2: ", str( session.port2),
-    print "bytes2: ", str( session.bytes2),
-    print "pkts2: ", str( session.pkts2),
-    print "flags2: ", str( session.flags2)
-    print "vlanid: ", str( session.vlan_id),
-    print "time begin: ", str( session.base.tb),
-    print "time end: ", str( session.base.te),
-    print "num packets: ", str( session.base.packets)
-    print "B1\tB2"
+    print("IP1: ", str(session.ip1),)
+    print("port1: ", str( session.port1),)
+    print("bytes1: ", str( session.bytes1),)
+    print("pkts1: ", str( session.pkts1),)
+    print("flags1: ", str( session.flags1))
+    print("IP2: ", str( session.ip2),)
+    print("port2: ", str( session.port2),)
+    print("bytes2: ", str( session.bytes2),)
+    print("pkts2: ", str( session.pkts2),)
+    print("flags2: ", str( session.flags2))
+    print("vlanid: ", str( session.vlan_id),)
+    print("time begin: ", str( session.base.tb),)
+    print("time end: ", str( session.base.te),)
+    print("num packets: ", str( session.base.packets))
+    print("B1\tB2")
     for cursor in range(BYTES_RING_SIZE):
         b = session.base.traffic_bytes[cursor]
-        print str(b[0])+"\t"+str(b[1])+("<--" if cursor == time_marker % BYTES_RING_SIZE else "")
+        print(str(b[0])+"\t"+str(b[1])+("<--" if cursor == time_marker % BYTES_RING_SIZE else ""))
     
 cdef int print_tcp_group(GenericGroup* g_group, uint64_t time_marker, uint8_t group_type) except -1:
     cdef TCPGroup* group = <TCPGroup*>g_group
 
-    print "IP1: ", str(group.ip1),
-    print "bytes1: ", str( group.bytes1),
-    print "IP2: ", str( group.ip2),
-    print "port2: ", str( group.port2),
-    print "bytes2: ", str( group.bytes2),
-    print "vlanid: ", str( group.vlan_id),
-    print "time begin: ", str( group.base.tbm),
-    print "time end: ", str( group.base.tem),
-    print "ns: ", str( group.base.ns),
-    print "ne: ", str( group.base.ne)
-    print "B1\tB2"
+    print("IP1: ", str(group.ip1),)
+    print("bytes1: ", str( group.bytes1),)
+    print("IP2: ", str( group.ip2),)
+    print("port2: ", str( group.port2),)
+    print("bytes2: ", str( group.bytes2),)
+    print("vlanid: ", str( group.vlan_id),)
+    print("time begin: ", str( group.base.tbm),)
+    print("time end: ", str( group.base.tem),)
+    print("ns: ", str( group.base.ns),)
+    print("ne: ", str( group.base.ne))
+    print("B1\tB2")
     for cursor in range(90):
         offset = calc_group2_offset(time_marker) if group_type else calc_group1_offset(time_marker)
         b0 = group.base.traffic_bytes[cursor][0]
         b1 = group.base.traffic_bytes[cursor][1]
         if b0 != 0 and b1 != 0:
-            print str(cursor)+"\t"+\
+            print(str(cursor)+"\t"+\
                               str(b0)+\
                               "\t"+\
-                              str(b1)+("<--" if cursor == offset else "")
+                              str(b1)+("<--" if cursor == offset else ""))
     
 cdef GenericSession* alloc_tcp_capture_session():
     cdef TCPSession* session = <TCPSession*>malloc(sizeof(TCPSession))
@@ -519,7 +519,7 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
     if packet.flags == 2:
         session.ip1 = packet.ip1
         session.port1 = packet.port1
-        session.flags1 = packet.flags<<((packet.flags&16)/2)
+        session.flags1 = packet.flags<<((packet.flags&16)//2)
         session.bytes1 = packet.bytes
         session.pkts1 = 1 
         session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][0] = packet.bytes
@@ -540,7 +540,7 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
 
         session.ip2 = packet.ip1
         session.port2 = packet.port1
-        session.flags2 = packet.flags<<((packet.flags&16)/2)
+        session.flags2 = packet.flags<<((packet.flags&16)//2)
         session.bytes2 = packet.bytes
         session.pkts2 = 1 
         session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][1] = packet.bytes
@@ -549,7 +549,7 @@ cdef int generate_tcp_session(GenericSession* g_session, GenericPacketHeaders* g
     else:
         session.ip1 = packet.ip1
         session.port1 = packet.port1
-        session.flags1 = packet.flags<<((packet.flags&16)/2)
+        session.flags1 = packet.flags<<((packet.flags&16)//2)
         session.bytes1 = packet.bytes
         session.pkts1 = 1 
         session.base.traffic_bytes[<uint64_t>packet.base.timestamp % BYTES_RING_SIZE][0] = packet.bytes
@@ -647,7 +647,7 @@ cdef int update_tcp_session(GenericSession* g_session, GenericPacketHeaders* g_p
         #session.port1 = packet.port1
         session.bytes1 += packet.bytes
         session.pkts1 += 1 
-        session.flags1 |= packet.flags<<((packet.flags&16)/2)
+        session.flags1 |= packet.flags<<((packet.flags&16)//2)
         session.base.traffic_bytes[bytes_slot][0] += packet.bytes
 
     else:
@@ -655,7 +655,7 @@ cdef int update_tcp_session(GenericSession* g_session, GenericPacketHeaders* g_p
         #session.port2 = packet.port2
         session.bytes2 += packet.bytes
         session.pkts2 += 1 
-        session.flags2 |= packet.flags<<((packet.flags&16)/2)
+        session.flags2 |= packet.flags<<((packet.flags&16)//2)
         session.base.traffic_bytes[bytes_slot][1] += packet.bytes
 
     return 0
@@ -1006,7 +1006,7 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             except Exception, e:
                 # Something went wrong 
                 if not trafcap.options.quiet:
-                    print e, info_doc, traceback.format_exc()
+                    print(e, info_doc, traceback.format_exc())
                 trafcap.logException(e, info_doc=info_doc)
             #print info_doc,"at",object_ids[slot]
 
@@ -1032,7 +1032,7 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             except Exception, e:
                 # Something went wrong 
                 if not trafcap.options.quiet:
-                    print e, info_update,traceback.format_exc()
+                    print(e, info_update,traceback.format_exc())
                 trafcap.logException(e, info_update=info_update)
 
     # We always need to write a bytes doc.
@@ -1104,7 +1104,7 @@ cdef int write_tcp_session(object info_bulk_writer, object bytes_bulk_writer, ob
         except Exception, e:
             # Something went wrong 
             if not trafcap.options.quiet:
-                print e, bytes_doc,traceback.format_exc()
+                print(e, bytes_doc,traceback.format_exc())
             trafcap.logException(e, bytes_doc=bytes_doc)
 
     return 0 
@@ -1208,7 +1208,7 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             except Exception, e:
                 # Something went wrong 
                 if not trafcap.options.quiet:
-                    print e, info_doc,traceback.format_exc()
+                    print(e, info_doc,traceback.format_exc())
                 trafcap.logException(e, info_doc=info_doc)
             #print info_doc,"at",object_ids[slot]
 
@@ -1234,7 +1234,7 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
             except Exception, e:
                 # Something went wrong 
                 if not trafcap.options.quiet:
-                    print e, info_update,traceback.format_exc()
+                    print(e, info_update,traceback.format_exc())
                 trafcap.logException(e, info_update=info_update)
 
     # We always need to write a bytes doc.
@@ -1311,7 +1311,7 @@ cdef int write_udp_session(object info_bulk_writer, object bytes_bulk_writer, ob
         except Exception, e:
             # Something went wrong 
             if not trafcap.options.quiet:
-                print e, bytes_doc,traceback.format_exc()
+                print(e, bytes_doc,traceback.format_exc())
             trafcap.logException(e, bytes_doc=bytes_doc)
 
     return 0 
@@ -1441,7 +1441,7 @@ cdef int write_tcp_group(object group_bulk_writer, object group_collection, list
             except Exception, e:
                 # Something went wrong 
                 if not trafcap.options.quiet:
-                    print e, group_doc, traceback.format_exc()
+                    print(e, group_doc, traceback.format_exc())
                 trafcap.logException(e, group_doc=group_doc)
             #print info_doc,"at",object_ids[slot]
 
@@ -1464,7 +1464,7 @@ cdef int write_tcp_group(object group_bulk_writer, object group_collection, list
             except Exception, e:
                 # Something went wrong 
                 if not trafcap.options.quiet:
-                    print e, group_update,traceback.format_exc()
+                    print(e, group_update,traceback.format_exc())
                 trafcap.logException(e, group_update=group_update)
 
     # debug
@@ -1530,7 +1530,7 @@ cdef int write_udp_group(object group_bulk_writer, object group_collection, list
             except Exception, e:
                 # Something went wrong 
                 if not trafcap.options.quiet:
-                    print e, group_doc, traceback.format_exc()
+                    print(e, group_doc, traceback.format_exc())
                 trafcap.logException(e, group_doc=group_doc)
             #print info_doc,"at",object_ids[slot]
 
@@ -1553,7 +1553,7 @@ cdef int write_udp_group(object group_bulk_writer, object group_collection, list
             except Exception, e:
                 # Something went wrong 
                 if not trafcap.options.quiet:
-                    print e, group_update,traceback.format_exc()
+                    print(e, group_update,traceback.format_exc())
                 trafcap.logException(e, group_update=group_update)
     return 0 
 
@@ -2692,7 +2692,7 @@ class IcmpPacket(IpPacket):
                     if pc.last_dict_cleanup_time < epoch_time_int - 60: 
                         pc.last_dict_cleanup_time = epoch_time_int
                         if not trafcap.options.quiet:
-                            print "Clean-up icmp requests...", len(pc.icmp_req)
+                            print("Clean-up icmp requests...", len(pc.icmp_req))
                         for key in pc.icmp_req:
                             if pc.icmp_req[key][1] < int(epoch_time_float) - \
                                                 trafcap.session_expire_timeout:
@@ -3372,8 +3372,8 @@ class RtpPacket(IpPacket):
             a_bytes[pc.b_pkts_lost] = 0
             a_bytes[pc.b_pkts_totl] = 0
         else:
-            print 'Problem with bytes arrays...'
-            print a_bytes
+            print('Problem with bytes arrays...')
+            print(a_bytes)
 
         a_bytes[pc.b_lpj_array][-1][pc.b_jitr] = \
                                     round(j*pc.jitter_ts_units_to_msec_conv, 1)
