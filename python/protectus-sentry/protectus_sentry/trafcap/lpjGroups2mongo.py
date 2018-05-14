@@ -218,13 +218,13 @@ def main():
                 data_time = a_data['sb'] + item[pc.d_offset]
                 if data_time >= mbp and data_time <= mbp+59: 
                     chunck_start1 = trafcap.secondsTo10Seconds(data_time)
-                    rtl_offset1 = int((chunck_start1 - doc_win_start1) / chunck_size1)
+                    rtl_offset1 = (chunck_start1 - doc_win_start1) // chunck_size1
                     rtl_list1[rtl_offset1][pc.g_rtl] += item[pc.d_rtl]
                     rtl_list1[rtl_offset1][pc.g_count] += 1 
                     pl_list1[rtl_offset1][pc.g_count] += 1 
 
                     chunck_start2 = trafcap.secondsTo2Minute(data_time)
-                    rtl_offset2 = int((chunck_start2 - doc_win_start2) / chunck_size2)
+                    rtl_offset2 = (chunck_start2 - doc_win_start2) // chunck_size2
                     rtl_list2[rtl_offset2][pc.g_rtl] += item[pc.d_rtl]
                     rtl_list2[rtl_offset2][pc.g_count] += 1 
                     pl_list2[rtl_offset2][pc.g_count] += 1 
@@ -233,11 +233,11 @@ def main():
                 data_time = a_data['sb'] + item[pc.d_offset]
                 if data_time >= mbp and data_time <= mbp+59: 
                     chunck_start1 = trafcap.secondsTo10Seconds(data_time)
-                    pl_offset1 = int((chunck_start1 - doc_win_start1) / chunck_size1)
+                    pl_offset1 = (chunck_start1 - doc_win_start1) // chunck_size1
                     pl_list1[pl_offset1][pc.g_pl] += item[pc.d_pl]
                 
                     chunck_start2 = trafcap.secondsTo2Minute(data_time)
-                    pl_offset2 = int((chunck_start2 - doc_win_start2) / chunck_size2)
+                    pl_offset2 = (chunck_start2 - doc_win_start2) // chunck_size2
                     pl_list2[pl_offset2][pc.g_pl] += item[pc.d_pl]
 
         # End looping through all sess_data documents in a chunck 
@@ -251,7 +251,7 @@ def main():
 
             # average data for six new, 10 second entries in groups1
             a_group1 = session1.groups_dict[group_key]
-            grp_offset1 = int((mbp - a_group1[pc.g_tbm]) / chunck_size1)
+            grp_offset1 = (mbp - a_group1[pc.g_tbm]) // chunck_size1
             for i in range(grp_offset1, grp_offset1+6):
                 rtl_total = rtl_list1[i][pc.g_rtl] 
                 rtl_count = rtl_list1[i][pc.g_count] 
