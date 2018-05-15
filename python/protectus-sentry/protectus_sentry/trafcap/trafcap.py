@@ -13,7 +13,7 @@ import traceback
 import sys
 import GeoIP
 import json
-# Include sentry-hardware which defines network interfaces
+# Include sentry-hardware which defines network interfaces 
 sys.path.extend(['/opt/sentry/hardware'])
 import sentryHardware
 
