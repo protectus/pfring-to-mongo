@@ -1,7 +1,6 @@
-import os
-import sys
-from zipfile import ZipFile # For egg manipulation
 import glob
+from subprocess import run
+import sys
 #from distutils.extension import Extension
 from setuptools import setup, find_packages, Extension
 
@@ -66,35 +65,15 @@ setup(name='protectus-sentry',
       **setup_settings
       )
 
-# XXX: Apparently, this should actually be implimented as an extention of
-# setuptools.install, maybe?  http://stackoverflow.com/q/1321270
-if sys.argv[1] == 'bdist_egg':
+if sys.argv[1] == 'bdist_wheel':
     dist_dir = "dist"
-    if '--dist-dir' in sys.argv:
-        dist_dir=sys.argv[sys.argv.index('--dist-dir')+1]
 
     print("Stripping wheel of proprietary source code... (hopefully)")
-    filenames = glob.glob(dist_dir+'/protectus_sentry*.wheel')
+    filenames = glob.glob(dist_dir+'/protectus_sentry*.whl')
     if len(filenames) != 1:
         print("Not sure which wheel file to use! Tell Tim to fix his setup.py.")
 
     # Move the original to make room for the new
     target_name = filenames[0]
-    original = target_name + '.original'
-    os.rename(target_name,original)
-    wheel = ZipFile(original)
-    newwheel = ZipFile(target_name,'w')
-
-    # Make a new wheel file, and put everything except the .c files into it.
-    for item in wheel.infolist():
-        path = item.filename
-        if path.endswith('.c'):
-            print("\tRemoving " + path)
-        else:
-            newwheel.writestr(item, wheel.read(path))
-
-    wheel.close()
-    newwheel.close()
-    os.remove(original)
-
-    print("Done removing proprietary source code")
+    print("Here we should call obfuscate.sh", target_name)
+    run(["../../scripts/build/obfuscatewheel.sh", target_name])

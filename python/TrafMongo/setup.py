@@ -1,8 +1,6 @@
-import os
-import sys
-from zipfile import ZipFile # For egg manipulation
 import glob
-from fnmatch import fnmatch
+from subprocess import run
+import sys
 
 from setuptools import setup, find_packages
 
@@ -63,36 +61,3 @@ setup(name='TrafMongo',
       paster_plugins=['pyramid'],
       **setup_settings
       )
-
-# XXX: Apparently, this should actually be implimented as an extention of
-# setuptools.install, maybe?  http://stackoverflow.com/q/1321270
-if sys.argv[1] == 'bdist_egg':
-    dist_dir = "dist"
-    if '--dist-dir' in sys.argv:
-        dist_dir=sys.argv[sys.argv.index('--dist-dir')+1]
-
-    print("Stripping egg of proprietary source code... (hopefully)")
-    filenames = glob.glob(dist_dir+'/TrafMongo*.egg')
-    if len(filenames) != 1:
-        print("Not sure which egg file to use! Tell Tim to fix his setup.py.")
-
-    # Move the original to make room for the new
-    target_name = filenames[0]
-    original = target_name + '.original'
-    os.rename(target_name,original)
-    egg = ZipFile(original)
-    newegg = ZipFile(target_name,'w')
-
-    # Make a new egg file, and put everything except the .c files into it.
-    for item in egg.infolist():
-        path = item.filename
-        if path.endswith('.c'):
-            print("\tRemoving " + path)
-        else:
-            newegg.writestr(item, egg.read(path))
-
-    egg.close()
-    newegg.close()
-    os.remove(original)
-
-    print("Done removing proprietary source code")
