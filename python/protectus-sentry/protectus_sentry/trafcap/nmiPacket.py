@@ -253,7 +253,7 @@ class DnsNmiPacket(NmiPacket):
         name_list = []     # Hostnames 
 
         try:
-            print('pkt:',pkt)
+            #print('pkt:',pkt)
             # Handle this case:
             #  1375454775.464517 DNS 216.21.236.249 54:75:d0:3e:55:fb 10.200.129.202 
             #  0x8a71 Standard query response 0x8a71  
