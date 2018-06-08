@@ -18,7 +18,7 @@ requires = [
     'GeoIP',
     'PyYAML',
     'passlib',
-    'ipcalc',
+    #'impacket',
     'dnspython',
     'pythondialog'
 ]
