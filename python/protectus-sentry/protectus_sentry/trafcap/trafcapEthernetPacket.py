@@ -336,7 +336,7 @@ class OtherPacket(EthernetPacket):
     @classmethod
     def startSniffer(pc):
         # ether proto ox86dd == IPv6
-        filter = 'not ip proto (1 or 6 or 17 or 41) and not ether proto 0x86dd' +\
+        filter = 'not ip proto (1 or 6 or 17 or 41) and not ether proto 0x86dd ' +\
                   trafcap.cap_filter
         proc = subprocess.Popen(['/usr/bin/tshark', 
                '-i', trafcap.sniff_interface, 

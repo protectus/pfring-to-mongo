@@ -12,8 +12,8 @@ import subprocess
 from optparse import OptionParser
 import math
 import configparser
-from protectus_sentry.trafcap import trafcap
-from protectus_sentry.trafcap.lpjPacket import IpLpjPacket, IcmpLpjPacket
+from protectus_sentry.trafcap.lpjPacket import IpLpjPacket, IcmpLpjPacket, TcpLpjPacket
+from protectus_sentry.trafcap.lpjPacket import *
 from protectus_sentry.trafcap import lpjContainer 
 import pymongo
 
