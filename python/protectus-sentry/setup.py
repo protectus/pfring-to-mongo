@@ -15,7 +15,7 @@ VERSION = '0.1'
 
 requires = [
     'pymongo == 3.6',
-    'GeoIP',
+    'geoip2',
     'PyYAML',
     'passlib',
     #'impacket',

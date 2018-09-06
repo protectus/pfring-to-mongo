@@ -1,7 +1,7 @@
 # trafcap.py - module for traffic capture
 #
 # Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
-#
+# 
 import time
 import configparser
 import socket
