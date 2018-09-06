@@ -11,11 +11,13 @@ from calendar import timegm
 from datetime import datetime
 import traceback
 import sys
-import GeoIP
+#import GeoIP
+import geoip2.database
 import json
 # Include sentry-hardware which defines network interfaces 
 sys.path.extend(['/opt/sentry/hardware'])
 import sentryHardware
+import csv
 
 last_seq_off_the_wire = 0
 current_time = 0.
@@ -323,23 +325,25 @@ def mongoSetup(**kwargs):
 #    # Python3 strings are UFT-8 by default.  Not sure what GeoIP API returns.
 #    return a_string if a_string else a_string 
 
-gi = GeoIP.open("/opt/sentry/geoip/GeoLiteCity.dat",GeoIP.GEOIP_STANDARD)
+city_reader = geoip2.database.Reader('/opt/sentry/geoip/GeoLite2-City.mmdb')
 def geoIpLookup(ip_addr):
     # ip_addr is a string representing a dotted quad
-    g_addr = gi.record_by_addr(ip_addr)
-    if g_addr == None:
+    try:
+        response = city_reader.city(ip_addr)
+    except geoip2.errors.AddressNotFoundError:
         addr_cc = None 
         addr_name = None 
         addr_loc = None
         addr_city = None
         addr_region = None
-    else:
-        # Fields should be UTF8 or could be None
-        addr_cc = g_addr['country_code']
-        addr_name = g_addr['country_name']
-        addr_loc = [g_addr['longitude'], g_addr['latitude']]
-        addr_city = g_addr['city']
-        addr_region = g_addr['region_name']
+        return addr_cc, addr_name, addr_loc, addr_city, addr_region
+    
+    # Fields should be UTF8 or could be None
+    addr_cc = response.country.iso_code
+    addr_name = response.country.name
+    addr_loc = [response.location.longitude, response.location.latitude]
+    addr_city = response.city.name
+    addr_region = response.subdivisions.most_specific.name
     return addr_cc, addr_name, addr_loc, addr_city, addr_region
 
 def geoIpLookupTpl(ip_addr):
@@ -348,23 +352,18 @@ def geoIpLookupTpl(ip_addr):
 def geoIpLookupInt(ip_addr):
     return geoIpLookup(intToString(ip_addr))
 
-ga_filename="/opt/sentry/geoip/GeoIPASNum.dat"
-ga = GeoIP.open(ga_filename, GeoIP.GEOIP_STANDARD)
+asn_reader = geoip2.database.Reader('/opt/sentry/geoip/GeoLite2-ASN.mmdb')
 def geoIpAsnLookup(ip_addr):
     # Returns org info given a string representing a dotted quad
-    g_org = ga.org_by_addr(ip_addr)
-    if g_org == None:
+    try:
+        response = asn_reader.asn(ip_addr)
+    except:
         org_asn = None
         org_name = None
-    else:
-        try:
-            # Returned format:    AS15169 Google Inc.
-            index = g_org.index(' ')
-            org_asn, org_name = g_org[:index], g_org[index+1:]
-        except ValueError:
-            # Returned format:  AS15457
-            org_asn = g_org.strip()
-            org_name = None
+        return org_asn, org_name
+
+    org_asn = response.autonomous_system_number
+    org_name = response.autonomous_system_organization
     return org_asn, org_name
 
 def geoIpAsnLookupTpl(ip_addr):
@@ -372,29 +371,6 @@ def geoIpAsnLookupTpl(ip_addr):
 
 def geoIpAsnLookupInt(ip_addr):
     return geoIpAsnLookup(intToString(ip_addr))
-
-
-def readAsnFile(asn_file):
-    # Loads the binary db into a dictionary of ints to strings
-    result = {}
-    for line in asn_file:
-        if "AS" not in line:
-            continue
-        
-        for item in line.split('\x00'):
-            match = ASN_RE.match(item)
-            if match is None:
-                continue
-
-            asn = int(match.group("asn"))
-            name = match.group("name")
-            result[asn] = name
-
-    if len(result) == 0:
-        print("Warning: No ASN names found to load in readAsnFile")
-
-    return result
-    
 
 asn_names = None
 def initAsnNames():
@@ -404,9 +380,18 @@ def initAsnNames():
         # Nothing to do
         return
 
-    with open(ga_filename, encoding='ISO-8859-1') as asn_file:
-        asn_names = readAsnFile(asn_file)
+    asn_names = {}
+    with open('/opt/sentry/geoip/GeoLite2-ASN-Blocks-IPv4.csv' ,newline='') as f:
+        csv_reader = csv.reader(f)
+        for row in csv_reader:
+            try:
+                asn = int(row[1])
+            except ValueError:
+                # First line in file is a header - ignore it
+                continue
 
+            name = row[2]
+            asn_names[asn] = name
 
 def geoIpAsnNameLookupInt(asn):
     if asn_names is None:
