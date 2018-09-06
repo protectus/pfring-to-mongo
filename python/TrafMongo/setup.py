@@ -17,7 +17,7 @@ requires = [
     'pyramid',
     'pyramid_mako',
     'pymongo == 3.6',
-    'pygeoip'
+#    'pygeoip'
 #    'protectus-sentry'
 ]
 
