@@ -381,7 +381,7 @@ def initAsnNames():
         return
 
     asn_names = {}
-    with open('/opt/sentry/geoip/GeoLite2-ASN-Blocks-IPv4.csv' ,newline='') as f:
+    with open('/opt/sentry/geoip/GeoLite2-ASN-Blocks-IPv4.csv' ,newline='', encoding='utf-8') as f:
         csv_reader = csv.reader(f)
         for row in csv_reader:
             try:
