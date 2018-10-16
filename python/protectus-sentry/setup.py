@@ -20,7 +20,8 @@ requires = [
     'passlib',
     #'impacket',
     'dnspython',
-    'pythondialog'
+    'pythondialog',
+    'pymssql'
 ]
 
 setup_settings = {}
