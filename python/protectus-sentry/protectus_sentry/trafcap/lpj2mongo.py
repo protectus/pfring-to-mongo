@@ -175,25 +175,52 @@ class Lpj2MongoThread(threading.Thread):
                         # Check if packet is to/from expected target
                         c_id = None
                         if line[2] in my_ips_cids:
-                            c_id = my_ips_cids[line[2]]
+                            from_target = True
+                            c_id = my_ips_cids[line[2]][0]
+                            target_type = my_ips_cids[line[2]][1]
                         elif line[4].strip(":") in my_ips_cids:
-                            c_id = my_ips_cids[line[4].strip(":")]
+                            from_target = False
+                            c_id = my_ips_cids[line[4].strip(":")][0]
+                            target_type = my_ips_cids[line[4].strip(":")][1]
                         else:
                             continue
 
                         if line[5] == "ICMP":
-                            request_key, session_key, data = IcmpLpjPacket.parse(line)
-                            request, reply = icmp_session.updateInfoDict(request_key, 
-                                                              session_key, data, c_id) 
+                            request_key, session_key, data = IcmpLpjPacket.parse(line,
+                                                                                 from_target)
+                            request, reply = icmp_session.updateInfoDict(request_key,
+                                                              session_key, data, c_id)
                             if request:
-                                icmp_session.updateDataDict(session_key, request, reply) 
+                                icmp_session.updateDataDict(session_key, request, reply)
                         elif line[5] == "Flags":
-                            request_key, session_key, data = TcpLpjPacket.parse(line)
-                            request, reply = tcp_session.updateInfoDict(request_key, 
-                                                              session_key, data, c_id) 
+                            if target_type == 'LpjTcpTarget':
+                                #  Syn ==>
+                                #  <== Syn-Ack
+                                request_key, session_key, data = TcpLpjPacket.parse(line,
+                                                                                    from_target)
+                            elif target_type == 'LpjHttpTarget' or \
+                                 target_type == 'LpjHttpsTarget':
+                                #  Syn ==>
+                                #  <== Fin-Ack
+                                request_key, session_key, data = TcpApplLpjPacket.parse(line,
+                                                                                     from_target)
+                            elif target_type == 'LpjMsSqlTarget':
+                                request_key, session_key, data = TcpApplLpjPacket.parse(line,
+                                                                                     from_target)
+                            else:
+                                continue
+
+                            # Application pings require a broader capture filter which
+                            # leads to some captured packets being un-needed & discarded 
+                            if not request_key:
+                                continue
+
+                            request, reply = tcp_session.updateInfoDict(request_key,
+                                                              session_key, data, c_id)
                             if request:
-                                tcp_session.updateDataDict(session_key, request, reply) 
+                                tcp_session.updateDataDict(session_key, request, reply)
                             pass
+
 
                         else:
                             print("Injest: Invalid input...")

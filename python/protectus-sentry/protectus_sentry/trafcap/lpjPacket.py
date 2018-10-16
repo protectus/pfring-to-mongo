@@ -64,7 +64,7 @@ class IpLpjPacket(object):
                '-i', trafcap.network_interface,
                '-tt', '-n', '-l',
                '-f',
-               '((icmp or (tcp[tcpflags] & (tcp-syn) != 0)) or (vlan and (icmp or (tcp[tcpflags] & (tcp-syn) != 0))))'],
+               '((icmp or ((tcp[tcpflags] & (tcp-syn|tcp-fin)) != 0)) or (vlan and (icmp or ((tcp[tcpflags] & (tcp-syn|tcp-fin) != 0)))))'],
                bufsize=-1, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return proc1
 
@@ -123,7 +123,7 @@ class TcpLpjPacket(IpLpjPacket):
     requests = {}
 
     @classmethod
-    def parse(pc, pkt):
+    def parse(pc, pkt, from_target):
         # ['1354757081.121964', 'IP', '192.168.1.86.37006', '>', 
         # '206.180.172.130.80:', 'Flags', '[S],', 'seq', '351505191,', 'win', 
         # '14600,', 'options', '[mss', '1460,sackOK,TS', 'val', '26655221', 
@@ -177,7 +177,7 @@ class TcpLpjPacket(IpLpjPacket):
             info_doc = {"ip1":trafcap.tupleToInt(a_info[ci][pc.i_addr]),
                         "f1":a_info[ci][pc.i_flags],
                         "ip2":trafcap.tupleToInt(a_info[si][pc.i_addr]),
-                        "p2":a_info[si][pc.i_port],
+                        "p2":int(a_info[si][pc.i_port]),
                         "f2":a_info[si][pc.i_flags],
                         "tbm":trafcap.secondsToMinute(a_info[pc.i_tb]),
                         "tem":trafcap.secondsToMinute(a_info[pc.i_te]),
@@ -202,7 +202,7 @@ class TcpLpjPacket(IpLpjPacket):
             pl_list[:] = (val for val in pl_list if val[1] != 0)
             session_data = {"ip1":trafcap.tupleToInt(a_data[pc.d_key][pc.d_addr1]),
                         "ip2":trafcap.tupleToInt(a_data[pc.d_key][pc.d_addr2]),
-                        "p2":a_data[pc.d_key][pc.d_port2],
+                        "p2":int(a_data[pc.d_key][pc.d_port2]),
                         "sb":a_data[pc.d_sb],
                         "se":a_data[pc.d_se],
                         "sbm":trafcap.secondsToMinute(a_data[pc.d_sb]),
@@ -235,7 +235,7 @@ class TcpLpjPacket(IpLpjPacket):
 
         group_data = {"ip1":a_group[pc.g_ip1],
                       "ip2":a_group[pc.g_ip2],
-                      "p2":a_group[pc.g_p2],
+                      "p2":int(a_group[pc.g_p2]),
                       "tbm":a_group[pc.g_tbm],
                       "tem":a_group[pc.g_tem],
                       "rtl":rtl,
@@ -272,6 +272,50 @@ class TcpLpjPacket(IpLpjPacket):
                   a_data['lmin'], a_data['lmax'], 0, 0,
                   a_data['c_id'],0, None]
         return a_group
+
+class TcpApplLpjPacket(TcpLpjPacket):
+    def __init__(self):
+        return
+
+    @classmethod
+    def parse(pc, pkt, from_target):
+        try:
+            a1_1,a1_2,a1_3,a1_4,src_port = pkt[2].split(".")
+            a2_1,a2_2,a2_3,a2_4,dst_port = pkt[4].split(".")
+            dst_port = dst_port.strip(':')
+
+            src_ip = (int(a1_1), int(a1_2), int(a1_3), int(a1_4))
+            dst_ip = (int(a2_1), int(a2_2), int(a2_3), int(a2_4))
+
+            etime = float(pkt[0])
+            flags = pkt[6].strip(",")
+            proto = 'tcp'
+
+            if flags == '[F.]' and from_target:
+                ack = int(pkt[10].strip(','))
+                seq = dst_port     # Use port instead of seq#
+                client_index = 1
+                request_key = (dst_ip, src_ip, src_port, seq)
+                session_key = (dst_ip, src_ip, src_port)
+            elif flags == '[S]' and not from_target:
+                seq = src_port     # Use port instead of seq# 
+                client_index = 0
+                request_key = (src_ip, dst_ip, dst_port, seq)
+                session_key = (src_ip, dst_ip, dst_port)
+            else:
+                # Wait for fin-ack packet
+                # Returning request_key == None will cause packet to be ignored
+                return None, (), [] 
+                
+        except Exception as e:
+            print((e.__str__()))
+            raise Exception("Unable to parse TCP appl traffic." )
+
+        data = [(src_ip, src_port, flags), (dst_ip, dst_port, '[]'), 
+                 etime, seq, proto, client_index]
+        
+        return request_key, session_key, data
+
 
 class MtrPacketError(Exception):
    def __init__(self, arg):
@@ -337,7 +381,7 @@ class IcmpLpjPacket(IpLpjPacket):
 
 
     @classmethod
-    def parse(pc, pkt):
+    def parse(pc, pkt, from_target):
 
         # ['1354654680.292987', 'IP', '192.168.1.86', '>', '74.125.227.105:',
         # 'ICMP', 'echo', 'request,', 'id', '22315,', 'seq', '298,', 'length',
