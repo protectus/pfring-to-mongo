@@ -3058,8 +3058,8 @@ class RtpPacket(IpPacket):
 # 1457556004.797061  10.10.20.46 10498 10.200.1.218 10000 360 0xc2c14587 (3267446151) 24200 828152408 99,127,127,0 RTP
 # 1457556004.815568 10.200.1.218 10000 10.10.20.46  10498 360 0x52ae122e (1387139630) 33190 1365478476 99,0 RTP
 
-                a1_1,a1_2,a1_3,a1_4 = pkt[1].split(".")
-                a2_1,a2_2,a2_3,a2_4 = pkt[3].split(".")
+                a1_1,a1_2,a1_3,a1_4 = pkt[1].split(b".")
+                a2_1,a2_2,a2_3,a2_4 = pkt[3].split(b".")
     
                 ports = [int(pkt[2]), int(pkt[4])]
                 byts = [int(pkt[5]), 0]
@@ -3068,7 +3068,7 @@ class RtpPacket(IpPacket):
                 # Tshark removes leading zeros in ssrc.  
                 # Prepend zeros if ssrc < 8 chars
                 zeros_needed = 8 - len(ssrc)
-                ssrc = '0'*zeros_needed + ssrc
+                ssrc = b'0'*zeros_needed + ssrc
                 # ssrc also available as an int
                 #ssrc = int(pkt[7][1:-1])
     
@@ -3154,12 +3154,12 @@ class RtpPacket(IpPacket):
                     "tb":a_info[pc.i_tb],
                     "te":a_info[pc.i_te],
                     "pk":a_info[pc.i_pkts],
-                    "pr":a_info[pc.i_proto],
+                    "pr":a_info[pc.i_proto].decode('ascii','ignore'),
                     #"cc1":a_info[pc.i_cc1],
                     #"loc1":a_info[pc.i_loc1],
                     #"cc2":a_info[pc.i_cc2],
                     #"loc2":a_info[pc.i_loc2],
-                    "ssrc":a_info[pc.i_ssrc]}
+                    "ssrc":a_info[pc.i_ssrc].decode('ascii','ignore')}
         tdm = tem-tbm
         if tdm >= trafcap.lrs_min_duration: info_doc['tdm'] = tdm
         if a_info[pc.i_vl]: info_doc['vl'] = a_info[pc.i_vl]
@@ -3176,13 +3176,13 @@ class RtpPacket(IpPacket):
                          "sbm":trafcap.secondsToMinute(a_bytes[pc.b_sb]),
                          "sem":trafcap.secondsToMinute(a_bytes[pc.b_se]),
                          "pk":a_bytes[pc.b_pkts],
-                         "pr":a_info[pc.i_proto],
+                         "pr":a_info[pc.i_proto].decode('ascii','ignore'),
                          #"cc1":a_info[pc.i_cc1],
                          #"loc1":a_info[pc.i_loc1],
                          #"cc2":a_info[pc.i_cc2],
                          #"loc2":a_info[pc.i_loc2],
                          "b":a_bytes[pc.b_array],
-                         "ssrc":a_info[pc.i_ssrc],
+                         "ssrc":a_info[pc.i_ssrc].decode('ascii','ignore'),
                          "lpj":a_bytes[pc.b_lpj_array]}
         if a_info[pc.i_vl]: session_bytes['vl'] = a_info[pc.i_vl]
 
@@ -3280,7 +3280,7 @@ class RtpPacket(IpPacket):
         if key == pc.capture_dict_key:
             new_info = [[(0,0,0,0),0,0,0], [(0,0,0,0),0,0,0], 
                         float(data[pc.p_etime]), float(data[pc.p_etime]),
-                        1, 0, '', '', 0,
+                        1, 0, data[pc.p_proto], b'', 0,
                         float(data[pc.p_etime]), True, 
                         None, None, None, None, None, None, None] 
         else:
