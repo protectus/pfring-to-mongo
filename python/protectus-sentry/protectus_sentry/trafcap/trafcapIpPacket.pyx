@@ -3537,18 +3537,9 @@ class TcpInjPacket(IpPacket):
         return proc
 
     @classmethod
-    def injectB2G(pc, data, s):
+    def injectB2G(pc, data, s, ip, tcp):
 
-        # Create a new IP packet and set its source and destination addresses.
-        #ip.set_ip_id(1)         # increments by default
-        #ip.set_ip_ttl(128)      # ff by default
-        #tcp.set_th_ack(0)         # 0 by default
-        #tcp.set_th_win(8192)      # 0 by default
-        #tcp.contains(ImpactPacket.Data( "lalala"))
-        #tcp.auto_checksum=1
-
-        ip = IP()
-        tcp = TCP()
+        # Default TCP header options
         tcp.set_th_off(5)
 
         if b'S' in data[pc.p_flags]:
@@ -3599,22 +3590,15 @@ class TcpInjPacket(IpPacket):
                          (trafcap.tupleToString(data[pc.p_addr][1]), 
                          data[pc.p_port][1]))
 
+                # Could send RST packet to attacker here.
+
         #print 'B2G', data
  
 
     @classmethod
-    def injectG2B(pc, data, s):
+    def injectG2B(pc, data, s, ip, tcp):
 
-        # Create a new IP packet and set its source and destination addresses.
-        #ip.set_ip_id(1)         # increments by default
-        #ip.set_ip_ttl(128)      # ff by default
-        #tcp.set_th_ack(0)         # 0 by default
-        #tcp.set_th_win(8192)      # 0 by default
-        #tcp.contains(ImpactPacket.Data( "lalala"))
-        #tcp.auto_checksum=1
- 
-        ip = IP()
-        tcp = TCP()
+        # Default TCP header options
         tcp.set_th_off(5)
 
         if data[pc.p_flags] == b's':
@@ -3659,18 +3643,20 @@ class TcpInjPacket(IpPacket):
                 # defaults to zero
                 flags = int('00010101',2)
                 tcp.set_th_ack(data[pc.p_seq]+data[pc.p_bytes]) 
+            else:
+                tcp.set_th_ack(0)
+
             tcp.set_th_flags(flags)
             ip.contains(tcp)
             s.sendto(ip.get_packet(), 
                      (trafcap.tupleToString(data[pc.p_addr][0]), 
                      data[pc.p_port][0]))
 
-        # Randomly send packet to attacker.  4 bits selected randomly.  
-        # If all 4 are 0 (1/16 of the time), then a packet is sent.
-        if data[pc.p_seq] and not bool(random.getrandbits(3)):   
+        # Send packet to attacker
+        if data[pc.p_seq]:   
             # Send RST packet to bad IP
-            ip = IP()
-            tcp = TCP()
+
+            # Default TCP header options
             tcp.set_th_off(5)
 
             ip.set_ip_src(trafcap.tupleToString(data[pc.p_addr][0]))
@@ -3686,6 +3672,7 @@ class TcpInjPacket(IpPacket):
             #            URG PSH
             tcp.set_th_flags(flags)
             tcp.set_th_seq(data[pc.p_seq]+data[pc.p_bytes]) 
+            tcp.set_th_ack(0)
             #tcp.set_th_ack(data[pc.p_seq]+1) 
             ip.contains(tcp)
             s.sendto(ip.get_packet(), 
