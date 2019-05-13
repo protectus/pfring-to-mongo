@@ -8,9 +8,7 @@ requires = [
     'geoip2',
     'PyYAML',
     'passlib',
-    'dnspython',
-    'pythondialog',
-    'pymssql' # TODO: Remove
+    'dnspython'
 ]
 
 extension_settings = {}

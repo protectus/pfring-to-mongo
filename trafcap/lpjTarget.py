@@ -1,4 +1,4 @@
-# Cilasses used by lpjSend
+# Classes used by lpjSend
 #
 # Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
 #
@@ -10,7 +10,6 @@ from trafcap import trafcap
 import signal
 #import urllib2
 from urllib.request import urlopen
-import pymssql
 
 # Target class is created when user enteres new target in UI and
 # exists until user removes target from UI.  Target might have an
@@ -189,23 +188,6 @@ class LpjHttpsTarget(LpjIpTarget):
             ret = ret + "." + str(self.target_info[t_port])
         return ret
 
-class LpjMsSqlTarget(LpjIpTarget):
-    def start(self):
-        print('Starting: ', self.target_info)
-        mssql_task = MsSqlTaskThread(self.target_info)
-        mssql_task.start()
-        self.task_thread = mssql_task
-
-    def getTargetString(self):
-        return self.target_info[t_ip] + "." + \
-               str(self.target_info[t_port])
-
-    def getPrevTargetString(self):
-        ret = self.target_info[t_prev_ip]
-        if ret:
-            ret = ret + "." + str(self.target_info[t_port])
-        return ret
-
 class TaskThread(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
@@ -323,41 +305,6 @@ class HttpsTaskThread(LpjTaskThread):
             print('Exception in HttpTaskThread: ', e)
             print('       ', self.target)
 
-class MsSqlTaskThread(LpjTaskThread):
-    def __init__(self, target):
-        print( 'target:', target)
-        LpjTaskThread.__init__(self, target)
-        self.timeout = 1
-        self.result = None
-
-    def task(self):
-        t = self.target
-        try:
-            server = t[t_target] + ':' + str(t[t_port])
-            conn = pymssql.connect(server, t[t_user], t[t_pwrd])
-            cursor = conn.cursor()
-            cursor.execute(t[t_query])
-            row = cursor.fetchall()
-            # Print info about result; don't fill-up logs with all results
-            if not self.result:
-                # First result
-                self.result = row
-                print('Mssql result is list of: ', len(row), ' items.')
-                print('First item is: ', row[0])
-            cursor.close()
-        except Exception, e:
-            print('Exception in MsSqlTaskThread: ', e)
-            print('       ', self.target)
-
-class CheckDbThread(TaskThread):
-    def __init__(self, interval, send_packets_flag):
-        TaskThread.__init__(self)
-        self.interval = interval
-        self.send_packets = send_packets_flag
-
-    def task(self):
-        if LpjIpTarget.checkDbForUpdates(self.send_packets):
-            updateLpj2MongoData()
 
 #
 # Code below previously contained in lpj.py and consolidated
@@ -374,8 +321,6 @@ t_type=7; t_length=8
 t_port=7; t_appl=8
 #http and https
 t_port=7; t_appl=8; t_path=9
-#mssql
-t_port=7; t_appl=8; t_user=9; t_pwrd=10; t_query=11
 
 
 targets = []     # list of target objects
@@ -406,8 +351,6 @@ def createTarget(target, send_packets_flag):
             a_target_obj = LpjHttpTarget(target, send_packets_flag)
         if target[t_appl] == 'https':
             a_target_obj = LpjHttpsTarget(target, send_packets_flag)
-        if target[t_appl] == 'mssql':
-            a_target_obj = LpjMsSqlTarget(target, send_packets_flag)
         else:
             a_target_obj = LpjTcpTarget(target, send_packets_flag)
 
@@ -458,11 +401,6 @@ def readConfig():
                     if proto_opts['appl'] == 'http' or \
                        proto_opts['appl'] == 'https':
                         target.append(proto_opts['path'])
-                    # MSSQL
-                    elif proto_opts['appl'] == 'mssql':
-                        target.append(proto_opts['user'])
-                        target.append(proto_opts['pass'])
-                        target.append(proto_opts['query'])
                     else:
                         print("Invalid LPJ target type.  Ignoring:", item)
                         continue
