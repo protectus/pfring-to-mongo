@@ -6,8 +6,6 @@ from setuptools import setup, find_packages, Extension
 requires = [
     'pymongo == 3.6',
     'geoip2',
-    'PyYAML',
-    'passlib',
     'dnspython'
 ]
 

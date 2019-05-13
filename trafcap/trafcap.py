@@ -11,12 +11,8 @@ from calendar import timegm
 from datetime import datetime
 import traceback
 import sys
-#import GeoIP
 import geoip2.database
 import json
-# Include sentry-hardware which defines network interfaces 
-sys.path.extend(['/opt/sentry/hardware'])
-import sentryHardware
 import csv
 
 last_seq_off_the_wire = 0
@@ -112,15 +108,8 @@ def refreshConfigVars():
 
     # Default is to obtain interface names from networking files in /etc.
     # Entry in config file can be used to override hardware settings.
-    try:
-       network_interface = config.get('interface', 'network_interface')
-    except (configparser.NoOptionError, configparser.NoSectionError):
-       network_interface = sentryHardware.getNetworkInterface()
-    #
-    try:
-       sniff_interface = config.get('interface', 'sniff_interface')
-    except (configparser.NoOptionError, configparser.NoSectionError):
-       sniff_interface = sentryHardware.getSniffInterface()
+    network_interface = config.get('interface', 'network_interface')
+    sniff_interface = config.get('interface', 'sniff_interface')
 
     lrs_min_duration = config.getint('trafcap', 'lrs_min_duration')
     rtp_portrange = config.get('trafcap', 'rtp_portrange')
