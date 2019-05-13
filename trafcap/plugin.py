@@ -1,8 +1,8 @@
 import sys
 
 from optparse import OptionParser
-from protectus_sentry.trafcap.trafcap import mongoSetup
-from protectus_sentry.plugin_config import getPluginNames, isPluginEnabled, setPluginEnabled
+from trafcap.trafcap import mongoSetup
+from plugin_config import getPluginNames, isPluginEnabled, setPluginEnabled
 
 actions = ["enable","disable","status"]
 

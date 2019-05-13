@@ -10,14 +10,14 @@ import subprocess
 from optparse import OptionParser
 import math
 import traceback
-from protectus_sentry.trafcap import trafcap
-from protectus_sentry.trafcap.trafcapIpPacket import *
+from trafcap import trafcap
+from trafcap.trafcapIpPacket import *
 #from trafcapEthernetPacket import *
 #from trafcapContainer import *
-from protectus_sentry.trafcap.kwEvent import *
-from protectus_sentry.trafcap.kwEventContainer import *
-from protectus_sentry.trafcap import trafinj
-from protectus_sentry.trafcap.ImpactPacket import IP, TCP
+from trafcap.kwEvent import *
+from trafcap.kwEventContainer import *
+from trafcap import trafinj
+from trafcap.ImpactPacket import IP, TCP
 
 proc = None
 

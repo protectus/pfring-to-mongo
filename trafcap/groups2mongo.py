@@ -12,10 +12,10 @@ import subprocess
 from optparse import OptionParser
 import math
 import configparser
-from protectus_sentry.trafcap import trafcap
-from protectus_sentry.trafcap.trafcapIpPacket import *
-from protectus_sentry.trafcap.trafcapEthernetPacket import *
-from protectus_sentry.trafcap.trafcapContainer import *
+from trafcap import trafcap
+from trafcap.trafcapIpPacket import *
+from trafcap.trafcapEthernetPacket import *
+from trafcap.trafcapContainer import *
 import pymongo
 
 # doc_win_start                   mbp

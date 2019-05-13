@@ -10,12 +10,12 @@ import subprocess
 from optparse import OptionParser
 import math
 import traceback
-import protectus_sentry.trafcap
-from protectus_sentry.trafcap.trafcapIpPacket import *
-from protectus_sentry.trafcap.trafcapEthernetPacket import *
-from protectus_sentry.trafcap.trafcapContainer import *
+import trafcap
+from trafcap.trafcapIpPacket import *
+from trafcap.trafcapEthernetPacket import *
+from trafcap.trafcapContainer import *
 
-from protectus_sentry.trafcap.trafcapProcess import *
+from trafcap.trafcapProcess import *
 import multiprocessing
 #import queue
 from collections import deque
@@ -28,8 +28,8 @@ from libc.stdint cimport uint64_t, uint32_t, uint16_t, uint8_t, int64_t
 from libc.string cimport memcpy, memset
 from libc.stdlib cimport malloc
 import ctypes
-from protectus_sentry.trafcap.cpf_ring cimport * 
-from protectus_sentry.trafcap.trafcapIpPacket cimport * 
+from trafcap.cpf_ring cimport * 
+from trafcap.trafcapIpPacket cimport * 
 
 proc = None
 

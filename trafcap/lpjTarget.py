@@ -6,7 +6,7 @@ import threading
 from subprocess import Popen, PIPE
 import time
 import socket
-from protectus_sentry.trafcap import trafcap
+from trafcap import trafcap
 import signal
 #import urllib2
 from urllib.request import urlopen

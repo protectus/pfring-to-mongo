@@ -12,8 +12,8 @@ from optparse import OptionParser
 import math
 import traceback
 
-from protectus_sentry.trafcap import trafcap
-from protectus_sentry.trafcap.nmiPacket import *
+from trafcap import trafcap
+from trafcap.nmiPacket import *
 
 proc = None
 

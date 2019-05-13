@@ -5,24 +5,24 @@
 # Classes to help pull data off the wire and update mongo
 import subprocess
 import time
-from protectus_sentry.trafcap import trafcap
+from trafcap import trafcap
 from datetime import datetime
 import traceback
 import re
 from bisect import bisect_left, insort
 # for packet injection
 import socket
-from protectus_sentry.trafcap.ImpactPacket import IP, TCP 
+from trafcap.ImpactPacket import IP, TCP 
 import os, sys
 from struct import unpack  # For IP Address parsing
 from ctypes import Structure, c_uint16, c_uint32, c_uint64, c_int16, c_uint8, c_double, c_char
 
 # CYTHON
-from protectus_sentry.trafcap.trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, TCPPacketHeaders, TCPSession
+from trafcap.trafcapIpPacket cimport BYTES_RING_SIZE, BYTES_DOC_SIZE, TCPPacketHeaders, TCPSession
 from libc.stdint cimport uint64_t, uint32_t, uint16_t, int16_t
 from libc.string cimport memset
 from libc.stdlib cimport malloc
-from protectus_sentry.trafcap.cpf_ring cimport *
+from trafcap.cpf_ring cimport *
 import random
 
 class IpPacket(object):

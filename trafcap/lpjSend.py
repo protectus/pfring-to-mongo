@@ -7,12 +7,12 @@ import sys, os, signal
 import random
 import threading
 import datetime
-from protectus_sentry.trafcap import trafcap
+from trafcap import trafcap
 from optparse import OptionParser
 import copy
 import time
-from protectus_sentry.trafcap import lpjTarget 
-from protectus_sentry.trafcap.lpj2mongo import Lpj2MongoThread
+from trafcap import lpjTarget 
+from trafcap.lpj2mongo import Lpj2MongoThread
 
 trafcap.checkIfRoot()
 check_db_task = None

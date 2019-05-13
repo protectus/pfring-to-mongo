@@ -12,10 +12,9 @@ from optparse import OptionParser
 import math
 import traceback
 
-#from protectus_sentry.trafcap.trafcap import *
-from protectus_sentry.trafcap import trafcap
-from protectus_sentry.trafcap.kwEvent import *
-from protectus_sentry.trafcap.kwEventContainer import *
+from trafcap import trafcap
+from trafcap.kwEvent import *
+from trafcap.kwEventContainer import *
 import binascii
 
 proc = None

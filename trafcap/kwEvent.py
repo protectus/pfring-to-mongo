@@ -5,7 +5,7 @@
 # Classes to receive data from an event stream and update mongo
 import subprocess
 import time
-from protectus_sentry.trafcap import trafcap
+from trafcap import trafcap
 from datetime import datetime
 import traceback
 import string

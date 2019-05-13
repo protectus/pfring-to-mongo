@@ -10,10 +10,10 @@ import subprocess
 from optparse import OptionParser
 import math
 import traceback
-from protectus_sentry.trafcap import trafcap
-from protectus_sentry.trafcap.lpjPacket import *
-from protectus_sentry.trafcap.lpjContainer import *
-from protectus_sentry.trafcap.lpjTarget import *
+from trafcap import trafcap
+from trafcap.lpjPacket import *
+from trafcap.lpjContainer import *
+from trafcap.lpjTarget import *
 import copy
 import fcntl
 import threading

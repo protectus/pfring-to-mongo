@@ -1,6 +1,6 @@
 from libc.stdint cimport uint64_t,uint32_t,uint16_t,int16_t, uint8_t
 from cpython.ref cimport PyObject
-from protectus_sentry.trafcap.cpf_ring cimport *
+from trafcap.cpf_ring cimport *
 
 # For a compiled constant, we can apparently use enum.
 # http://docs.cython.org/src/userguide/language_basics.html#c-variable-and-type-definitions

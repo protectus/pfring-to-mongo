@@ -11,7 +11,7 @@ import configparser
 import locale
 locale.setlocale(locale.LC_ALL, 'en_US.utf8')
 
-from protectus_sentry.trafcap import trafcap
+from trafcap import trafcap
 import pymongo
 
 start_bold = "\033[1m"

@@ -20,21 +20,21 @@ if sys.argv[1] in ['bdist_wheel', 'install']:
     from Cython.Build import cythonize
 
     extensions = [
-        Extension("trafcapProcess", ["protectus_sentry/**/trafcapProcess.pyx"],
+        Extension("trafcapProcess", ["trafcap/trafcapProcess.pyx"],
         libraries = ["pfring", "pcap", "numa"],
         library_dirs = ["/usr/local/lib"])
     ]
 
     c1 = cythonize(extensions, language_level=3)
-    c2 = cythonize('protectus_sentry/**/*.py', language_level=3)
-    c3 = cythonize('protectus_sentry/**/*.pyx', language_level=3)
+    c2 = cythonize('trafcap/*.py', language_level=3)
+    c3 = cythonize('trafcap/*.pyx', language_level=3)
     extension_settings = {
         'cmdclass': {'build_ext':build_ext},
         'ext_modules': c1 + c2 + c3
     }
 
 setup(
-	name='protectus-sentry',
+	name='trafcap',
     version="0.1", # TODO: Best Practicejj
     # TODO description='Sentry shared code',
     classifiers=[

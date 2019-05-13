@@ -12,9 +12,9 @@ import subprocess
 from optparse import OptionParser
 import math
 import configparser
-from protectus_sentry.trafcap.lpjPacket import IpLpjPacket, IcmpLpjPacket, TcpLpjPacket
-from protectus_sentry.trafcap.lpjPacket import *
-from protectus_sentry.trafcap import lpjContainer 
+from trafcap.lpjPacket import IpLpjPacket, IcmpLpjPacket, TcpLpjPacket
+from trafcap.lpjPacket import *
+from trafcap import lpjContainer 
 import pymongo
 
 def parseOptions():

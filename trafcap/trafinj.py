@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
 #
-from protectus_sentry.trafcap import trafcap
+from trafcap import trafcap
 import sys
 #from sets import Set
 import time

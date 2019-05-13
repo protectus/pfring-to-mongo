@@ -5,11 +5,11 @@
 # Classes to aquire latetency, packet loss, jitter data 
 import subprocess
 import time
-from protectus_sentry.trafcap import trafcap
+from trafcap import trafcap
 from datetime import datetime
 import traceback
 import re
-from protectus_sentry.trafcap import lpjTarget
+from trafcap import lpjTarget
 import copy
 
 #global targets

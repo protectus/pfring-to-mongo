@@ -11,9 +11,9 @@ import subprocess
 from optparse import OptionParser
 import math
 import configparser
-from protectus_sentry.trafcap import trafcap
-from protectus_sentry.trafcap.kwEvent import *
-from protectus_sentry.trafcap.kwEventContainer import *
+from trafcap import trafcap
+from trafcap.kwEvent import *
+from trafcap.kwEventContainer import *
 import pymongo
 
 # doc_win_start                   mbp

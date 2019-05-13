@@ -5,11 +5,11 @@
 # Classes to manage temporary storage of events in dictionaries
 # and writes to mongo
 import sys, time
-from protectus_sentry.trafcap import trafcap
+from trafcap import trafcap
 from datetime import datetime
 import traceback
 import pprint
-from protectus_sentry.trafcap.trafcapIpPacket import * 
+from trafcap.trafcapIpPacket import * 
 
 class KwEventContainer(object):
     """

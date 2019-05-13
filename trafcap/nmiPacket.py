@@ -5,7 +5,7 @@
 # Classes to help pull MAC, IP, Name, Geo data off the wire and update mongo
 import subprocess
 import time
-from protectus_sentry.trafcap import trafcap
+from trafcap import trafcap
 from datetime import datetime
 import traceback
 import sys

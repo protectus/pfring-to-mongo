@@ -2,11 +2,11 @@
 #
 # Copyright (c) 2013 Protectus,LLC.  All Rights Reserved.
 #
-from protectus_sentry.trafcap import trafcap
+from trafcap import trafcap
 import socket
 import signal
 import threading
-from protectus_sentry.trafcap.lpjTarget import *
+from trafcap.lpjTarget import *
 
 
 t_target=0        # could be hostname or ip
