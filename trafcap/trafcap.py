@@ -92,7 +92,6 @@ def refreshConfigVars():
     global local_subnets, local_subnet, config, ingest_vlan_id
     global mongo_server, mongo_port, traffic_db, traffic_ttl
     global inj_filter, inj_timeout, cc_list_type, cc_list
-    global suricata_cap_filter
     global packet_ring_buffer_size, saved_session_ring_buffer_size 
     global live_session_buffer_size, group_buffer_size, group2_buffer_size
     # Read settings from config file
@@ -127,7 +126,6 @@ def refreshConfigVars():
     rtp_portrange = config.get('trafcap', 'rtp_portrange')
     http_save_url_qs = config.getboolean('trafcap', 'http_save_url_qs')
     ingest_vlan_id = config.getboolean('trafcap', 'ingest_vlan_id')
-    suricata_cap_filter = config.get('trafcap', 'suricata_cap_filter')
 
     # Convert local_subnet strings from config file into a list of tuples
     local_subnets = config.items('local_subnets')

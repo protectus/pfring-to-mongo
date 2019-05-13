@@ -12,7 +12,6 @@ import re
 from bisect import bisect_left, insort
 # for packet injection
 import socket
-from trafcap.ImpactPacket import IP, TCP 
 import os, sys
 from struct import unpack  # For IP Address parsing
 from ctypes import Structure, c_uint16, c_uint32, c_uint64, c_int16, c_uint8, c_double, c_char
