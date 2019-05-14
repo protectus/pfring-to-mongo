@@ -131,13 +131,6 @@ def refreshConfigVars():
     group_buffer_size = config.getint('trafcap', 'group_buffer_size')
     group2_buffer_size = config.getint('trafcap', 'group2_buffer_size')
 
-    # Also get and store the current installed system version.
-    global system_version
-    
-    sentry_version_file = open('/etc/sentry_version')
-    system_version = sentry_version_file.readline().strip()
-    sentry_version_file.close()
-
 refreshConfigVars()
 
 # Returns True if the ip is in the local subnet
@@ -287,24 +280,6 @@ import os, sys
 def checkIfRoot():
     if os.geteuid() != 0:
         sys.exit('Program must be run as root.')
-
-
-#pymongo bindings
-#sys.path.append('/opt/sentry/trafcap/lib')
-
-def mongoSetup(**kwargs):
-    from pymongo import MongoClient
-    conn = MongoClient(host=mongo_server,
-                       port=mongo_port,**kwargs)
-    db = conn[traffic_db]
-
-    # DB is not actually created until something is written.  Ensure db exixts,
-    # even if it is empty, to prevent downstream errors in certain situations.
-    coll_names = db.collection_names()
-    if len(coll_names) == 0:
-        db['config'].insert_one({'x': 1})
-        db['config'].delete_one({'x': 1})
-    return db
 
 #def chkUtf8(a_string):
 #    # If string is not None, ensure it is in UTF8 format; else return None
