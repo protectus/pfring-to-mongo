@@ -56,9 +56,6 @@ def parseOptions():
     parser.add_option("-o", "--other", dest="other",
                       action="store_true", default=False,
                       help="process other traffic")
-    parser.add_option("-r", "--rtp", dest="rtp",
-                      action="store_true", default=False,
-                      help="process rtp traffic")
     parser.add_option("-p", "--process", dest="process",
                       action="store_true", default=False,
                       help="use multi-process ingest with pf_ring")
@@ -106,7 +103,6 @@ def main():
     if options.udp: option_check_counter += 1
     if options.icmp: option_check_counter += 1
     if options.other: option_check_counter += 1
-    if options.rtp: option_check_counter += 1
     if option_check_counter != 1:
         sys.exit("Must use one of -t, -u, -i, or -o to specify a protocol.")
 
@@ -180,8 +176,6 @@ def main():
             sys.exit("-i not implemeted yet.")
         elif options.other:
             sys.exit("-o not implemeted yet.")
-        elif options.rtp:
-            sys.exit("-r not implemeted yet.")
         else:
            sys.exit('Invalid protocol') 
 
@@ -508,12 +502,6 @@ def main():
             session_bytes_collection_name = "oth_sessionBytes"
             capture_info_collection_name = "oth_captureInfo"
             capture_bytes_collection_name = "oth_captureBytes"
-        elif options.rtp:
-            packet_type = "RtpPacket"
-            session_info_collection_name = "rtp_sessionInfo"
-            session_bytes_collection_name = "rtp_sessionBytes"
-            capture_info_collection_name = "rtp_captureInfo"
-            capture_bytes_collection_name = "rtp_captureBytes"
         else:
            exitNowUni('Invalid protocol') 
 

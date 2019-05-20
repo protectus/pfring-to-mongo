@@ -165,11 +165,6 @@ class TrafcapEthPktContainer(TrafcapContainer):
                         # entry in the new session_bytes array
                         new_byte_list = [a_bytes[pc.b_array].pop()]
 
-                        # Hack for better performance.  Poor OO design.
-                        if pc == eval('RtpPacket'):
-                            new_lpj_list = [a_bytes[pc.b_lpj_array].pop()]
-                            new_lpj_list[0][pc.b_offset] = 0
-                            
                         new_seq_begin = a_bytes[pc.b_sb] + \
                                         new_byte_list[0][pc.b_offset]
                         new_seq_end = new_seq_begin
@@ -251,9 +246,6 @@ class TrafcapEthPktContainer(TrafcapContainer):
 
                 # Clear-out the now-stored byte info
                 a_bytes[pc.b_array] = new_byte_list
-                # Hack for better performance. Poor OO design.
-                if pc == eval('RtpPacket'):
-                    a_bytes[pc.b_lpj_array] = new_lpj_list
 
             # Expire session if older than timeout.  Do not expire the single
             # entry in Capture Info or Capture Bytes dictionaries
@@ -506,10 +498,6 @@ class TrafcapIpPktContainer(TrafcapEthPktContainer):
             a_bytes[pc.b_array][-1][pc.b_bytes1] += ip1_bytes
             a_bytes[pc.b_array][-1][pc.b_bytes2] += ip2_bytes
 
-            # Hack for performance.  Poor OO design.
-            # Packet loss & jitter updated here.
-            if self.pc == eval('RtpPacket') and self.container_type=="session":
-                pc.updateBytesDict(key, data, curr_seq, a_bytes)
 
         except KeyError:
             # Create a new Session Bytes entry

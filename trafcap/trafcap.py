@@ -84,12 +84,12 @@ def refreshConfigVars():
     global error_log, session_expire_timeout, latency_expire_timeout
     global store_timeout, bytes_to_read, nmi_db_update_wait_time
     global cap_filter, sniff_interface, network_interface
-    global lrs_min_duration, rtp_portrange, http_save_url_qs
+    global lrs_min_duration, http_save_url_qs
     global local_subnets, local_subnet, config, ingest_vlan_id
     global mongo_server, mongo_port, traffic_db, traffic_ttl
-    global inj_filter, inj_timeout, cc_list_type, cc_list
-    global packet_ring_buffer_size, saved_session_ring_buffer_size 
-    global live_session_buffer_size, group_buffer_size, group2_buffer_size
+    global cc_list_type, cc_list, packet_ring_buffer_size, 
+    global saved_session_ring_buffer_size, live_session_buffer_size
+    global group_buffer_size, group2_buffer_size
     # Read settings from config file
     config = configparser.SafeConfigParser()
     config.optionxform = str  # Read config keys case sensitively.
@@ -101,8 +101,6 @@ def refreshConfigVars():
     bytes_to_read = config.getint('trafcap', 'bytes_to_read')
     nmi_db_update_wait_time=config.getfloat('trafcap', 'nmi_db_update_wait_time')
     cap_filter = config.get('trafcap', 'cap_filter')
-    inj_filter = config.get('trafcap', 'inj_filter')
-    inj_timeout = config.getint('trafcap', 'inj_timeout')
     cc_list_type = config.get('trafcap', 'cc_list_type').lower()
     cc_list = json.loads(config.get('trafcap', 'cc_list'))
 
@@ -112,7 +110,6 @@ def refreshConfigVars():
     sniff_interface = config.get('interface', 'sniff_interface')
 
     lrs_min_duration = config.getint('trafcap', 'lrs_min_duration')
-    rtp_portrange = config.get('trafcap', 'rtp_portrange')
     http_save_url_qs = config.getboolean('trafcap', 'http_save_url_qs')
     ingest_vlan_id = config.getboolean('trafcap', 'ingest_vlan_id')
 
@@ -402,9 +399,6 @@ def dnsMxRecLookup(domain_name):
         mx_list = [] 
     return mx_list 
 
-# stores Suricata classification info for use during IDS event ingest
-classification_config_dict = None
-
 def logException(exception, **kwargs):
     arg_names = list(kwargs.keys())
     a_file = open(error_log,'a')
@@ -587,4 +581,11 @@ def initProtoDecodes():
     cursor = db['proto_decode'].find({'type':'tcp.port'})
     for doc in cursor:
         tcp_port_to_proto_decodes[doc['port']] = doc['name']
+
+def mongoSetup(**kwargs):
+    from pymongo import MongoClient
+    conn = MongoClient(host=mongo_server,
+                       port=mongo_port,**kwargs)
+    db = conn[traffic_db]
+    return db
 

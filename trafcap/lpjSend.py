@@ -71,7 +71,7 @@ def main():
     lpj2Mongo_task.start()
 
     if not trafcap.options.quiet:
-        # Subtract 1 for main thread, 1 for check_db thread, and 1 for injest.
+        # Subtract 1 for main thread, 1 for check_db thread, and 1 for ingest.
         print("Target count = ", threading.activeCount() - 3)
         #print "Threads info = ", threading.enumerate()
 

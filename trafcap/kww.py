@@ -107,7 +107,6 @@ def main():
     for coll_name in coll_names:
         if coll_name == 'config': continue
         if coll_name == 'system.indexes': continue
-        if "_injConfig" in coll_name: continue
         if "proto_decode" in coll_name: continue
 
         if "Bytes" in coll_name:
@@ -131,12 +130,6 @@ def main():
         elif "annotations" in coll_name:
             begin_name = 't'
             end_name = 't'
-        elif "_injIp" in coll_name:
-            begin_name = 'tb'
-            end_name = 'texp'
-        elif "_injAllowIp" in coll_name:
-            begin_name = 'tb'
-            end_name = 'tb'
         else:
             begin_name = 'tbm'
             end_name = 'tem'
