@@ -52,7 +52,7 @@ class Lpj2MongoThread(threading.Thread):
                 my_ips_cids.update(lpjTarget.target_cids)
 
             if not options.quiet:
-                print("Injest: target_cids: ", my_ips_cids)
+                print("Ingest: target_cids: ", my_ips_cids)
 
         updateMyTargets()
 
@@ -131,11 +131,11 @@ class Lpj2MongoThread(threading.Thread):
                     continue
 
             if exceptready:
-                print("Injest: Something in exceptready...")
+                print("Ingest: Something in exceptready...")
                 print(exceptready)
 
             if std_err:
-                print("Injest: Something in std_err...")
+                print("Ingest: Something in std_err...")
                 print(std_err)
 
             if lpjTarget.target_cids_changed.is_set():
@@ -223,7 +223,7 @@ class Lpj2MongoThread(threading.Thread):
 
 
                         else:
-                            print("Injest: Invalid input...")
+                            print("Ingest: Invalid input...")
                             raise Exception("Unexpected protocol.")
 
                     except MtrPacketError as e:
