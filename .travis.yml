@@ -2,10 +2,21 @@ language: python
 python:
   - "3.5"
   - "3.6"
+  - "3.7"
 
-install:
+before_install:
+  - apt-get install software-properties-common wget
+  - add-apt-repository universe
+  - wget http://apt-stable.ntop.org/18.04/all/apt-ntop-stable.deb
+  - apt install ./apt-ntop-stable.deb
+  - rm apt-ntop-stable.deb
+  - apt-get install -y build-essential mongo pfring lsb-release
   - pip install cython
   - pip install -r requirements.txt
 
-script:
+
+install:
   - python setup.py install
+
+script:
+  - python -c "print(\"Hello Travis\")"
