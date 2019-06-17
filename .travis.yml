@@ -1,8 +1,7 @@
 language: python
-dist: xenial
+dist: trusty
 python:
   - "3.6"
-  - "3.7"
 
 before_install:
   - sudo apt-get install software-properties-common wget
