@@ -4,9 +4,7 @@ python:
   - "3.6"
 
 before_install:
-  - sudo apt-get install software-properties-common wget
-  - sudo add-apt-repository universe
-  - wget http://apt-stable.ntop.org/18.04/all/apt-ntop-stable.deb
+  - wget http://apt-stable.ntop.org/16.04/all/apt-ntop-stable.deb
   - sudo apt install ./apt-ntop-stable.deb
   - rm apt-ntop-stable.deb
   - sudo apt-get update
