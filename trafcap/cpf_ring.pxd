@@ -2,7 +2,7 @@ from libc.stdint cimport uint64_t,uint32_t,uint16_t,uint8_t,int16_t
 from posix.time cimport timeval
 from cpython.ref cimport PyObject
 
-cdef extern from "linux/in6.h":
+cdef extern from "netinet/in.h":
     cdef union in6_u:
         uint8_t u6_addr8[16]
         uint16_t u6_addr16[8]
