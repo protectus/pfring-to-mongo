@@ -17,7 +17,7 @@ if set(sys.argv[1:]).intersection(['bdist_wheel', 'install']):
 
     extensions = [
         Extension("trafcapProcess", ["trafcap/trafcapProcess.pyx"],
-        libraries = ["pfring", "pcap", "numa"],
+        libraries = ["pfring", "pcap"],
         library_dirs = ["/usr/local/lib"])
     ]
 
