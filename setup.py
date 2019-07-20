@@ -10,7 +10,7 @@ requires = [
 ]
 
 extension_settings = {}
-if sys.argv[1] in ['bdist_wheel', 'install']:
+if set(sys.argv[1:]).intersection(['bdist_wheel', 'install']):
 
     from Cython.Distutils import build_ext
     from Cython.Build import cythonize
