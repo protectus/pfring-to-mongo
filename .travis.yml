@@ -8,7 +8,7 @@ before_install:
   - sudo apt install ./apt-ntop-stable.deb
   - rm apt-ntop-stable.deb
   - sudo apt-get update
-  - sudo apt-get install -y build-essential mongodb pfring lsb-release
+  - sudo apt-get install -y build-essential pfring
   - pip install cython
   - pip install -r requirements.txt
 
