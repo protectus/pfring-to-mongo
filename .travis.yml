@@ -1,7 +1,9 @@
 language: python
 dist: trusty
 python:
+- '3.5'
 - '3.6'
+- '3.7'
 
 install:
 - wget http://apt-stable.ntop.org/16.04/all/apt-ntop-stable.deb
