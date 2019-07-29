@@ -3,7 +3,7 @@ dist: trusty
 python:
 - '3.6'
 
-before_install:
+install:
 - wget http://apt-stable.ntop.org/16.04/all/apt-ntop-stable.deb
 - sudo apt install ./apt-ntop-stable.deb
 - rm apt-ntop-stable.deb
@@ -12,11 +12,12 @@ before_install:
 - pip install cython
 - pip install -r requirements.txt
 
-install:
-- python setup.py install
-
 script:
+- python setup.py install
 - python -c "print(\"Hello Travis\")"
+
+before_deploy:
+- python setup.py sdist bdist_wheel
 
 deploy:
   provider: releases
