@@ -20,8 +20,10 @@ script:
 
 deploy:
   provider: releases
+  skip_cleanup: true
   api_key:
     secure: BOK9jpe8ArQ/uPM0jNF7+ykNsNWeRgDwaISjhUQQATwXkSas2YspCmzzYmYQtPiJFrqQsTMq1Wq97Ajxs4FicOBbjUIeAa1Y589FQqyXVwT0kufQUcTWxRc4HcaqOsbh+KeseVA1UE45epoWe+PODSU0r1KtcwPLtgv8dECugbu64NkGyQ3gOk1rta7Ih9p0mBAqVkN0y0d4n8EvpsQ7EOcsku334O7Xb39JHNm4ED88T0ula5BCCU0TC06taJTih7NnMMg8qHQrjsF9A1+MgmTOw59ymfvKJDAA8qGB6l7a+s6O10a6yvK4w6q7Hag2HkKV41YBpgMnDWIa04hXqLuJEE6f7ahSSkOhygmG+PO7g8ZpWZZD0Ndxm9H6gpMdwLW7rlMDhIfTIxkQS5uNgH63b28y+Ej283ZdO5MUTN/e3UqHG6cDrUjbXVIT1W43BLzgE2H9xOYx0bjcYbYySCvcMhyMp59z66qvBEW7tcanl3ha6C85+7TukrjJvn+ygxBUd7ClE9vHWsrJfrHHQ4r1fjeiwIKLE9eLa6QuKqCYnswhcWz/VDE7UsEXN2PIcNrDspa2wDDlFU5ukKVvv7GLGMmBS1gx1vAokDYGaVDegPHVnjE/XCu5LFgTzlkkx6AMzsLf5umlR2bTeqWoa/x0B5vthoNOhnqxoVKh4E8=
+  file_glob: true
   file: 
   - dist/*.whl
   - dist/*.tar.gz
