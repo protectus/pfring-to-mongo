@@ -87,7 +87,7 @@ def refreshConfigVars():
     global lrs_min_duration, http_save_url_qs
     global local_subnets, local_subnet, config, ingest_vlan_id
     global mongo_server, mongo_port, traffic_db, traffic_ttl
-    global cc_list_type, cc_list, packet_ring_buffer_size, 
+    global cc_list_type, cc_list, packet_ring_buffer_size
     global saved_session_ring_buffer_size, live_session_buffer_size
     global group_buffer_size, group2_buffer_size
     # Read settings from config file
