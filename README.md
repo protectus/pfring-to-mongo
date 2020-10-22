@@ -1,6 +1,6 @@
 # PF_RING to Mongo
 
-[![Build Status](https://travis-ci.org/protectus/pfring-to-mongo.svg?branch=master)](https://travis-ci.org/protectus/pfring-to-mongo)
+[![Project Status: Unsupported – The project has reached a stable, usable state but the author(s) have ceased all work on it. A new maintainer may be desired.](https://www.repostatus.org/badges/latest/unsupported.svg)](https://www.repostatus.org/#unsupported)  [![Build Status](https://travis-ci.org/protectus/pfring-to-mongo.svg?branch=master)](https://travis-ci.org/protectus/pfring-to-mongo)
 
 ## Introduction
 
